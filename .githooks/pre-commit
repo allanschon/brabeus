@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Bump a plugin's version whenever its content changes, in the SAME commit.
+#
+# WHY. A Claude Code plugin's cache is keyed by the version in plugin.json. Change the
+# content without changing the version and `claude plugin update` reports "already at the
+# latest version" — a success message for a no-op — and every machine silently keeps the old
+# code. Measured on all three hosts on 2026-09-07, after a fix to a skill reached none of them.
+#
+# SAME COMMIT, which is why this is pre-commit and not pre-push. A bump one commit later
+#    still leaves a commit where the content moved and the version did not, and that commit is
+#    what a machine can end up installing.
+#
+# This hook is versioned, but git does not use a versioned hooks directory by default.
+#   Every clone needs, once:
+#
+#       git config core.hooksPath .githooks
+#
+# A clone that skips it commits content without a bump and nothing says so. ci.sh carries a
+#    backstop check for exactly that case.
+set -euo pipefail
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+# Which plugins have staged content? Derived from the path, so a second plugin needs no edit.
+# .claude-plugin/marketplace.json at the repo ROOT is not a plugin — it describes them —
+#    so editing it bumps nothing.
+plugins=$(git diff --cached --name-only --diff-filter=ACMR \
+          | sed -n 's|^plugins/\([^/]*\)/.*|\1|p' | sort -u)
+[ -z "$plugins" ] && exit 0
+
+for name in $plugins; do
+  manifest="plugins/$name/.claude-plugin/plugin.json"
+  [ -f "$manifest" ] || { echo "pre-commit: $manifest is missing; not bumping $name" >&2; exit 1; }
+
+  # Already bumped by hand? Then do nothing. Without this the hook double-bumps a deliberate
+  # version change, which is worse than not bumping at all: the number stops meaning anything.
+  if git diff --cached --name-only | grep -qx "$manifest"; then
+    staged=$(git show ":$manifest" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+    committed=$(git show "HEAD:$manifest" 2>/dev/null | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' || true)
+    if [ -n "$staged" ] && [ "$staged" != "$committed" ]; then
+      echo "pre-commit: $name already bumped to $staged"
+      continue
+    fi
+  fi
+
+  cur=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest")
+  case "$cur" in
+    *.*.*) ;;
+    *) echo "pre-commit: $manifest has no usable \"version\" (got '$cur')" >&2; exit 1 ;;
+  esac
+  new="${cur%.*}.$(( ${cur##*.} + 1 ))"
+  sed -i "s/\"version\"[[:space:]]*:[[:space:]]*\"$cur\"/\"version\": \"$new\"/" "$manifest"
+  git add "$manifest"
+  echo "pre-commit: $name $cur -> $new"
+done

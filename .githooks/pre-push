@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Refuse to push code whose tests do not pass.
+#
+# This hook is versioned, but git does not use a versioned hooks directory by
+# default. Every clone needs, once:
+#
+#     git config core.hooksPath .githooks
+#
+# A clone that skips it pushes untested code and nothing says so. CI does NOT
+# close that hole: it is detector-only, it reports after the commit has landed,
+# and a red run there notifies nobody. This hook is still the only thing that
+# PREVENTS an untested push.
+set -euo pipefail
+repo_root="$(git rev-parse --show-toplevel)"
+echo "pre-push: running tests..."
+if ! "$repo_root/test.sh"; then
+  echo "pre-push: tests failed - push refused." >&2
+  exit 1
+fi
+echo "pre-push: green."
