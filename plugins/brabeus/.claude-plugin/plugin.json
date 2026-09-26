@@ -1,0 +1,8 @@
+{
+  "name": "brabeus",
+  "description": "Brabeus client for Claude Code: routing guard, outbox drain, server registration and a health skill.",
+  "version": "0.1.0",
+  "author": {
+    "name": "allanschon"
+  }
+}

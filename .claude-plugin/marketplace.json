@@ -1,0 +1,7 @@
+{
+  "name": "brabeus",
+  "owner": { "name": "allanschon" },
+  "plugins": [
+    { "name": "brabeus", "source": "./plugins/brabeus", "description": "Brabeus client for Claude Code" }
+  ]
+}

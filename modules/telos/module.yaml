@@ -1,0 +1,42 @@
+name: telos
+version: 1
+profile: ratified-record   # working-memory | ratified-record — the kernel's closed set (§1.1)
+priority: 10               # order in the context block; lower renders first
+budget_bytes: 600          # this module's share of the 2 KB block; the kernel refuses a set that overflows
+audience: self             # who may read: self (the person's own sessions) or any (every consumer)
+kinds:
+  mission:
+    fields: [statement]
+    freshness_days: 365
+    interview: "Still the reason you're doing this? Anything sharpen it?"
+  goal:
+    fields: [id, title, ideal, by]          # required
+    optional: [claims, serves, notes]       # serves: the identity/value ids this goal serves
+    freshness_days: 90
+    interview: "Still right? Progress since {reviewed}?"
+  problem:
+    fields: [statement]
+    freshness_days: 120
+    interview: "Still in your way? Changed shape?"
+  challenge:
+    fields: [statement]
+    freshness_days: 120
+    interview: "Still true? Still hard for the same reason?"
+  strategy:
+    fields: [statement]
+    freshness_days: 120
+    interview: "Still the plan? Has the evidence changed it?"
+  current:
+    fields: [dimension, text]               # free-form per dimension; no fixed list, no coverage score
+    freshness_days: 90
+    interview: "Where are you now on {dimension}?"
+  ideal:
+    fields: [dimension, text]
+    freshness_days: 365
+    interview: "Still where you want to end up on {dimension}?"
+  decision:
+    fields: [decided, alternatives, prediction, confidence, worst_case, revisit]
+    interview: "The revisit date passed — did the prediction hold?"
+summary: summary.md.tmpl   # renders this module's part of the context block
+adapters: [tracker, forge, date, manual]   # evidence adapters the module's claims may use
+skills: [ ]                # optional, loaded by the plugin
