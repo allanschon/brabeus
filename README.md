@@ -19,8 +19,8 @@ manifests, a synthetic test corpus and the specification itself. See §14 for wh
   registration and a `/health` skill.
 - **The modules** — manifests for the five modules the spec ships (`memory`, `identity`, `telos`,
   `health`, `finance`), as documents of intent; the module contract itself is not yet enforced.
-- **The documents** — the full specification, a C4 diagram set, a plain-language description, a
-  systems analysis, and the naming note.
+- **The documents** — the full specification, a C4 diagram set, a plain-language description, and
+  a systems analysis.
 
 ## Running the kernel
 
@@ -54,7 +54,6 @@ environment.
 - [C4 diagrams](docs/personal-context-system-c4.md)
 - [Plain-language description](docs/personal-context-system-plain.md)
 - [Systems analysis](docs/personal-context-system-v1-systems-analysis.md)
-- [Naming](docs/naming.md)
 
 ## Name
 
