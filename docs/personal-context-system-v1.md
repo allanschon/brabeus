@@ -8,9 +8,8 @@ It describes a system built on the kernel this repository already contains
 has no opinions about content; everything it stores belongs to a module, and every module runs
 under one of a small set of profiles the kernel defines (§1.1).
 
-v1.1 accepted six changes from the systems-thinking analysis beside this file
-(`personal-context-system-v1-systems-analysis.md`); the largest is that the kernel, not the
-model, decides what the interview asks and what counts as reviewed. v1.2 separated the personal
+v1.1 accepted six changes from a systems-thinking analysis of this design; the largest is that
+the kernel, not the model, decides what the interview asks and what counts as reviewed. v1.2 separated the personal
 record from the general memory it had been absorbing. v1.3 makes the general memory a module
 like any other and moves the difference between the two into profiles. v1.4 takes two small
 things from a survey of other responses to LifeOS (§2.4) and opens two larger ones. §16 lists
@@ -691,7 +690,7 @@ this section will record the rename when it happens.
 
 ### Changes in v1.1
 
-Accepted 2026-09-26 from `personal-context-system-v1-systems-analysis.md`, whose §5 ranks them.
+Accepted 2026-09-26 from a systems-thinking analysis of this design, whose §5 ranked them.
 
 | | change | sections |
 |---|---|---|
