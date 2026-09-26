@@ -2,19 +2,11 @@
 
 **Working name: Brabeus.** See §16.
 
-**Status: proposed, 2026-09-26; revised to v1.1 through v1.4 the same day. Nothing in this
-document is built.** It describes a system built on the kernel this repository already contains
+**Status: v1.4. M0 shipped this repository's first commits — the kernel and the plugin; see §14.**
+It describes a system built on the kernel this repository already contains
 — a private store with hybrid retrieval, a Claude Code plugin and a deploy agent. The kernel
 has no opinions about content; everything it stores belongs to a module, and every module runs
 under one of a small set of profiles the kernel defines (§1.1).
-
-v1.1 accepted six changes from the systems-thinking analysis beside this file
-(`personal-context-system-v1-systems-analysis.md`); the largest is that the kernel, not the
-model, decides what the interview asks and what counts as reviewed. v1.2 separated the personal
-record from the general memory it had been absorbing. v1.3 makes the general memory a module
-like any other and moves the difference between the two into profiles. v1.4 takes two small
-things from a survey of other responses to LifeOS (§2.4) and opens two larger ones. §16 lists
-all four.
 
 C4 diagrams of the system at v1.4 — context, containers, kernel components, and the interview
 as a sequence — are in [`personal-context-system-c4.md`](personal-context-system-c4.md). A
@@ -629,12 +621,13 @@ The system is accepted when one real deployment passes these, described in the s
 
 | # | delivers | accepted when |
 |---|---|---|
+| M0 | the public repository seeded; §12's contents present; §13's last clause enforced on every push by CI | delivered 2026-09-27 |
 | M1 | the two profiles; module contract with `profile`, `budget_bytes` and `audience`; the `memory` module and the one-time migration; `telos` and `identity`; `context` tool with the agenda line; `review`; `SessionStart` injection; the guard made conditional | the existing store migrates and still answers; the 2 KB block renders from real records on all machines; a stale record surfaces as the first line; `reviewed` moves only on `review` |
 | M2 | three-state claims and the `tracker`, `forge`, `date`, `manual` adapters; results written through the kernel; `/interview`; reflection by value | the first line names a measured contradiction; a revoked credential produces `no-evidence`, not an accusation |
 | M3 | the view | read-only, fronted by the deployment's identity layer; shows revision lines, snooze counts and the manual fraction |
 | M4 | `health` and `finance`, `audience: self` | both populated by interview, `manual` claims asked and recorded; absent from a read-only consumer's results |
 | M5 | *removed in v1.2* — the general memory's prefixes are not modules and are not migrated | — |
-| M6 | sharing hygiene | §12 and §13's last item pass; a second person installs from the README |
+| M6 | sharing hygiene | §12 and §13's last item pass — continuously, from M0 onward; a second person installs from the README |
 
 M1 is larger than it was, because the profiles and the migration have to exist before any
 record is written under the new rules. It is still one milestone: nothing in it is optional.
@@ -690,7 +683,7 @@ this section will record the rename when it happens.
 
 ### Changes in v1.1
 
-Accepted 2026-09-26 from `personal-context-system-v1-systems-analysis.md`, whose §5 ranks them.
+Accepted 2026-09-26 from a systems-thinking analysis of this design, whose §5 ranked them.
 
 | | change | sections |
 |---|---|---|
