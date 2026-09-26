@@ -1,0 +1,6 @@
+{
+  "brabeus": {
+    "type": "http",
+    "url": "${BRABEUS_URL}"
+  }
+}
