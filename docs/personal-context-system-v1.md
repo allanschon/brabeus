@@ -8,13 +8,6 @@ It describes a system built on the kernel this repository already contains
 has no opinions about content; everything it stores belongs to a module, and every module runs
 under one of a small set of profiles the kernel defines (§1.1).
 
-v1.1 accepted six changes from a systems-thinking analysis of this design; the largest is that
-the kernel, not the model, decides what the interview asks and what counts as reviewed. v1.2 separated the personal
-record from the general memory it had been absorbing. v1.3 makes the general memory a module
-like any other and moves the difference between the two into profiles. v1.4 takes two small
-things from a survey of other responses to LifeOS (§2.4) and opens two larger ones. §16 lists
-all four.
-
 C4 diagrams of the system at v1.4 — context, containers, kernel components, and the interview
 as a sequence — are in [`personal-context-system-c4.md`](personal-context-system-c4.md). A
 plain-language description for someone who might use it rather than build it is
