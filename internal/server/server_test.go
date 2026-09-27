@@ -394,3 +394,20 @@ func TestRenderContextEndToEnd(t *testing.T) {
 		t.Errorf("a consumer sees no self module and is asked nothing:\n%s", text)
 	}
 }
+
+// New's tool registration is otherwise never exercised: no test calls it, and
+// the container smoke dies at memory.Ensure before a request would reach
+// mcp.NewStreamableHTTPHandler's callback. contextIn is this codebase's first
+// empty tool-input struct, and contextOut's []block.Fault and *agenda.Item
+// (an untagged struct with a named string field) are its first schema
+// inference over those shapes — either could panic mcp.AddTool at construction,
+// which would happen inside the per-request server factory and take down every
+// session while /healthz stayed green.
+func TestNewRegistersTheToolsForBothCallerClasses(t *testing.T) {
+	d := Deps{Set: testSet(t)}
+	for _, consumer := range []bool{false, true} {
+		if s := New(d, "desk", consumer); s == nil {
+			t.Fatalf("consumer=%v: nil server", consumer)
+		}
+	}
+}
