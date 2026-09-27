@@ -111,6 +111,7 @@ records the person's answer.
 - [Specification](docs/personal-context-system-v1.md)
 - [C4 diagrams](docs/personal-context-system-c4.md)
 - [Plain-language description](docs/personal-context-system-plain.md)
+- [Domain-driven design](docs/ddd/README.md)
 
 ## Name
 

@@ -12,6 +12,8 @@ C4 diagrams of the system at v1.5 — context, containers, kernel components, an
 as a sequence — are in [`personal-context-system-c4.md`](personal-context-system-c4.md). A
 plain-language description for someone who might use it rather than build it is
 [`personal-context-system-plain.md`](personal-context-system-plain.md).
+The system in the terms of domain-driven design — its ubiquitous language, bounded contexts,
+aggregates, invariants and domain events — is in [`ddd/`](ddd/README.md).
 
 This document specifies the system. It does not describe any particular deployment. One
 deployment is used as the acceptance test in §13 and is described only in the terms the system

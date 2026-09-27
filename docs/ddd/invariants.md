@@ -1,0 +1,122 @@
+# Invariants
+
+The rules that must always hold, grouped by bounded context, each with where it is enforced.
+**Enforced** means code enforces it and a named test fails if it breaks; **code only** means code
+enforces it and no test would notice it breaking; **documented** means the spec states it and
+nothing in the code enforces it yet; **not enforced** means the rule is implied by the spec but the
+code allows the opposite. Terms are the [glossary's](ubiquitous-language.md).
+
+## Record
+
+| rule                                                                                                | status                                                                                            | where                                                                                                                                                                                                                                                                                              |
+| --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Only the kernel commits to the store, and every change pulls first under one lock                   | enforced, within the kernel                                                                       | `store.Write`, `Review`, `Delete`; `TestWriteRebasesOntoWorkDoneElsewhere`, `TestDeleteKeepsWorkPushedElsewhere`, `TestWriteDiscardsAnUnrelatedDirtyWorkingCopy`. Against any other writer to the remote, it rests on the deployment holding the only write key                                    |
+| Frontmatter is composed by the kernel; a write cannot set a kernel key                              | enforced                                                                                          | `store.checkFields`, `compose`; `TestAWriteMayNotCarryAKernelOwnedKey`, `TestComposeWritesTheKeysInTheFixedOrder`                                                                                                                                                                                  |
+| Every written record names an enabled module and a kind it declares                                 | enforced                                                                                          | `store.Write`; `TestWriteRequiresAModuleAndAKnownKind`                                                                                                                                                                                                                                             |
+| A write's fields satisfy its kind; a correction's fields satisfy the governing kind                 | enforced                                                                                          | `store.checkFields`; `TestARatifiedWriteIsValidatedAgainstTheKind`, `TestCorrectedFieldsValidateAgainstTheGoverningKindForACrossingRecord`                                                                                                                                                         |
+| A record's path follows its mode's layout                                                           | enforced                                                                                          | `store.checkLayout`; `TestThePathRuleFollowsTheProfile`                                                                                                                                                                                                                                            |
+| Scope is one of `global`, `project/<slug>`, `machine/<host>`, stored normalised                     | enforced                                                                                          | `scope.CheckScope`; `TestWriteRefusesAMalformedScope`, `TestWriteStoresTheNormalisedScopeAndModuleKind`                                                                                                                                                                                            |
+| A credential-shaped value never reaches git                                                         | enforced for body, description, review question and corrected body; code only for name and fields | `store.credentialShape`; `TestACredentialShapedWriteIsRefusedBeforeGit`, `TestACredentialShapedDescriptionIsRefusedBeforeGit`, `TestReviewRefusesAQuestionThatLooksLikeACredential`, `TestReviewRefusesACorrectedBodyThatLooksLikeACredential`. The git host's own secret scan is the deployment's |
+| A kernel key that fails to parse stops every change to the record rather than being erased          | enforced                                                                                          | `store.Write`, `Review`, `Migrate`; `TestAMalformedReviewedRefusesARewriteAndLeavesTheFileUnchanged`, `TestReviewRefusesARecordWithAMalformedKernelKey`, `TestMigrateAbortsOnAMalformedKernelKey`                                                                                                  |
+| Rewriting identical content makes no commit and keeps `updated`                                     | enforced                                                                                          | `store.Write`; `TestWritingIdenticalContentTwiceMakesOneCommit`, `TestRewritingIdenticalContentKeepsTheOriginalStamp`                                                                                                                                                                              |
+| A path stays inside the store, and the index and conventions files are never overwritten as records | enforced                                                                                          | `store.MemoryPath`, `resolvePath`; `TestWriteRefusesToEscapeTheStore`, `TestWriteRefusesToOverwriteTheStoresStructure`, `TestCanonicalPathRefusesGitInternals`                                                                                                                                     |
+| The migration retags every pre-module record in one commit, or none                                 | enforced                                                                                          | `store.Migrate`; `TestMigrateRetagsEveryLegacyFileInOneCommit`, `TestMigrateAbortsWholeOnAFileItCannotMap`, `TestMigrateIsIdempotent`                                                                                                                                                              |
+| A commit's author is the calling machine                                                            | enforced                                                                                          | `store.authorFor`; `TestWriteStampsCallerAsAuthor`, `TestDeleteStampsCallerAsAuthor`                                                                                                                                                                                                               |
+
+## Ratification
+
+| rule                                                                                                                  | status                    | where                                                                                                                                                                                                    |
+| --------------------------------------------------------------------------------------------------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `reviewed` moves only on a review                                                                                     | enforced                  | `store.Review`, `store.Write`; `TestReviewedMovesOnlyOnReviewCommits`, `TestConfirmedMovesReviewedAndNothingElse`, `TestLaterCountsASnoozeAndLeavesReviewedAlone`, `TestRetiredStampsRetiredAndReviewed` |
+| A record shown as confirmed says what the person confirmed                                                            | **not enforced**          | see *Where the rules do not hold*                                                                                                                                                                        |
+| A ratified record leaves the store only by retirement, through a review                                               | **not enforced**          | see *Where the rules do not hold*                                                                                                                                                                        |
+| A review carries the question that was asked into its commit                                                          | code only                 | `store.Review` refuses an empty question and writes it into the commit message                                                                                                                           |
+| A review commit carries the person's answer                                                                           | partly                    | the commit message records the verdict (`A: confirmed`); a correction's new content is in the commit's diff; the person's own words are not recorded                                                     |
+| The agenda is computed, never stored                                                                                  | enforced, by construction | `agenda.Compute` is a function of records, the module set and the time                                                                                                                                   |
+| Stale items come first by module priority then age; crossing items after native ones; onboarding questions after both | enforced                  | `agenda.Compute`; `TestStaleRecordsComeFirstByModulePriorityThenAge`, `TestACrossingRecordSortsAfterEveryNativeRatifiedItem`, `TestOnboardingGapsFollowStaleItemsInModuleOrder`                          |
+| The agenda line is one item, never a list                                                                             | enforced                  | `agenda.Top`, `block.AgendaLine`; `TestAStaleRecordIsTheFirstLine`                                                                                                                                       |
+| A retired record is never asked about                                                                                 | enforced                  | `agenda.Compute`; `TestRetiredRecordsAreNeverAsked`                                                                                                                                                      |
+| A retired record is never rendered                                                                                    | code only                 | `server.RenderContext` drops retired records before rendering. `search` still returns them                                                                                                               |
+| A crossing record renders under its governing module only once ratified                                               | enforced                  | `block.Render`; `TestAReviewedCrossingPreferenceRendersUnderIdentityAndAnUnreviewedOneDoesNot`                                                                                                           |
+| A consumer is asked nothing                                                                                           | code only                 | `server.RenderContext` computes no agenda for a consumer                                                                                                                                                 |
+| Failed claims head the agenda; `no-evidence` never appears on it                                                      | documented (M2)           | spec §8.1, §9                                                                                                                                                                                            |
+
+## Schema
+
+| rule                                                                                                              | status           | where                                                                                                                       |
+| ----------------------------------------------------------------------------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| The modes are a closed set of two                                                                                 | enforced         | `module.Profile.Bundle`; `TestAnUnknownProfileIsRefused`                                                                    |
+| A manifest with a key the kernel does not know is refused                                                         | enforced         | `module.Load`; `TestAnUnknownKeyRefusesTheModule`                                                                           |
+| Ratified-record budgets sum to at most the cap less the reservation                                               | enforced         | `module.Set.Validate`; `TestBudgetsMustFitUnderTheCapLessTheReservation`                                                    |
+| A core module's audience is `self`                                                                                | enforced         | `module.Manifest.validate`; `TestACoreModuleMayNotWidenItsAudience`                                                         |
+| A working-memory module has no budget, summary or onboarding; a ratified-record module has a budget and a summary | enforced         | `module.Manifest.validate`; `TestAWorkingMemoryModuleHasNoBudgetAndNoSummary`, `TestARatifiedModuleNeedsABudgetAndASummary` |
+| A kind may not declare a kernel key as a field, except `id`                                                       | enforced         | `module.Kind.validate`; `TestAKindMayNotUseAReservedFieldNameExceptId`                                                      |
+| Every onboarding kind has a first question                                                                        | enforced         | `module.Manifest.validate`; `TestOnboardingNamesKindsThatHaveAFirstQuestion`                                                |
+| `preference` is the only crossing kind                                                                            | enforced         | `module.Crossing`; `TestRuleForCrossingCase`                                                                                |
+| Every ratified module's summary template exists and parses, checked at start                                      | enforced         | `block.New`; `TestNewParsesEveryShippedTemplateAndFailsOnAMissingOne`                                                       |
+| A mode's rules are the bundle's rules                                                                             | **not enforced** | see *Where the rules do not hold*                                                                                           |
+
+## Context block
+
+| rule                                                                         | status                                                        | where                                                                                        |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| The block is at most 2048 bytes                                              | enforced for the shipped modules; **not enforced** in general | see *Where the rules do not hold*; `TestEveryShippedTemplateFitsItsBudgetWhenFullyPopulated` |
+| A module over its budget renders one line saying so, and a fault             | enforced                                                      | `block.Render`; `TestAnOverBudgetModuleRendersOneLineAndAFault`                              |
+| The agenda line is the only thing ever cut, and a cut is reported as a fault | enforced                                                      | `block.AgendaLine`; `TestTheAgendaLineOverflowRule`                                          |
+| A working-memory module is never in the block                                | enforced                                                      | `block.New`; `TestModulesRenderInPriorityOrderAndOnlyRatifiedOnes`                           |
+| A forbidden module contributes nothing, not even its name                    | enforced                                                      | `block.Render`; `TestAHiddenModuleContributesNothingNotEvenItsName`                          |
+
+## Callers and audience
+
+| rule                                                                                     | status           | where                                                                                                                                                                 |
+| ---------------------------------------------------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A consumer reads only modules whose audience is `any`, on every read path                | enforced         | `server.audienceFor`; `TestAudienceForAConsumerHidesSelfModulesAndUntagged`, `TestSearchAndVocabularyRespectVisibility`, `TestFilterEntriesAppliesScopeAndVisibility` |
+| A consumer never writes, deletes or reviews                                              | code only        | the `write`, `delete` and `review` tools refuse a consumer                                                                                                            |
+| A consumer is refused the notebook                                                       | enforced         | `server.pickRepo`; `TestPickRepoRefusesTheMirrorToAConsumer`                                                                                                          |
+| A record scoped to another machine is not returned unless asked for                      | enforced         | `scope.Visible`; `TestVisible`, `TestFilterEntriesHidesOtherMachines`, `TestGate`                                                                                     |
+| Audience is checked before scope, so a refusal never names another machine to a consumer | enforced         | `server.gate`; `TestGate`                                                                                                                                             |
+| Caller resolution fails closed                                                           | enforced         | `internal/identity`; `TestTailscaleIdentityFailsClosed`, `TestTokenIdentityFailsClosed`                                                                               |
+| An unidentified caller sees nothing                                                      | **not enforced** | see *Where the rules do not hold*                                                                                                                                     |
+
+## Assistant integration
+
+| rule                                                                                                                                   | status     | where                                                       |
+| -------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ----------------------------------------------------------- |
+| The write guard denies writes to scratch only where a working-memory module is enabled, and allows them when the kernel is unreachable | enforced   | `brabeus-write-guard.sh`; `brabeus-write-guard.test.sh`     |
+| A session starts without the block when the kernel is unreachable                                                                      | enforced   | `brabeus-session-start.sh`; `brabeus-session-start.test.sh` |
+| Installing the plugin changes nothing in the assistant's settings but the plugin's registration                                        | documented | spec §3.2, §13                                              |
+
+## Where the rules do not hold
+
+**A record shown as confirmed may not say what the person confirmed.** A write changes a record's
+content and carries its `reviewed` stamp through unchanged, so a value the person confirmed can be
+reworded by the assistant and still carry the confirmation. The block marks a record
+"(unconfirmed)" only when it has never been reviewed, so the reworded value renders as confirmed.
+The agenda raises it only when its freshness runs out — 365 days for a value — and the revision
+line names the change then. `TestReviewedMovesOnlyOnReviewCommits` rewrites a confirmed value and
+passes, which is correct for the rule it tests: `reviewed` did not move. The rule it does not test
+is the one spec §1.1 gives as the reason the modes exist: "a model-written record pushed into
+every session is the model's inferences presented as the person's."
+
+**A ratified record can be deleted without a review.** `delete` removes any record the caller may
+see, ratified ones included. The spec's path for a record that no longer applies is the `retired`
+verdict, which keeps the record and stamps the review; it does not mention deleting a ratified
+record at all.
+
+**A mode's rules live in four packages, not in its bundle.** `module.Bundle` states each mode's
+rules, and `ModelWrites`, `Rendered`, `SearchedDefault` and `ReviewRequired` are never read. The
+rules are applied by comparing a module's mode against a constant in `module`, `block`, `server`
+and `store`. `ModelWrites` is also false for `ratified-record`, where the spec, the code and the
+interview skill all have the assistant creating ratified records for the person to confirm.
+
+**The block can exceed 2048 bytes by one byte per rendered section.** `block.Render` adds a newline
+after the agenda line and after any module output that lacks one, outside both the reservation and
+the budgets. With budgets summing to the full 1792 bytes and every template filling its budget
+exactly, a two-module block renders at 2051 bytes. The shipped budgets sum to 1700, leaving 92
+bytes of margin, so no shipped configuration can overflow.
+
+**An unidentified caller sees what a consumer sees, not nothing.** Spec §11 says "An unidentified
+caller sees nothing." `server.Caller` treats an unresolved caller as a consumer, which reads every
+module whose audience is `any`, in global scope. Every shipped module is `self`, so today the
+result is the same; a module declared `any` would be readable by a caller the kernel could not
+identify.
