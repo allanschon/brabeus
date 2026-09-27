@@ -47,7 +47,7 @@ flag still set finds nothing to do.
 
 Rehearse on a clone of the record first: run the kernel against it with the flag unset, save a
 set of search results, run it again with `BRABEUS_MIGRATE=1`, and diff the same searches after.
-They should be identical — the migration only changes frontmatter keys the index never reads.
+They should be identical — a retag changes only frontmatter keys the ranking never scores.
 Unset the flag once the live run has happened; leaving it set makes the migration a thing every
 restart does rather than a thing you did once.
 
