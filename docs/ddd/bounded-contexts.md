@@ -9,11 +9,11 @@ the places where they do are noted.
 
 ## Subdomains
 
-| class      | contexts                                                    | why                                                                                                                                                                  |
-| ---------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| core       | Ratification, Schema, Context block, Intent                 | what spec §2.4 names as distinctive: authorship enforced by the server, modes a manifest cannot edit, the 2 KB cap as a constraint, claims verified against evidence |
-| supporting | Record, Callers and audience, Assistant integration, Mirror | built for Brabeus because nothing off the shelf fits, but not what makes it Brabeus                                                                                  |
-| generic    | Retrieval, Deployment                                       | BM25, embeddings, container wiring: well-solved problems                                                                                                             |
+| class      | contexts                                                      | why                                                                                                                                                                  |
+| ---------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| core       | Ratification, Schema, Context block, Intent                   | what spec §2.4 names as distinctive: authorship enforced by the server, modes a manifest cannot edit, the 2 KB cap as a constraint, claims verified against evidence |
+| supporting | Record, Callers and audience, Assistant integration, Notebook | built for Brabeus because nothing off the shelf fits, but not what makes it Brabeus                                                                                  |
+| generic    | Retrieval, Deployment                                         | BM25, embeddings, container wiring: well-solved problems                                                                                                             |
 
 ## The contexts
 
@@ -162,17 +162,20 @@ Will live in `internal/claims`, beside `agenda` and `block`. Evidence sources si
 by design (§8.1), an anti-corruption layer for each backend, and results reach the store through
 Record's write path, so there is still one writer.
 
-### Mirror
+### Notebook
 
-Owns a second, read-only repository that `read`, `list` and `search` can reach with
-`repo: projects`.
+Owns nothing the kernel writes. The notebook is the person's own notes repository — notes they
+write, notes the assistant writes there at their request, material they keep — which the kernel
+can list, read and search, as `repo: projects`, and never writes.
 
 Lives in `cmd/brabeus` (a second `store.Store`, configured by `BRABEUS_MIRROR_*`) and
-`server.pickRepo`. It has no modules, no scopes and no embedder, so it bypasses Schema and
-Callers and audience entirely; consumers are refused it outright for that reason.
+`server.pickRepo`. It has no modules and no scopes, and no embedder, so its search is lexical
+only. It bypasses Schema and Callers and audience entirely, and consumers are refused it outright
+for that reason.
 
-It conforms to Record's reading code and shares none of Record's rules. No section of the spec
-describes it, and it sits against §5: "One repository per kernel instance, in this version."
+The notebook is upstream: it has its own writers and its own conventions, and the kernel conforms
+to whatever it finds, reusing Record's reading code and none of Record's rules. No section of the
+spec describes it, and it sits against §5: "One repository per kernel instance, in this version."
 
 ## The context map
 
@@ -194,7 +197,7 @@ flowchart LR
     blockctx["<b>Context block</b><br/><i>core</i>"]
     plugin["<b>Assistant integration</b><br/><i>supporting</i>"]
     intent["<b>Intent</b><br/><i>core, M2</i>"]
-    mirror["<b>Mirror</b><br/><i>supporting</i>"]
+    notebook["<b>Notebook</b><br/><i>supporting</i>"]
 
     githost -- "conformist" --> record
     embed -- "ACL: Embedder" --> retrieval
@@ -209,7 +212,7 @@ flowchart LR
     record ---|"shared kernel: scope"| callers
     record -- "conformist" --> ratification
     record -- "conformist" --> blockctx
-    record -- "reading code only" --> mirror
+    notebook -- "conformist: reading code only" --> record
     callers -- "forbidden modules" --> blockctx
     callers -- "forbidden modules" --> retrieval
     ratification -- "agenda line" --> blockctx
@@ -221,7 +224,7 @@ flowchart LR
     classDef container fill:#438dd5,stroke:#2e6295,color:#fff
     classDef ext fill:#999,stroke:#6b6b6b,color:#fff,stroke-dasharray:5 5
     class schema,ratification,blockctx,intent system
-    class record,retrieval,callers,plugin,mirror container
+    class record,retrieval,callers,plugin,notebook container
     class githost,embed,net,cc,evidence ext
 ```
 
@@ -246,7 +249,7 @@ ownership, not direction.
   rules, but `ModelWrites`, `Rendered`, `SearchedDefault` and `ReviewRequired` are read nowhere
   outside tests. `block`, `server` and `store` each compare against `module.RatifiedRecord` or
   `module.WorkingMemory` instead, so a mode's meaning lives in four packages rather than one.
-- **The mirror is a second repository in one kernel.** §5 and §3.8 put one repository behind each
-  kernel instance and a second trust domain behind a second instance. The mirror is read-only, so
+- **The notebook is a second repository in one kernel.** §5 and §3.8 put one repository behind each
+  kernel instance and a second trust domain behind a second instance. The notebook is read-only, so
   it does not break the one-writer rule, but it is a second corpus with no schema and no audience
   of its own inside the same kernel.
