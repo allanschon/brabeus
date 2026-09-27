@@ -1,0 +1,10 @@
+finance:
+{{- range first 3 (.Kind "target")}}
+- target: {{index .Fields "statement"}} by {{index .Fields "by"}}
+{{- end}}
+{{- range first 3 (.Kind "obligation")}}
+- owed: {{index .Fields "statement"}} due {{index .Fields "due"}}
+{{- end}}
+{{- range first 3 (.Kind "metric")}}
+- {{index .Fields "statement"}}: {{index .Fields "value"}} ({{index .Fields "measured"}})
+{{- end}}

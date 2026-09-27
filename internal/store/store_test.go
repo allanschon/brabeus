@@ -953,7 +953,7 @@ func TestTheIndexFollowsTheMarkdown(t *testing.T) {
 
 func TestVocabularyReportsWhatExistsWithoutTheContent(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
-	v := s.Vocabulary()
+	v := s.Vocabulary(Visibility{})
 	if v.Memories != 2 {
 		t.Errorf("Memories = %d, want 2", v.Memories)
 	}
@@ -1187,8 +1187,72 @@ func TestListAndVocabularyReportModuleAndKind(t *testing.T) {
 	if !found {
 		t.Errorf("entry for infra/x.md lacks module/kind: %+v", entries)
 	}
-	v := s.Vocabulary()
+	v := s.Vocabulary(Visibility{})
 	if !slices.Contains(v.Modules, "memory") || !slices.Contains(v.Kinds, "memory/trap") {
 		t.Errorf("vocabulary = %+v", v)
+	}
+}
+
+func TestVisibilityHidesModulesAndOptionallyUntagged(t *testing.T) {
+	v := Visibility{HideModules: map[string]bool{"health": true}}
+	if !v.Hides("health") || v.Hides("memory") || v.Hides("") {
+		t.Errorf("hide-set only: health=%v memory=%v untagged=%v", v.Hides("health"), v.Hides("memory"), v.Hides(""))
+	}
+	v.HideUntagged = true
+	if !v.Hides("") {
+		t.Error("HideUntagged must hide the empty module")
+	}
+	if (Visibility{}).Hides("") {
+		t.Error("a zero Visibility hides nothing")
+	}
+}
+
+func TestSearchAndVocabularyRespectVisibility(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t)) // seeds two pre-module files
+	if _, err := s.Write("infra/n.md", Record{Name: "n", Description: "battery notes", Module: "memory", Kind: "note", Scope: "global", Body: "battery"}, "m"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Write("telos/goal/g1.md", Record{Name: "g1", Description: "battery goal", Module: "telos", Kind: "goal", Scope: "global",
+		Fields: map[string]string{"id": "G1", "title": "battery", "ideal": "i", "by": "b"}, Body: "battery"}, "m"); err != nil {
+		t.Fatal(err)
+	}
+	all, _, err := s.Search("battery", 10, SearchFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hidden, _, err := s.Search("battery", 10, SearchFilter{Visibility: Visibility{HideModules: map[string]bool{"telos": true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 2 || len(hidden) != 1 || hidden[0].Path != "infra/n.md" {
+		t.Errorf("all=%v hidden=%v", paths(all), paths(hidden))
+	}
+	// Pre-module files: visible unless HideUntagged.
+	seen, _, _ := s.Search("plain speech", 10, SearchFilter{Visibility: Visibility{HideModules: map[string]bool{"telos": true}}})
+	gone, _, _ := s.Search("plain speech", 10, SearchFilter{Visibility: Visibility{HideUntagged: true}})
+	if len(seen) == 0 || len(gone) != 0 {
+		t.Errorf("untagged: seen=%v gone=%v", paths(seen), paths(gone))
+	}
+	v := s.Vocabulary(Visibility{HideModules: map[string]bool{"telos": true}})
+	if slices.Contains(v.Modules, "telos") || slices.Contains(v.Kinds, "telos/goal") {
+		t.Errorf("vocabulary leaks a hidden module: %+v", v)
+	}
+	full := s.Vocabulary(Visibility{})
+	if full.Memories != v.Memories+1 {
+		t.Errorf("hidden records must not be counted: full=%d hidden=%d", full.Memories, v.Memories)
+	}
+}
+
+func TestPeekReturnsTheFrontmatterOrFalse(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	r, meta, ok := s.Peek("personal/style.md")
+	if !ok || r.Scope != "global" || meta.LegacyType != "feedback" {
+		t.Errorf("peek legacy: %+v %+v %v", r, meta, ok)
+	}
+	if _, _, ok := s.Peek("nope/none.md"); ok {
+		t.Error("peek of a missing file must be false")
+	}
+	if _, _, ok := s.Peek("../escape.md"); ok {
+		t.Error("peek must refuse an escape")
 	}
 }

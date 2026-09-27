@@ -160,7 +160,7 @@ func New(memory, projects *store.Store, caller string) *mcp.Server {
 		if err != nil {
 			return nil, listOut{}, err
 		}
-		return nil, listOut{Caller: caller, Vocabulary: memory.Vocabulary(), Entries: filterEntries(all, caller, in.IncludeAllScopes)}, nil
+		return nil, listOut{Caller: caller, Vocabulary: memory.Vocabulary(store.Visibility{}), Entries: filterEntries(all, caller, in.IncludeAllScopes)}, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -212,7 +212,7 @@ func New(memory, projects *store.Store, caller string) *mcp.Server {
 		if err != nil {
 			return nil, searchOut{}, err
 		}
-		return nil, searchOut{Vocabulary: st.Vocabulary(), Matches: hits, Dense: dense}, nil
+		return nil, searchOut{Vocabulary: st.Vocabulary(store.Visibility{}), Matches: hits, Dense: dense}, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
