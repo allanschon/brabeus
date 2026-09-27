@@ -36,10 +36,6 @@ func Visible(scope, caller string, includeAll bool) bool {
 	return host == NormaliseHost(caller)
 }
 
-// memoryTypes is the vocabulary a memory's type is drawn from. "index" is what
-// MEMORY.md carries and is not a memory's type.
-var memoryTypes = map[string]bool{"user": true, "feedback": true, "project": true, "reference": true}
-
 // checkScope accepts global, project/<slug> and machine/<host>, and nothing
 // else, and returns the form visible() compares: lowercased and trimmed.
 // Scope is enforced on read, so a scope that does not parse is not an error
@@ -60,13 +56,4 @@ func CheckScope(scope string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("scope %q is not global, project/<slug> or machine/<host>", scope)
-}
-
-// checkType accepts the four-word vocabulary and returns it lowercased.
-func CheckType(typ string) (string, error) {
-	t := strings.ToLower(strings.TrimSpace(typ))
-	if !memoryTypes[t] {
-		return "", fmt.Errorf("type %q is not user, feedback, project or reference", typ)
-	}
-	return t, nil
 }

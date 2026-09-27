@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/allanschon/brabeus/internal/module"
 	"github.com/allanschon/brabeus/internal/retrieval"
 	"github.com/allanschon/brabeus/internal/scope"
 )
@@ -71,7 +72,13 @@ type Store struct {
 	// re-embeds all of them and the fifteen-minute git pull burns ~30 s of CPU
 	// forever. Queries are one-off and gain nothing from being remembered.
 	denseCache *retrieval.CachingEmbedder
+
+	// modules is the loaded set every write is validated against. Nil means
+	// no validation, which only the read-only mirror uses.
+	modules *module.Set
 }
+
+func (s *Store) SetModules(set *module.Set) { s.modules = set }
 
 // The three states the caller is told about. The deploy agent decides
 // readiness by reading this back from a search: only denseOn is ready. It
@@ -271,8 +278,9 @@ func (s *Store) Sync() error {
 
 type Entry struct {
 	Path        string `json:"path" jsonschema:"path relative to the repository root"`
+	Module      string `json:"module,omitempty" jsonschema:"the module whose schema this record obeys; empty on a record the one-time migration has not yet tagged"`
+	Kind        string `json:"kind,omitempty" jsonschema:"the module-defined kind"`
 	Scope       string `json:"scope,omitempty" jsonschema:"global, project/<slug> or machine/<host>"`
-	Type        string `json:"type,omitempty" jsonschema:"okf-vocabulary type"`
 	Description string `json:"description,omitempty" jsonschema:"one-line summary from the frontmatter"`
 }
 
@@ -336,8 +344,9 @@ func (s *Store) List(dir string) ([]Entry, error) {
 		fm := parseFrontmatter(string(b))
 		out = append(out, Entry{
 			Path:        rel,
+			Module:      fm["module"],
+			Kind:        fm["kind"],
 			Scope:       fm["scope"],
-			Type:        fm["type"],
 			Description: fm["description"],
 		})
 		return nil
@@ -377,17 +386,21 @@ func (s *Store) Read(rel string) (string, error) {
 
 // SearchFilter narrows a search before ranking. An empty field means "any".
 type SearchFilter struct {
-	Scope  string                  // exact scope, e.g. machine/desk
-	Type   string                  // exact type, e.g. feedback
-	Prefix string                  // path prefix, e.g. infra/
-	Keep   func(scope string) bool // visibility; nil keeps everything
+	Scope  string // exact scope, e.g. machine/desk
+	Module string // exact module, e.g. memory
+	Kind   string // exact kind, e.g. trap
+	Prefix string // path prefix, e.g. infra/
+	Keep   func(scope string) bool
 }
 
 func (f SearchFilter) keeps(d *retrieval.Doc) bool {
 	if f.Scope != "" && !strings.EqualFold(d.Scope, f.Scope) {
 		return false
 	}
-	if f.Type != "" && !strings.EqualFold(d.Type, f.Type) {
+	if f.Module != "" && !strings.EqualFold(d.Module, f.Module) {
+		return false
+	}
+	if f.Kind != "" && !strings.EqualFold(d.Kind, f.Kind) {
 		return false
 	}
 	if f.Prefix != "" {
@@ -409,12 +422,13 @@ func (f SearchFilter) keeps(d *retrieval.Doc) bool {
 // Vocabulary is what the store holds, without any of what it says.
 //
 // A caller who did not write a memory does not know its wording. Handing it
-// the scopes, types and directories that exist lets it pick from a menu rather
-// than guess, for a few dozen tokens and no content.
+// the scopes, modules, kinds and directories that exist lets it pick from a
+// menu rather than guess, for a few dozen tokens and no content.
 type Vocabulary struct {
 	Memories int      `json:"memories" jsonschema:"how many memories the store holds; MEMORY.md and CONVENTIONS.md are listed and readable but not counted here or searchable"`
 	Scopes   []string `json:"scopes" jsonschema:"every scope in use"`
-	Types    []string `json:"types" jsonschema:"every type in use"`
+	Modules  []string `json:"modules" jsonschema:"every module in use"`
+	Kinds    []string `json:"kinds" jsonschema:"every module/kind pair in use"`
 	Prefixes []string `json:"prefixes" jsonschema:"every top-level directory in use"`
 }
 
@@ -425,21 +439,24 @@ func (s *Store) Vocabulary() Vocabulary {
 	if s.index == nil {
 		return v
 	}
-	scopes, types, prefixes := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	scopes, modules, kinds, prefixes := map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for i := range s.index.Docs {
 		d := &s.index.Docs[i]
 		v.Memories++
 		if d.Scope != "" {
 			scopes[d.Scope] = true
 		}
-		if d.Type != "" {
-			types[d.Type] = true
+		if d.Module != "" {
+			modules[d.Module] = true
+		}
+		if d.Module != "" && d.Kind != "" {
+			kinds[d.Module+"/"+d.Kind] = true
 		}
 		if dir, _, ok := strings.Cut(d.Path, "/"); ok {
 			prefixes[dir] = true
 		}
 	}
-	v.Scopes, v.Types, v.Prefixes = sortedKeys(scopes), sortedKeys(types), sortedKeys(prefixes)
+	v.Scopes, v.Modules, v.Kinds, v.Prefixes = sortedKeys(scopes), sortedKeys(modules), sortedKeys(kinds), sortedKeys(prefixes)
 	return v
 }
 
@@ -560,9 +577,51 @@ func authorFor(caller string) string {
 	return fmt.Sprintf("%s <%s@memory.local>", caller, caller)
 }
 
-// Write composes the memory, refreshes the index and pushes, returning the new
-// commit — or "no change" when the store already says exactly this.
-func (s *Store) Write(rel string, m Memory, caller string) (string, error) {
+// checkFields enforces the kind's schema (spec §5): every required field
+// present and non-empty, nothing undeclared, and nothing the kernel owns.
+func checkFields(kind module.Kind, fields map[string]string) error {
+	declared := map[string]bool{}
+	for _, f := range kind.Fields {
+		declared[f] = true
+		if strings.TrimSpace(fields[f]) == "" {
+			return fmt.Errorf("field %q is required by this kind", f)
+		}
+	}
+	for _, f := range kind.Optional {
+		declared[f] = true
+	}
+	for f := range fields {
+		if kernelKeys[f] && f != "id" {
+			return fmt.Errorf("field %q is owned by the kernel and cannot be set by a write", f)
+		}
+		if !declared[f] {
+			return fmt.Errorf("field %q is not declared by this kind", f)
+		}
+	}
+	return nil
+}
+
+// checkLayout is the path rule per profile (decision D4). memoryPath has
+// already canonicalised rel and refused the structural files. The path's
+// kind segment must be the record's kind, or the path and the frontmatter
+// could disagree about what a file is.
+func checkLayout(m module.Manifest, kind, rel string) error {
+	if m.Profile == module.WorkingMemory && m.Layout == "free" {
+		return nil
+	}
+	parts := strings.Split(rel, "/")
+	if len(parts) != 3 || parts[0] != m.Name {
+		return fmt.Errorf("a %s record lives at %s/<kind>/<slug>.md, not %q", m.Name, m.Name, rel)
+	}
+	if parts[1] != kind {
+		return fmt.Errorf("a %s/%s record lives at %s/%s/<slug>.md, not %q", m.Name, kind, m.Name, kind, rel)
+	}
+	return nil
+}
+
+// Write composes the record, refreshes the index and pushes, returning the
+// new commit — or "no change" when the store already says exactly this.
+func (s *Store) Write(rel string, r Record, caller string) (string, error) {
 	if s.ReadOnly {
 		return "", fmt.Errorf("this store is read-only")
 	}
@@ -572,17 +631,64 @@ func (s *Store) Write(rel string, m Memory, caller string) (string, error) {
 	}
 	// One line each, once, so the file, the index and the commit message
 	// cannot disagree about what was written. Whitespace alone is nothing.
-	m.Name, m.Description = oneLine(m.Name), oneLine(m.Description)
-	if m.Name == "" || m.Description == "" {
+	r.Name, r.Description = oneLine(r.Name), oneLine(r.Description)
+	if r.Name == "" || r.Description == "" {
 		return "", fmt.Errorf("name and description are required: the index is built from them")
 	}
 	// Stored in the form scope.Visible() compares, so a scope that validates is a
 	// scope that matches.
-	if m.Scope, err = scope.CheckScope(m.Scope); err != nil {
+	if r.Scope, err = scope.CheckScope(r.Scope); err != nil {
 		return "", err
 	}
-	if m.Type, err = scope.CheckType(m.Type); err != nil {
+	if s.modules == nil {
+		return "", fmt.Errorf("this store validates nothing and therefore writes nothing")
+	}
+	// Normalise before lookup, the way the deleted scope.CheckType used to:
+	// an outbox file queued before this PR — or any caller — may carry
+	// "type: Reference" or "  Memory  ", and an exact-match lookup would
+	// permanently reject something that used to be accepted.
+	r.Type = strings.ToLower(strings.TrimSpace(r.Type))
+	r.Module = strings.ToLower(strings.TrimSpace(r.Module))
+	r.Kind = strings.ToLower(strings.TrimSpace(r.Kind))
+	// The deprecated alias (decision D6): type in, module and kind out.
+	if r.Module == "" && r.Type != "" {
+		m, k, ok := s.modules.LegacyKind(r.Type)
+		if !ok {
+			return "", fmt.Errorf("type %q is not mapped by any enabled module; name a module and kind", r.Type)
+		}
+		r.Module, r.Kind = m, k
+	}
+	man, ok := s.modules.Module(r.Module)
+	if !ok {
+		return "", fmt.Errorf("module %q is not enabled; enabled: %s", r.Module, strings.Join(s.modules.Names(), ", "))
+	}
+	kind, ok := man.Kinds[r.Kind]
+	if !ok {
+		return "", fmt.Errorf("module %s has no kind %q", r.Module, r.Kind)
+	}
+	if r.Fields == nil {
+		r.Fields = map[string]string{}
+	}
+	if err := checkFields(kind, r.Fields); err != nil {
 		return "", err
+	}
+	r.ID = r.Fields["id"]
+	if err := checkLayout(man, r.Kind, rel); err != nil {
+		return "", err
+	}
+	if shape := credentialShape(r.Name); shape != "" {
+		return "", fmt.Errorf("refused: the name looks like it contains %s; credentials never enter the record (spec §11)", shape)
+	}
+	if shape := credentialShape(r.Description); shape != "" {
+		return "", fmt.Errorf("refused: the description looks like it contains %s; credentials never enter the record (spec §11)", shape)
+	}
+	if shape := credentialShape(r.Body); shape != "" {
+		return "", fmt.Errorf("refused: the body looks like it contains %s; credentials never enter the record (spec §11)", shape)
+	}
+	for k, v := range r.Fields {
+		if shape := credentialShape(v); shape != "" {
+			return "", fmt.Errorf("refused: field %s looks like it contains %s; credentials never enter the record (spec §11)", k, shape)
+		}
 	}
 
 	s.mu.Lock()
@@ -601,7 +707,35 @@ func (s *Store) Write(rel string, m Memory, caller string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
 		return "", err
 	}
-	content := composeMemory(m)
+	var meta Meta
+	old, err := os.ReadFile(full)
+	switch {
+	case err == nil:
+		_, meta = ParseRecord(string(old))
+		// A kernel-owned key that failed to parse must stop the write rather
+		// than be silently dropped: compose only emits reviewed/retired/snoozes
+		// when they're non-zero, so composing anyway would erase whichever one
+		// did not parse — and only a review may move them (§9).
+		if len(meta.Malformed) > 0 {
+			fm := parseFrontmatter(string(old))
+			parts := make([]string, 0, len(meta.Malformed))
+			for _, key := range meta.Malformed {
+				want := "an RFC3339 stamp"
+				if key == "snoozes" {
+					want = "an integer"
+				}
+				parts = append(parts, fmt.Sprintf("%s: %q is not %s", key, fm[key], want))
+			}
+			return "", fmt.Errorf("%s; fix the file by hand, nothing was written", strings.Join(parts, "; "))
+		}
+	case os.IsNotExist(err):
+		// No existing file: nothing to carry forward, nothing malformed to
+		// refuse on.
+	default:
+		return "", fmt.Errorf("reading %s: %w", rel, err)
+	}
+	meta.Updated, meta.LegacyType = now(), ""
+	content := compose(r, meta, append(append([]string{}, kind.Fields...), kind.Optional...))
 	// Keep the existing file byte-for-byte when only the stamp would move, so
 	// an unchanged rewrite stays a no-op rather than an empty commit.
 	if old, err := os.ReadFile(full); err == nil &&
@@ -617,7 +751,7 @@ func (s *Store) Write(rel string, m Memory, caller string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("reading the index: %w", err)
 	}
-	updated := updateIndexContent(string(idx), rel, m.Name, m.Description)
+	updated := updateIndexContent(string(idx), rel, r.Name, r.Description)
 	if err := os.WriteFile(idxPath, []byte(updated), 0o640); err != nil {
 		return "", err
 	}
@@ -633,8 +767,8 @@ func (s *Store) Write(rel string, m Memory, caller string) (string, error) {
 		return "no change", nil
 	}
 
-	msg := fmt.Sprintf("memory: %s\n\n%s\n\nWritten via the memory MCP server at %s.",
-		m.Name, m.Description, time.Now().UTC().Format(time.RFC3339))
+	msg := fmt.Sprintf("%s/%s: %s\n\n%s\n\nWritten through the kernel at %s.",
+		r.Module, r.Kind, r.Name, r.Description, time.Now().UTC().Format(time.RFC3339))
 	if _, err := s.git(s.Dir, "commit", "--quiet", "--author", authorFor(caller), "-m", msg); err != nil {
 		return "", err
 	}

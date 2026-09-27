@@ -33,9 +33,11 @@ Durable facts go to the **brabeus** MCP server, not to a file. Its \`write\`
 tool composes the frontmatter, updates the index and pushes to a private
 repository, so the record is available on every machine.
 
-  write(path, name, description, type, scope, body)
-  scope: global | project/<owner>--<repo> | machine/<host>
-  path:  <module>/<kind>/<slug>.md
+  write(path, name, description, module, kind, scope, body [, fields])
+  module: memory (working notes) · kind: note | trap | preference | project
+  scope:  global | project/<owner>--<repo> | machine/<host>
+  path:   the memory module's layout is free — <area>/<slug>.md as the store
+          is laid out; a ratified-record module is <module>/<kind>/<slug>.md
 
 Use \`list\` and \`search\` before assuming something is not already recorded.
 

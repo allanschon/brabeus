@@ -55,7 +55,10 @@ func tokenize(s string) []string {
 // indexedDoc is one memory in indexed form. The content is kept so a result
 // can carry the line it matched on without re-reading the file.
 type Doc struct {
-	Path, Scope, Type string
+	Path, Scope string
+	// Module and Kind are empty on a file the one-time migration has not yet
+	// retagged; LegacyType then carries its pre-module `type` (decision D6).
+	Module, Kind, LegacyType string
 	// desc is kept because it is a dense LANE of its own, not merely a
 	// weighted field: it is the one line a memory is written to be found by.
 	// Re-parsing the frontmatter downstream would be a second definition of
@@ -130,7 +133,7 @@ func ParseFrontmatter(content string) map[string]string {
 func IndexDoc(rel, content string) Doc {
 	fm := ParseFrontmatter(content)
 	d := Doc{
-		Path: rel, Scope: fm["scope"], Type: fm["type"],
+		Path: rel, Scope: fm["scope"], Module: fm["module"], Kind: fm["kind"], LegacyType: fm["type"],
 		Desc: fm["description"], Content: content, terms: map[string]float64{},
 	}
 	for _, f := range []struct {

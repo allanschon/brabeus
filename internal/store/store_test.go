@@ -5,10 +5,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/allanschon/brabeus/internal/module"
 	"github.com/allanschon/brabeus/internal/scope"
 )
 
@@ -72,7 +74,35 @@ func newTestStore(t *testing.T, remote string) *Store {
 	if err := s.Ensure(); err != nil {
 		t.Fatalf("Ensure: %v", err)
 	}
+	s.SetModules(testModules(t))
 	return s
+}
+
+// testModules is the shipped memory manifest plus a small ratified module,
+// loaded from a temp dir so the tests do not depend on ../../modules.
+func testModules(t *testing.T) *module.Set {
+	t.Helper()
+	dir := t.TempDir()
+	write := func(name, body string) {
+		if err := os.MkdirAll(filepath.Join(dir, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name, "module.json"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("memory", `{"name":"memory","version":1,"profile":"working-memory","priority":20,"layout":"free",
+	  "scope_keys":["machine","project"],
+	  "legacy_types":{"user":"note","feedback":"preference","project":"project","reference":"note"},
+	  "kinds":{"note":{"fields":[]},"trap":{"fields":[]},"preference":{"fields":[]},"project":{"fields":[]}}}`)
+	write("telos", `{"name":"telos","version":1,"profile":"ratified-record","priority":10,"budget_bytes":600,
+	  "kinds":{"goal":{"fields":["id","title","ideal","by"],"optional":["serves"],"freshness_days":90}},
+	  "summary":"summary.md.tmpl"}`)
+	set, err := module.Load(dir, []string{"memory", "telos"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return set
 }
 
 func TestEnsureClonesWhenTheWorkingCopyIsMissing(t *testing.T) {
@@ -103,7 +133,9 @@ func TestListReportsFrontmatterForEachMemory(t *testing.T) {
 	if !ok {
 		t.Fatalf("infra/delta.md missing from %v", byPath)
 	}
-	if got.Scope != "machine/delta" || got.Type != "reference" || got.Description != "the NAS box" {
+	// infra/delta.md predates modules: it carries type, not module/kind, so
+	// List reports those two empty rather than refusing the pre-module file.
+	if got.Scope != "machine/delta" || got.Module != "" || got.Kind != "" || got.Description != "the NAS box" {
 		t.Errorf("frontmatter not reported: %+v", got)
 	}
 	if _, ok := byPath["MEMORY.md"]; !ok {
@@ -153,8 +185,8 @@ func TestSearchIsCaseInsensitiveAndReportsWhere(t *testing.T) {
 func TestSearchHonoursTheLimit(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
 	for _, p := range []string{"infra/a.md", "infra/b.md", "infra/c.md"} {
-		if _, err := s.Write(p, Memory{
-			Name: "n", Description: "the UPS battery", Type: "reference",
+		if _, err := s.Write(p, Record{
+			Name: "n", Description: "the UPS battery", Module: "memory", Kind: "note",
 			Scope: "global", Body: "battery",
 		}, "test-machine"); err != nil {
 			t.Fatal(err)
@@ -180,8 +212,8 @@ func TestSearchHonoursTheLimit(t *testing.T) {
 
 func TestSearchRanksMemoriesAndReturnsOnePerFile(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
-	if _, err := s.Write("infra/ups.md", Memory{
-		Name: "ups", Description: "the UPS battery", Type: "reference", Scope: "global",
+	if _, err := s.Write("infra/ups.md", Record{
+		Name: "ups", Description: "the UPS battery", Module: "memory", Kind: "note", Scope: "global",
 		Body: "battery\nbattery\nbattery\n",
 	}, "test-machine"); err != nil {
 		t.Fatal(err)
@@ -207,33 +239,31 @@ func TestSearchRanksMemoriesAndReturnsOnePerFile(t *testing.T) {
 	}
 }
 
-func TestSearchFiltersByScopeAndType(t *testing.T) {
+func TestSearchFiltersByScopeAndKind(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
-	write := func(path, typ, scope string) {
-		t.Helper()
-		if _, err := s.Write(path, Memory{
-			Name: "n", Description: "the UPS battery", Type: typ, Scope: scope, Body: "battery",
+	write := func(path, kind, scope string) {
+		if _, err := s.Write(path, Record{
+			Name: "n", Description: "the UPS battery", Module: "memory", Kind: kind, Scope: scope, Body: "battery",
 		}, "test-machine"); err != nil {
 			t.Fatal(err)
 		}
 	}
-	write("infra/a.md", "reference", "global")
-	write("infra/b.md", "feedback", "global")
-	write("infra/c.md", "reference", "machine/delta")
-
-	for _, c := range []struct {
-		filter SearchFilter
-		want   string
+	write("infra/a.md", "note", "global")
+	write("infra/b.md", "preference", "global")
+	write("infra/c.md", "note", "machine/delta")
+	for _, tc := range []struct {
+		f    SearchFilter
+		want string
 	}{
-		{SearchFilter{Type: "feedback"}, "infra/b.md"},
+		{SearchFilter{Module: "memory", Kind: "preference"}, "infra/b.md"},
 		{SearchFilter{Scope: "machine/delta"}, "infra/c.md"},
 	} {
-		hits, _, err := s.Search("battery", 10, c.filter)
+		hits, _, err := s.Search("battery", 10, tc.f)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(hits) != 1 || hits[0].Path != c.want {
-			t.Errorf("filter %+v returned %+v, want only %s", c.filter, hits, c.want)
+		if len(hits) != 1 || hits[0].Path != tc.want {
+			t.Errorf("filter %+v: got %v, want only %s", tc.f, hits, tc.want)
 		}
 	}
 }
@@ -247,8 +277,8 @@ func TestSearchFiltersByPrefixLikeADirectoryNotAStringPrefix(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
 	write := func(path string) {
 		t.Helper()
-		if _, err := s.Write(path, Memory{
-			Name: "n", Description: "the UPS battery", Type: "reference", Scope: "global", Body: "battery",
+		if _, err := s.Write(path, Record{
+			Name: "n", Description: "the UPS battery", Module: "memory", Kind: "note", Scope: "global", Body: "battery",
 		}, "test-machine"); err != nil {
 			t.Fatal(err)
 		}
@@ -304,8 +334,8 @@ func TestWritePushesTheMemoryAndTheIndexToTheRemote(t *testing.T) {
 	remote := newTestRemote(t)
 	s := newTestStore(t, remote)
 
-	if _, err := s.Write("infra/ups.md", Memory{
-		Name: "ups", Description: "the UPS", Type: "reference", Scope: "global", Body: "48 minutes.",
+	if _, err := s.Write("infra/ups.md", Record{
+		Name: "ups", Description: "the UPS", Module: "memory", Kind: "note", Scope: "global", Body: "48 minutes.",
 	}, "test-machine"); err != nil {
 		t.Fatal(err)
 	}
@@ -325,7 +355,7 @@ func TestWritePushesTheMemoryAndTheIndexToTheRemote(t *testing.T) {
 func TestWritingIdenticalContentTwiceMakesOneCommit(t *testing.T) {
 	remote := newTestRemote(t)
 	s := newTestStore(t, remote)
-	m := Memory{Name: "ups", Description: "the UPS", Type: "reference", Scope: "global", Body: "48 minutes."}
+	m := Record{Name: "ups", Description: "the UPS", Module: "memory", Kind: "note", Scope: "global", Body: "48 minutes."}
 
 	if _, err := s.Write("infra/ups.md", m, "test-machine"); err != nil {
 		t.Fatal(err)
@@ -342,14 +372,14 @@ func TestWritingIdenticalContentTwiceMakesOneCommit(t *testing.T) {
 
 func TestWriteRefusesAnythingThatIsNotMarkdown(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
-	if _, err := s.Write("infra/ups.txt", Memory{Name: "n", Description: "d", Type: "reference", Scope: "global"}, "test-machine"); err == nil {
+	if _, err := s.Write("infra/ups.txt", Record{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "global"}, "test-machine"); err == nil {
 		t.Error("a non-markdown path was accepted")
 	}
 }
 
 func TestWriteRefusesToEscapeTheStore(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
-	if _, err := s.Write("../escape.md", Memory{Name: "n", Description: "d", Type: "reference", Scope: "global"}, "test-machine"); err == nil {
+	if _, err := s.Write("../escape.md", Record{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "global"}, "test-machine"); err == nil {
 		t.Error("a path outside the store was accepted")
 	}
 }
@@ -357,7 +387,7 @@ func TestWriteRefusesToEscapeTheStore(t *testing.T) {
 func TestAReadOnlyStoreRefusesToWrite(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
 	s.ReadOnly = true
-	if _, err := s.Write("infra/ups.md", Memory{Name: "n", Description: "d", Type: "reference", Scope: "global"}, "test-machine"); err == nil {
+	if _, err := s.Write("infra/ups.md", Record{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "global"}, "test-machine"); err == nil {
 		t.Error("a read-only store accepted a write")
 	}
 }
@@ -373,8 +403,8 @@ func TestWriteDiscardsAnUnrelatedDirtyWorkingCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := s.Write("infra/ups.md", Memory{
-		Name: "ups", Description: "the UPS", Type: "reference", Scope: "global", Body: "48 minutes.",
+	if _, err := s.Write("infra/ups.md", Record{
+		Name: "ups", Description: "the UPS", Module: "memory", Kind: "note", Scope: "global", Body: "48 minutes.",
 	}, "test-machine"); err != nil {
 		t.Fatal(err)
 	}
@@ -401,8 +431,8 @@ func TestWriteRebasesOntoWorkDoneElsewhere(t *testing.T) {
 	run(t, other, "commit", "-q", "-m", "from elsewhere")
 	run(t, other, "push", "-q", "origin", "main")
 
-	if _, err := s.Write("infra/ups.md", Memory{
-		Name: "ups", Description: "the UPS", Type: "reference", Scope: "global", Body: "48 minutes.",
+	if _, err := s.Write("infra/ups.md", Record{
+		Name: "ups", Description: "the UPS", Module: "memory", Kind: "note", Scope: "global", Body: "48 minutes.",
 	}, "test-machine"); err != nil {
 		t.Fatal(err)
 	}
@@ -419,8 +449,8 @@ func TestDeleteRemovesTheMemoryAndItsIndexEntryFromTheRemote(t *testing.T) {
 	remote := newTestRemote(t)
 	s := newTestStore(t, remote)
 
-	if _, err := s.Write("infra/ups.md", Memory{
-		Name: "ups", Description: "the UPS", Type: "reference", Scope: "global", Body: "48 minutes."}, "test-machine"); err != nil {
+	if _, err := s.Write("infra/ups.md", Record{
+		Name: "ups", Description: "the UPS", Module: "memory", Kind: "note", Scope: "global", Body: "48 minutes."}, "test-machine"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.Delete("infra/ups.md", "test-machine"); err != nil {
@@ -473,7 +503,7 @@ func TestDeleteRefusesToRemoveTheIndexItself(t *testing.T) {
 func TestWriteRefusesToOverwriteTheStoresStructure(t *testing.T) {
 	remote := newTestRemote(t)
 	s := newTestStore(t, remote)
-	m := Memory{Name: "n", Description: "d", Type: "user", Scope: "global", Body: "x"}
+	m := Record{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "global", Body: "x"}
 	for _, rel := range []string{"MEMORY.md", "./MEMORY.md", "CONVENTIONS.md"} {
 		if _, err := s.Write(rel, m, "test-machine"); err == nil {
 			t.Errorf("%s was writable as a memory", rel)
@@ -522,8 +552,8 @@ func TestDeleteKeepsWorkPushedElsewhere(t *testing.T) {
 // rather than committer: the SERVER committed, on BEHALF of the machine.
 func TestWriteStampsCallerAsAuthor(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
-	if _, err := s.Write("personal/x.md", Memory{
-		Name: "x", Description: "d", Type: "reference", Scope: "global", Body: "b",
+	if _, err := s.Write("personal/x.md", Record{
+		Name: "x", Description: "d", Module: "memory", Kind: "note", Scope: "global", Body: "b",
 	}, "beta"); err != nil {
 		t.Fatalf("write: %v", err)
 	}
@@ -541,8 +571,8 @@ func TestWriteStampsCallerAsAuthor(t *testing.T) {
 // for a caller arriving from outside the Tailscale network that it cannot name.
 func TestWriteWithNoCallerCommitsAsUnknown(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
-	if _, err := s.Write("personal/y.md", Memory{
-		Name: "y", Description: "d", Type: "reference", Scope: "global", Body: "b",
+	if _, err := s.Write("personal/y.md", Record{
+		Name: "y", Description: "d", Module: "memory", Kind: "note", Scope: "global", Body: "b",
 	}, ""); err != nil {
 		t.Fatalf("write with empty caller must still commit: %v", err)
 	}
@@ -556,8 +586,8 @@ func TestWriteWithNoCallerCommitsAsUnknown(t *testing.T) {
 // make the history lie by omission.
 func TestDeleteStampsCallerAsAuthor(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
-	if _, err := s.Write("personal/z.md", Memory{
-		Name: "z", Description: "d", Type: "reference", Scope: "global", Body: "b",
+	if _, err := s.Write("personal/z.md", Record{
+		Name: "z", Description: "d", Module: "memory", Kind: "note", Scope: "global", Body: "b",
 	}, "beta"); err != nil {
 		t.Fatalf("write: %v", err)
 	}
@@ -622,7 +652,7 @@ func TestDeleteRefusesAnythingThatIsNotMarkdown(t *testing.T) {
 // ./infra and infra/. are one directory, and none of them is infrastructure/.
 func TestListPrefixIsADirectory(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
-	if _, err := s.Write("infrastructure/x.md", Memory{Name: "x", Description: "d", Type: "reference", Scope: "global"}, "test-machine"); err != nil {
+	if _, err := s.Write("infrastructure/x.md", Record{Name: "x", Description: "d", Module: "memory", Kind: "note", Scope: "global"}, "test-machine"); err != nil {
 		t.Fatal(err)
 	}
 	for _, prefix := range []string{"infra", "infra/", "./infra", "infra/.", "./infra//"} {
@@ -642,7 +672,7 @@ func TestListPrefixIsADirectory(t *testing.T) {
 func TestWriteAndDeleteKeyTheIndexByTheCanonicalPath(t *testing.T) {
 	remote := newTestRemote(t)
 	s := newTestStore(t, remote)
-	m := Memory{Name: "foo", Description: "d", Type: "reference", Scope: "global", Body: "x"}
+	m := Record{Name: "foo", Description: "d", Module: "memory", Kind: "note", Scope: "global", Body: "x"}
 	for _, rel := range []string{"./projects/foo.md", "projects//foo.md"} {
 		if _, err := s.Write(rel, m, "test-machine"); err != nil {
 			t.Fatalf("Write(%q): %v", rel, err)
@@ -692,7 +722,7 @@ func TestListTreatsTheRootAsNoPrefix(t *testing.T) {
 func TestWriteNormalisesNameAndDescriptionOnceForEveryRecord(t *testing.T) {
 	remote := newTestRemote(t)
 	s := newTestStore(t, remote)
-	for _, m := range []Memory{
+	for _, m := range []Record{
 		{Name: "   ", Description: "d", Scope: "global"},
 		{Name: "n", Description: "\n", Scope: "global"},
 	} {
@@ -700,10 +730,10 @@ func TestWriteNormalisesNameAndDescriptionOnceForEveryRecord(t *testing.T) {
 			t.Errorf("%+v was accepted with a blank name or description", m)
 		}
 	}
-	if _, err := s.Write("infra/ups.md", Memory{Name: "ups\nbattery", Description: "line one\nline two", Type: "reference", Scope: "global"}, "test-machine"); err != nil {
+	if _, err := s.Write("infra/ups.md", Record{Name: "ups\nbattery", Description: "line one\nline two", Module: "memory", Kind: "note", Scope: "global"}, "test-machine"); err != nil {
 		t.Fatal(err)
 	}
-	if subject := strings.TrimSpace(run(t, remote, "log", "-1", "--format=%s", "main")); subject != "memory: ups battery" {
+	if subject := strings.TrimSpace(run(t, remote, "log", "-1", "--format=%s", "main")); subject != "memory/note: ups battery" {
 		t.Errorf("commit subject %q, want the flattened name", subject)
 	}
 	if body := run(t, remote, "log", "-1", "--format=%b", "main"); !strings.Contains(body, "line one line two") {
@@ -712,37 +742,35 @@ func TestWriteNormalisesNameAndDescriptionOnceForEveryRecord(t *testing.T) {
 }
 
 // Scope is enforced on read, so a scope that does not parse is a memory that
-// is quietly global or quietly invisible. Type has a four-word vocabulary.
-// Both are checked at the one place a memory is written.
-func TestWriteRefusesAMalformedScopeOrType(t *testing.T) {
+// is quietly global or quietly invisible. Checked at the one place a memory
+// is written. Module and kind validity have their own test
+// (TestWriteRequiresAModuleAndAKnownKind); this one is scope only.
+func TestWriteRefusesAMalformedScope(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
-	for _, m := range []Memory{
-		{Name: "n", Description: "d", Type: "reference", Scope: ""},
-		{Name: "n", Description: "d", Type: "reference", Scope: "delta"},
-		{Name: "n", Description: "d", Type: "reference", Scope: "machine/"},
-		{Name: "n", Description: "d", Type: "reference", Scope: "project/"},
-		{Name: "n", Description: "d", Type: "reference", Scope: "machine:delta"},
-		{Name: "n", Description: "d", Type: "reference", Scope: "global/x"},
-		{Name: "n", Description: "d", Type: "reference", Scope: "machine/ delta"},
-		{Name: "n", Description: "d", Type: "reference", Scope: "project/example repo"},
-		{Name: "n", Description: "d", Type: "reference", Scope: "machine/to\nwer"},
-		{Name: "n", Description: "d", Type: "reference", Scope: "machine/to\u00a0wer"},
-		{Name: "n", Description: "d", Type: "", Scope: "global"},
-		{Name: "n", Description: "d", Type: "index", Scope: "global"},
-		{Name: "n", Description: "d", Type: "note", Scope: "global"},
+	for _, m := range []Record{
+		{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: ""},
+		{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "delta"},
+		{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "machine/"},
+		{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "project/"},
+		{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "machine:delta"},
+		{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "global/x"},
+		{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "machine/ delta"},
+		{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "project/example repo"},
+		{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "machine/to\nwer"},
+		{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "machine/to\u00a0wer"},
 	} {
 		if _, err := s.Write("infra/bad.md", m, "test-machine"); err == nil {
-			t.Errorf("scope %q type %q was accepted", m.Scope, m.Type)
+			t.Errorf("scope %q was accepted", m.Scope)
 		}
 	}
-	for _, m := range []Memory{
-		{Name: "n", Description: "d", Type: "user", Scope: "global"},
-		{Name: "n", Description: "d", Type: "feedback", Scope: "project/example--repo"},
-		{Name: "n", Description: "d", Type: "project", Scope: "machine/delta"},
-		{Name: "n", Description: "d", Type: "reference", Scope: "Machine/Delta"},
+	for _, m := range []Record{
+		{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "global"},
+		{Name: "n", Description: "d", Module: "memory", Kind: "preference", Scope: "project/example--repo"},
+		{Name: "n", Description: "d", Module: "memory", Kind: "project", Scope: "machine/delta"},
+		{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "Machine/Delta"},
 	} {
 		if _, err := s.Write("infra/good.md", m, "test-machine"); err != nil {
-			t.Errorf("scope %q type %q was refused: %v", m.Scope, m.Type, err)
+			t.Errorf("scope %q was refused: %v", m.Scope, err)
 		}
 	}
 }
@@ -757,14 +785,14 @@ func TestReadRefusesGitInternals(t *testing.T) {
 // scope.Visible() compares scopes lowercased, so what is written might as well be
 // what is compared. A scope that validates but is stored in a form scope.Visible()
 // cannot match is the silent invisibility the check exists to refuse.
-func TestWriteStoresTheNormalisedScopeAndType(t *testing.T) {
+func TestWriteStoresTheNormalisedScopeAndModuleKind(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
-	if _, err := s.Write("infra/t.md", Memory{Name: "n", Description: "d", Type: " Reference ", Scope: " Machine/Delta "}, "test-machine"); err != nil {
+	if _, err := s.Write("infra/t.md", Record{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: " Machine/Delta "}, "test-machine"); err != nil {
 		t.Fatal(err)
 	}
 	fm := parseFrontmatter(mustRead(t, filepath.Join(s.Dir, "infra", "t.md")))
-	if fm["scope"] != "machine/delta" || fm["type"] != "reference" {
-		t.Errorf("stored scope %q type %q, want machine/delta and reference", fm["scope"], fm["type"])
+	if fm["scope"] != "machine/delta" || fm["module"] != "memory" || fm["kind"] != "note" {
+		t.Errorf("stored scope %q module %q kind %q, want machine/delta, memory, note", fm["scope"], fm["module"], fm["kind"])
 	}
 }
 
@@ -782,10 +810,10 @@ func mustRead(t *testing.T, p string) string {
 func TestSearchDoesNotSpendTheLimitOnHiddenMemories(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
 	hidden := "needle one\nneedle two\nneedle three\nneedle four\nneedle five"
-	if _, err := s.Write("infra/a.md", Memory{Name: "a", Description: "d", Type: "reference", Scope: "machine/delta", Body: hidden}, "test-machine"); err != nil {
+	if _, err := s.Write("infra/a.md", Record{Name: "a", Description: "d", Module: "memory", Kind: "note", Scope: "machine/delta", Body: hidden}, "test-machine"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Write("personal/z.md", Memory{Name: "z", Description: "d", Type: "reference", Scope: "global", Body: "the needle"}, "test-machine"); err != nil {
+	if _, err := s.Write("personal/z.md", Record{Name: "z", Description: "d", Module: "memory", Kind: "note", Scope: "global", Body: "the needle"}, "test-machine"); err != nil {
 		t.Fatal(err)
 	}
 	keep := func(sc string) bool { return scope.Visible(sc, "beta", false) }
@@ -808,7 +836,7 @@ func TestRewritingIdenticalContentKeepsTheOriginalStamp(t *testing.T) {
 	s := newTestStore(t, remote)
 	defer fixClock(t, "2026-09-08T00:00:00Z")()
 
-	m := Memory{Name: "ups", Description: "the UPS", Type: "reference", Scope: "global", Body: "48 minutes."}
+	m := Record{Name: "ups", Description: "the UPS", Module: "memory", Kind: "note", Scope: "global", Body: "48 minutes."}
 	if _, err := s.Write("infra/ups.md", m, "test-machine"); err != nil {
 		t.Fatal(err)
 	}
@@ -851,7 +879,7 @@ func TestARewriteRollsAnOldBareDateStampForward(t *testing.T) {
 	run(t, s.Dir, "commit", "-q", "-m", "a memory in the old format")
 	run(t, s.Dir, "push", "-q", "origin", "main")
 
-	m := Memory{Name: "old", Description: "d", Type: "reference", Scope: "global", Body: "body"}
+	m := Record{Name: "old", Description: "d", Module: "memory", Kind: "note", Scope: "global", Body: "body"}
 	commit, err := s.Write("infra/old.md", m, "test-machine")
 	if err != nil {
 		t.Fatal(err)
@@ -892,8 +920,8 @@ func TestTheIndexFollowsTheMarkdown(t *testing.T) {
 	}
 	before := len(s.index.Docs)
 
-	if _, err := s.Write("infra/ups.md", Memory{
-		Name: "ups", Description: "the UPS", Type: "reference", Scope: "global", Body: "48 minutes.",
+	if _, err := s.Write("infra/ups.md", Record{
+		Name: "ups", Description: "the UPS", Module: "memory", Kind: "note", Scope: "global", Body: "48 minutes.",
 	}, "test-machine"); err != nil {
 		t.Fatal(err)
 	}
@@ -929,10 +957,232 @@ func TestVocabularyReportsWhatExistsWithoutTheContent(t *testing.T) {
 	if want := []string{"global", "machine/delta"}; !reflect.DeepEqual(v.Scopes, want) {
 		t.Errorf("Scopes = %v, want %v", v.Scopes, want)
 	}
-	if want := []string{"feedback", "reference"}; !reflect.DeepEqual(v.Types, want) {
-		t.Errorf("Types = %v, want %v", v.Types, want)
+	// Both fixture files predate modules: neither carries a module or kind,
+	// so there is nothing here for Modules or Kinds to report.
+	if len(v.Modules) != 0 || len(v.Kinds) != 0 {
+		t.Errorf("Modules = %v, Kinds = %v, want both empty for a pre-module corpus", v.Modules, v.Kinds)
 	}
 	if want := []string{"infra", "personal"}; !reflect.DeepEqual(v.Prefixes, want) {
 		t.Errorf("Prefixes = %v, want %v", v.Prefixes, want)
+	}
+}
+
+func TestWriteRequiresAModuleAndAKnownKind(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	for _, r := range []Record{
+		{Name: "n", Description: "d", Scope: "global", Body: "b"},                                   // no module
+		{Name: "n", Description: "d", Module: "health", Kind: "metric", Scope: "global", Body: "b"}, // not enabled
+		{Name: "n", Description: "d", Module: "memory", Kind: "fact", Scope: "global", Body: "b"},   // no such kind
+	} {
+		if _, err := s.Write("infra/x.md", r, "test-machine"); err == nil {
+			t.Errorf("accepted %+v", r)
+		}
+	}
+}
+
+func TestTheTypeAliasMapsThroughLegacyTypes(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	if _, err := s.Write("personal/p.md", Record{Name: "p", Description: "d", Type: "feedback", Scope: "global", Body: "b"}, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	r, _ := ParseRecord(mustRead(t, filepath.Join(s.Dir, "personal/p.md")))
+	if r.Module != "memory" || r.Kind != "preference" {
+		t.Errorf("alias: module=%q kind=%q", r.Module, r.Kind)
+	}
+	if _, err := s.Write("personal/q.md", Record{Name: "q", Description: "d", Type: "nonsense", Scope: "global", Body: "b"}, "test-machine"); err == nil {
+		t.Error("an unmapped type must be refused, not guessed")
+	}
+}
+
+func TestARatifiedWriteIsValidatedAgainstTheKind(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	good := Record{Name: "g1", Description: "ship it", Module: "telos", Kind: "goal", Scope: "global",
+		Fields: map[string]string{"id": "G1", "title": "Ship", "ideal": "shipped", "by": "2026-12-01"}, Body: "b"}
+	if _, err := s.Write("telos/goal/g1.md", good, "test-machine"); err != nil {
+		t.Fatalf("a complete goal must write: %v", err)
+	}
+	r, _ := ParseRecord(mustRead(t, filepath.Join(s.Dir, "telos/goal/g1.md")))
+	if r.ID != "G1" || r.Fields["title"] != "Ship" {
+		t.Errorf("stored: %+v", r)
+	}
+	missing := good
+	missing.Fields = map[string]string{"id": "G2", "title": "Ship"}
+	if _, err := s.Write("telos/goal/g2.md", missing, "test-machine"); err == nil || !strings.Contains(err.Error(), "ideal") {
+		t.Errorf("a missing required field must be named: %v", err)
+	}
+	unknown := good
+	unknown.Fields = map[string]string{"id": "G3", "title": "Ship", "ideal": "x", "by": "y", "colour": "red"}
+	if _, err := s.Write("telos/goal/g3.md", unknown, "test-machine"); err == nil || !strings.Contains(err.Error(), "colour") {
+		t.Errorf("an undeclared field must be named: %v", err)
+	}
+}
+
+func TestAWriteMayNotCarryAKernelOwnedKey(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	r := Record{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "global", Body: "b",
+		Fields: map[string]string{"reviewed": "2026-09-01T00:00:00Z"}}
+	if _, err := s.Write("infra/x.md", r, "test-machine"); err == nil || !strings.Contains(err.Error(), "reviewed") {
+		t.Errorf("reviewed via a write must be refused: %v", err)
+	}
+}
+
+func TestThePathRuleFollowsTheProfile(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	goal := Record{Name: "g", Description: "d", Module: "telos", Kind: "goal", Scope: "global",
+		Fields: map[string]string{"id": "G1", "title": "t", "ideal": "i", "by": "b"}, Body: "b"}
+	if _, err := s.Write("infra/g.md", goal, "test-machine"); err == nil {
+		t.Error("a ratified record outside <module>/<kind>/ must be refused")
+	}
+	if _, err := s.Write("telos/goal/deeper/g.md", goal, "test-machine"); err == nil {
+		t.Error("a ratified record below <module>/<kind>/ must be refused")
+	}
+	note := Record{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "global", Body: "b"}
+	if _, err := s.Write("anywhere/at/all.md", note, "test-machine"); err != nil {
+		t.Errorf("layout: free allows the store's own tree: %v", err)
+	}
+}
+
+func TestARewriteKeepsReviewedWhereItWas(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	rel := "personal/p.md"
+	r := Record{Name: "p", Description: "d", Module: "memory", Kind: "preference", Scope: "global", Body: "first"}
+	if _, err := s.Write(rel, r, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a review having happened: write reviewed into the file directly,
+	// commit, push — the way Task 5's Review will. Then rewrite through Write.
+	full := filepath.Join(s.Dir, rel)
+	content := strings.Replace(mustRead(t, full), "---\n\nfirst", "reviewed: 2026-09-01T00:00:00Z\n---\n\nfirst", 1)
+	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run(t, s.Dir, "commit", "-qam", "reviewed")
+	run(t, s.Dir, "push", "-q", "origin", "main")
+	r.Body = "second"
+	if _, err := s.Write(rel, r, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	_, meta := ParseRecord(mustRead(t, full))
+	if meta.Reviewed.IsZero() {
+		t.Error("a plain write must not drop reviewed")
+	}
+}
+
+func TestACredentialShapedWriteIsRefusedBeforeGit(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	before := run(t, s.Dir, "rev-parse", "HEAD")
+	r := Record{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "global",
+		Body: "-----BEGIN " + "OPENSSH PRIVATE KEY-----\nabc\n-----END " + "OPENSSH PRIVATE KEY-----\n"} // built, not literal: see credential_test.go
+	if _, err := s.Write("infra/x.md", r, "test-machine"); err == nil || !strings.Contains(err.Error(), "private key") {
+		t.Errorf("want a refusal naming the shape, got %v", err)
+	}
+	if after := run(t, s.Dir, "rev-parse", "HEAD"); after != before {
+		t.Error("the refusal must happen before anything is committed")
+	}
+	if _, err := os.Stat(filepath.Join(s.Dir, "infra/x.md")); err == nil {
+		t.Error("nothing may be left on disk")
+	}
+}
+
+// The description reaches the frontmatter, MEMORY.md and the commit message,
+// same as the body — a credential-shaped description must be refused before
+// any of them are touched, same as the body is.
+func TestACredentialShapedDescriptionIsRefusedBeforeGit(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	before := run(t, s.Dir, "rev-parse", "HEAD")
+	r := Record{Name: "n", Description: "password: " + "Tr0ub4dor&3" + strings.Repeat("A", 9),
+		Module: "memory", Kind: "note", Scope: "global", Body: "b"} // built, not literal: see credential_test.go
+	if _, err := s.Write("infra/x.md", r, "test-machine"); err == nil || !strings.Contains(err.Error(), "description") {
+		t.Errorf("want a refusal naming the description, got %v", err)
+	}
+	if after := run(t, s.Dir, "rev-parse", "HEAD"); after != before {
+		t.Error("the refusal must happen before anything is committed")
+	}
+}
+
+// The deleted scope.CheckType lowercased and trimmed. The replacement lookup
+// must do the same, or an outbox file queued before this PR with
+// "type: Reference" — or any caller passing "  Memory  " / "NOTE" — is
+// permanently rejected, breaking the constraint that nothing queued is
+// rejected by this PR.
+func TestTheTypeAliasAndModuleKindAreNormalisedBeforeLookup(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	if _, err := s.Write("personal/r.md", Record{Name: "r", Description: "d", Type: "Reference", Scope: "global", Body: "b"}, "test-machine"); err != nil {
+		t.Fatalf("a differently-cased type must still map: %v", err)
+	}
+	r, _ := ParseRecord(mustRead(t, filepath.Join(s.Dir, "personal/r.md")))
+	if r.Module != "memory" || r.Kind != "note" {
+		t.Errorf("alias with mixed case: module=%q kind=%q", r.Module, r.Kind)
+	}
+	if _, err := s.Write("personal/s.md", Record{Name: "s", Description: "d", Module: " Memory ", Kind: "NOTE", Scope: "global", Body: "b"}, "test-machine"); err != nil {
+		t.Fatalf("a differently-cased module/kind must still validate: %v", err)
+	}
+	r2, _ := ParseRecord(mustRead(t, filepath.Join(s.Dir, "personal/s.md")))
+	if r2.Module != "memory" || r2.Kind != "note" {
+		t.Errorf("module/kind with mixed case: module=%q kind=%q", r2.Module, r2.Kind)
+	}
+}
+
+// A malformed kernel key must stop the write rather than be silently dropped:
+// compose only emits reviewed/retired/snoozes when non-zero, so composing
+// over a bare-date reviewed would erase it forever, and only review may move
+// it (§9).
+func TestAMalformedReviewedRefusesARewriteAndLeavesTheFileUnchanged(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	rel := "personal/p.md"
+	full := filepath.Join(s.Dir, rel)
+	seeded := "---\nname: p\ndescription: d\nmodule: memory\nkind: preference\nscope: global\nupdated: 2026-09-01T00:00:00Z\nreviewed: 2026-09-01\n---\n\nfirst\n"
+	if err := os.WriteFile(full, []byte(seeded), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	run(t, s.Dir, "add", "-A")
+	run(t, s.Dir, "commit", "-q", "-m", "seed a malformed reviewed")
+	run(t, s.Dir, "push", "-q", "origin", "main")
+
+	r := Record{Name: "p", Description: "d", Module: "memory", Kind: "preference", Scope: "global", Body: "second"}
+	if _, err := s.Write(rel, r, "test-machine"); err == nil || !strings.Contains(err.Error(), "reviewed") {
+		t.Errorf("a malformed reviewed must refuse the write, got %v", err)
+	}
+	if got := mustRead(t, full); got != seeded {
+		t.Error("a refused write must leave the file unchanged")
+	}
+}
+
+// The common case: a record with no reviewed at all must write without
+// tripping the malformed-key refusal above.
+func TestAFileWithNoReviewedStillWrites(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	r := Record{Name: "p", Description: "d", Module: "memory", Kind: "preference", Scope: "global", Body: "first"}
+	if _, err := s.Write("personal/p.md", r, "test-machine"); err != nil {
+		t.Fatalf("a record with no reviewed must still write: %v", err)
+	}
+	// And a rewrite of a file that still has no reviewed must also still write.
+	r.Body = "second"
+	if _, err := s.Write("personal/p.md", r, "test-machine"); err != nil {
+		t.Fatalf("a rewrite with no reviewed must still write: %v", err)
+	}
+}
+
+func TestListAndVocabularyReportModuleAndKind(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	if _, err := s.Write("infra/x.md", Record{Name: "x", Description: "d", Module: "memory", Kind: "trap", Scope: "global", Body: "b"}, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := s.List("infra")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, e := range entries {
+		if e.Path == "infra/x.md" {
+			found = e.Module == "memory" && e.Kind == "trap"
+		}
+	}
+	if !found {
+		t.Errorf("entry for infra/x.md lacks module/kind: %+v", entries)
+	}
+	v := s.Vocabulary()
+	if !slices.Contains(v.Modules, "memory") || !slices.Contains(v.Kinds, "memory/trap") {
+		t.Errorf("vocabulary = %+v", v)
 	}
 }

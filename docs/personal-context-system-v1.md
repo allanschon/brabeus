@@ -8,7 +8,7 @@ It describes a system built on the kernel this repository already contains
 has no opinions about content; everything it stores belongs to a module, and every module runs
 under one of a small set of profiles the kernel defines (§1.1).
 
-C4 diagrams of the system at v1.4 — context, containers, kernel components, and the interview
+C4 diagrams of the system at v1.5 — context, containers, kernel components, and the interview
 as a sequence — are in [`personal-context-system-c4.md`](personal-context-system-c4.md). A
 plain-language description for someone who might use it rather than build it is
 [`personal-context-system-plain.md`](personal-context-system-plain.md).

@@ -80,6 +80,9 @@ func main() {
 	if err := memory.Ensure(); err != nil {
 		log.Fatalf("memory store: %v", err)
 	}
+	// Every write is validated against this set from here on. The mirror below
+	// gets no set: it is read-only and never validates.
+	memory.SetModules(set)
 	log.Printf("memory store ready at %s", memory.Dir)
 
 	// The mirror is optional: the server is useful without it, and failing to
