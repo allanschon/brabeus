@@ -161,7 +161,7 @@ func TestMigrateAbortsOnAMalformedKernelKey(t *testing.T) {
 	})
 	n := commits(t, s)
 	_, err := s.Migrate("test-machine")
-	if err == nil || !strings.Contains(err.Error(), "infra/bad.md: reviewed is malformed; fix the file by hand") {
+	if err == nil || !strings.Contains(err.Error(), `infra/bad.md: reviewed: "2026-09-05" is not an RFC3339 stamp; fix the file by hand, nothing was written`) {
 		t.Fatalf("want an error naming the file and the malformed key, got %v", err)
 	}
 	if commits(t, s) != n {

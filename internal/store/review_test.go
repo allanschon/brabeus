@@ -102,6 +102,99 @@ func TestCorrectedReplacesContentAndIsValidatedLikeAWrite(t *testing.T) {
 	}
 }
 
+// A.1: the question reaches git in the commit message, so it is checked the
+// same way a name, description, body or field is (spec §11).
+func TestReviewRefusesAQuestionThatLooksLikeACredential(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	writeValue(t, s, "identity/value/v.md", "v")
+	before := run(t, s.Dir, "rev-parse", "HEAD")
+	question := "is " + "password: " + strings.Repeat("x", 20) + " still right?"
+	_, err := s.Review("identity/value/v.md", question, Answer{Verdict: Confirmed}, "test-machine")
+	if err == nil || !strings.Contains(err.Error(), "password") {
+		t.Fatalf("a credential-shaped question must be refused, naming the shape: %v", err)
+	}
+	if run(t, s.Dir, "rev-parse", "HEAD") != before {
+		t.Error("HEAD moved on a refused review")
+	}
+}
+
+// The correction path already checked a.Body for a credential shape; this was
+// the missing test for it.
+func TestReviewRefusesACorrectedBodyThatLooksLikeACredential(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	writeValue(t, s, "identity/value/v.md", "v")
+	before := run(t, s.Dir, "rev-parse", "HEAD")
+	body := "the " + "api_key: " + strings.Repeat("x", 20) + " changed"
+	_, err := s.Review("identity/value/v.md", "Still?", Answer{Verdict: Corrected, Body: body}, "test-machine")
+	if err == nil || !strings.Contains(err.Error(), "correction") {
+		t.Fatalf("a credential-shaped correction body must be refused: %v", err)
+	}
+	if run(t, s.Dir, "rev-parse", "HEAD") != before {
+		t.Error("HEAD moved on a refused review")
+	}
+}
+
+// B: a correction to a crossing record validates against the kind that
+// governs it, not its own — a memory/preference is governed by identity's
+// preference kind (spec §7), which declares "statement".
+func TestCorrectedFieldsValidateAgainstTheGoverningKindForACrossingRecord(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	if _, err := s.Write("personal/terse.md", Record{Name: "terse", Description: "terse answers", Module: "memory", Kind: "preference", Scope: "global", Body: "Prefers terse answers."}, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Review("personal/terse.md", "Still how you want to be worked with?", Answer{Verdict: Corrected, Fields: map[string]string{"statement": "second"}}, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	r, _ := ParseRecord(mustRead(t, filepath.Join(s.Dir, "personal/terse.md")))
+	if r.Fields["statement"] != "second" {
+		t.Errorf("statement = %q, want it stored under identity's rule for preference", r.Fields["statement"])
+	}
+
+	if _, err := s.Write("personal/note.md", Record{Name: "note", Description: "a note", Module: "memory", Kind: "note", Scope: "global", Body: "note body"}, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	_, err := s.Review("personal/note.md", "Still?", Answer{Verdict: Corrected, Fields: map[string]string{"statement": "x"}}, "test-machine")
+	if err == nil || !strings.Contains(err.Error(), "statement") {
+		t.Errorf("a memory/note correction with an undeclared field must be refused: %v", err)
+	}
+}
+
+// Regression: a body-only correction changes nothing about the fields, so it
+// must not be checked against the governing kind's required fields — a
+// memory/preference has none of its own, and identity's preference kind
+// requires "statement", which a body-only correction never claims to supply.
+func TestABodyOnlyCorrectionOnACrossingRecordDoesNotRequireTheGoverningKindsFields(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	if _, err := s.Write("personal/terse.md", Record{Name: "terse", Description: "terse answers", Module: "memory", Kind: "preference", Scope: "global", Body: "Prefers terse answers."}, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Review("personal/terse.md", "Still how you want to be worked with?", Answer{Verdict: Corrected, Body: "Prefers blunt answers."}, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	r, _ := ParseRecord(mustRead(t, filepath.Join(s.Dir, "personal/terse.md")))
+	if strings.TrimSpace(r.Body) != "Prefers blunt answers." {
+		t.Errorf("body = %q, want it replaced", r.Body)
+	}
+}
+
+// The same, for a non-crossing working-memory kind, whose own kind (not
+// RuleFor's zero Kind for it) is what a body-only correction is measured
+// against — trivially satisfied here since memory/note declares no fields,
+// but the path must not be skipped entirely for the wrong reason.
+func TestABodyOnlyCorrectionOnANonCrossingWorkingMemoryRecordSucceeds(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	if _, err := s.Write("personal/note.md", Record{Name: "note", Description: "a note", Module: "memory", Kind: "note", Scope: "global", Body: "note body"}, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Review("personal/note.md", "Still?", Answer{Verdict: Corrected, Body: "revised note body"}, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	r, _ := ParseRecord(mustRead(t, filepath.Join(s.Dir, "personal/note.md")))
+	if strings.TrimSpace(r.Body) != "revised note body" {
+		t.Errorf("body = %q, want it replaced", r.Body)
+	}
+}
+
 func TestReviewRefusesWhatItCannotReview(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
 	writeValue(t, s, "identity/value/v.md", "v")
@@ -177,6 +270,29 @@ func TestReviewedMovesOnlyOnReviewCommits(t *testing.T) {
 	// that it never moves; this asserts it actually moved at least once.
 	if sawReviewedAdded == 0 {
 		t.Fatal("no +reviewed: line seen in the log; the test proves nothing without one")
+	}
+}
+
+// F: the four writers share one git tail (commitAndPush), whose guard is a
+// backstop — a second Confirmed under the same frozen clock recomposes the
+// same bytes, so there is nothing to commit.
+func TestASecondIdenticalConfirmedUnderAFrozenClockMakesNoCommit(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	writeValue(t, s, "identity/value/v.md", "v")
+	setClock(t, "2026-10-01T09:00:00Z")
+	if _, err := s.Review("identity/value/v.md", "Still?", Answer{Verdict: Confirmed}, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	before := run(t, s.Dir, "rev-parse", "HEAD")
+	commit, err := s.Review("identity/value/v.md", "Still?", Answer{Verdict: Confirmed}, "test-machine")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if commit != "no change" {
+		t.Errorf("commit = %q, want \"no change\"", commit)
+	}
+	if run(t, s.Dir, "rev-parse", "HEAD") != before {
+		t.Error("a second identical confirmation must not commit")
 	}
 }
 

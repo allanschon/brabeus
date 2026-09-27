@@ -84,6 +84,9 @@ func TestQuestionsAreRenderedFromTheKindsPrompt(t *testing.T) {
 	if id := byPath["telos/goal/g1.md"].ID; id != "G1" {
 		t.Errorf("id = %q", id)
 	}
+	if id := byPath["telos/goal/g1.md"].Fields["id"]; id != "G1" {
+		t.Errorf("Fields[id] = %q, want it filled from the record", id)
+	}
 }
 
 func TestARevisionSinceTheLastReviewIsNamed(t *testing.T) {
@@ -142,7 +145,10 @@ func TestAnEmptyRecordAsksTheFirstQuestionFirst(t *testing.T) {
 func TestAWorkingMemoryPreferenceIsAskedUnderIdentitysRule(t *testing.T) {
 	now := at("2026-10-01T00:00:00Z")
 	records := []store.Stored{
-		rec("personal/terse.md", "memory", "preference", nil, "2026-09-20T00:00:00Z", "", 0),
+		// Updated well past identity's 120-day freshness for preference, so it
+		// is stale under the new never-reviewed rule for a crossing record
+		// (age = now - Updated, not the native never-reviewed sentinel).
+		rec("personal/terse.md", "memory", "preference", nil, "2026-01-01T00:00:00Z", "", 0),
 		rec("personal/note.md", "memory", "note", nil, "2020-01-01T00:00:00Z", "", 0),
 	}
 	items := Compute(testSet(), records, now)
@@ -158,6 +164,61 @@ func TestAWorkingMemoryPreferenceIsAskedUnderIdentitysRule(t *testing.T) {
 		if it.Reason == Empty && it.Module == "identity" && it.Kind == "preference" {
 			t.Errorf("a memory/preference on file satisfies identity's onboarding for preference; asked anyway: %+v", it)
 		}
+	}
+}
+
+// C: a never-reviewed crossing record is not asked at once — a fresh
+// model-written preference has to sit for identity's freshness period first.
+func TestACrossingRecordNeverReviewedIsNotStaleUntilPastFreshness(t *testing.T) {
+	now := at("2026-10-01T00:00:00Z")
+	records := []store.Stored{
+		rec("personal/terse.md", "memory", "preference", nil, "2026-09-30T00:00:00Z", "", 0), // updated yesterday
+	}
+	items := Compute(testSet(), records, now)
+	for _, it := range items {
+		if it.Path == "personal/terse.md" {
+			t.Errorf("a fresh, never-reviewed crossing record must not be on the agenda yet: %+v", it)
+		}
+	}
+}
+
+// C: once a crossing record is stale, it sorts after every native ratified
+// item, never mixed in by priority.
+func TestACrossingRecordSortsAfterEveryNativeRatifiedItem(t *testing.T) {
+	now := at("2026-10-01T00:00:00Z")
+	records := []store.Stored{
+		rec("telos/goal/g1.md", "telos", "goal", map[string]string{"id": "G1"}, "2026-05-01T00:00:00Z", "2026-05-01T00:00:00Z", 0), // native, stale
+		rec("personal/terse.md", "memory", "preference", nil, "2026-03-15T00:00:00Z", "", 0),                                       // crossing, never reviewed, ~200 days old: stale
+	}
+	items := Compute(testSet(), records, now)
+	var got []string
+	for _, it := range items {
+		if it.Reason == Stale {
+			got = append(got, it.Path)
+		}
+	}
+	if want := "telos/goal/g1.md,personal/terse.md"; strings.Join(got, ",") != want {
+		t.Errorf("order = %v, want %s", got, want)
+	}
+}
+
+// C: the tier applies even once the crossing record has been reviewed before
+// and has gone stale again — it still sorts after native items.
+func TestAReviewedThenStaleCrossingRecordAlsoSortsAfterNativeItems(t *testing.T) {
+	now := at("2026-10-01T00:00:00Z")
+	records := []store.Stored{
+		rec("identity/value/v.md", "identity", "value", nil, "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z", 0),  // native, stale
+		rec("personal/terse.md", "memory", "preference", nil, "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z", 0), // crossing, reviewed long ago, stale again
+	}
+	items := Compute(testSet(), records, now)
+	var got []string
+	for _, it := range items {
+		if it.Reason == Stale {
+			got = append(got, it.Path)
+		}
+	}
+	if want := "identity/value/v.md,personal/terse.md"; strings.Join(got, ",") != want {
+		t.Errorf("order = %v, want %s", got, want)
 	}
 }
 

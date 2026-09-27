@@ -20,8 +20,8 @@ for, in order, when none of that kind is on file; each must carry a `first` ques
 `kind`, which says whether the path rule is the store's own tree or `<module>/<kind>/<slug>.md`;
 and `legacy_types`, the map the one-time migration uses to give pre-module records a kind.
 
-The kernel loads and validates these on startup and refuses a set it does not understand;
-enforcing the kinds on writes and rendering the summaries land in the next tasks of M1.
+The kernel loads and validates these on startup and refuses a set it does not understand; it
+enforces the kinds on writes, and rendering the summaries lands with the context block.
 
 Five modules ship: `memory` under `working-memory` — the assistant's per-machine working notes,
 and the only module with scope keys — and four core modules under `ratified-record`: `identity`,

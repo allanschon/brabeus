@@ -86,6 +86,12 @@ type Manifest struct {
 // this list, visibly.
 var Core = map[string]bool{"identity": true, "telos": true, "health": true, "finance": true}
 
+// Crossing is the one kind that exists in both profiles (spec §7): a
+// preference the model wrote under a working-memory module is asked under
+// the named ratified-record module's rule for the same kind. Nothing else
+// crosses, which is why this is a constant and not a manifest key.
+var Crossing = map[string]string{"preference": "identity"}
+
 // Reserved are the frontmatter keys the kernel composes itself (spec §5). A
 // kind may declare "id" — the kernel reads Record.ID from it — and no other.
 var Reserved = []string{"name", "description", "module", "kind", "id", "scope", "updated", "reviewed", "retired", "snoozes"}
@@ -292,6 +298,32 @@ func (s *Set) Profiles() []Profile {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 	return out
+}
+
+// RuleFor names the manifest and kind that govern a record: its own module
+// and kind when that module's profile is interviewed; for a working-memory
+// record whose kind is in Crossing, the ratified module it is reviewed
+// under, if that module is enabled and declares the kind; otherwise the
+// working-memory manifest itself with a zero Kind. A caller checks
+// Bundle().Interviewed on the returned manifest to know whether the record
+// is reviewed at all.
+func (s *Set) RuleFor(mod, kind string) (Manifest, Kind, bool) {
+	man, ok := s.Module(mod)
+	if !ok {
+		return Manifest{}, Kind{}, false
+	}
+	if bundle, _ := man.Profile.Bundle(); !bundle.Interviewed {
+		if target, crosses := Crossing[kind]; crosses {
+			if tm, ok := s.Module(target); ok {
+				if tk, ok := tm.Kinds[kind]; ok {
+					return tm, tk, true
+				}
+			}
+		}
+		return man, Kind{}, true
+	}
+	k, ok := man.Kinds[kind]
+	return man, k, ok
 }
 
 // LegacyKind maps a pre-module `type` to the module and kind that adopts it,

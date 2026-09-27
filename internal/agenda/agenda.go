@@ -27,20 +27,19 @@ type Item struct {
 	Question                     string
 	Revision                     string
 	Snoozes                      int
+	Fields                       map[string]string
 }
 
-// crossing is the one kind that exists in both profiles (spec §7): a
-// preference the model wrote under a working-memory module is asked under
-// the named ratified-record module's rule for the same kind. Nothing else
-// crosses, which is why this is a constant and not a manifest key.
-var crossing = map[string]string{"preference": "identity"}
-
 // Compute orders the agenda: claims in fail first (M2; empty here), then
-// records past their kind's freshness by module priority and age, then the
+// records past their kind's freshness — native items (the record's own
+// module governs it) by module priority then age, ahead of every crossing
+// item (a working-memory record governed by a different, ratified module),
+// which sort among themselves by age alone (spec ruling) — then the
 // onboarding gaps — kinds a module wants on file and has none of.
 func Compute(set *module.Set, records []store.Stored, now time.Time) []Item {
 	var stale []struct {
 		item     Item
+		tier     int // 0 native (governed by its own module), 1 crossing
 		priority int
 		age      time.Duration
 	}
@@ -59,24 +58,26 @@ func Compute(set *module.Set, records []store.Stored, now time.Time) []Item {
 		if len(r.Malformed) > 0 {
 			stale = append(stale, struct {
 				item     Item
+				tier     int
 				priority int
 				age      time.Duration
-			}{Item{Path: r.Path, Name: r.Name, Module: r.Module, Kind: r.Kind, Reason: Stale,
-				Question: fmt.Sprintf("%s: %s malformed; fix the file by hand before it can be reviewed.", r.Path, strings.Join(r.Malformed, ", "))}, -1, 0})
+			}{Item{Path: r.Path, Name: r.Name, Module: r.Module, Kind: r.Kind, Reason: Stale, Fields: r.Fields,
+				Question: fmt.Sprintf("%s: %s malformed; fix the file by hand before it can be reviewed.", r.Path, strings.Join(r.Malformed, ", "))}, 0, -1, 0})
 			continue
 		}
 		if r.Module == "" {
 			stale = append(stale, struct {
 				item     Item
+				tier     int
 				priority int
 				age      time.Duration
-			}{Item{Path: r.Path, Name: r.Name, Reason: Stale,
-				Question: fmt.Sprintf("%s predates modules and cannot be reviewed until the migration has run.", r.Path)}, -1, 0})
+			}{Item{Path: r.Path, Name: r.Name, Reason: Stale, Fields: r.Fields,
+				Question: fmt.Sprintf("%s predates modules and cannot be reviewed until the migration has run.", r.Path)}, 0, -1, 0})
 			continue
 		}
 		present[r.Module+"/"+r.Kind] = true
 
-		man, kind, ok := ruleFor(set, r.Module, r.Kind)
+		man, kind, ok := set.RuleFor(r.Module, r.Kind)
 		if !ok {
 			continue
 		}
@@ -92,10 +93,23 @@ func Compute(set *module.Set, records []store.Stored, now time.Time) []Item {
 		if kind.FreshnessDays <= 0 {
 			continue
 		}
+		tier := 0
+		if man.Name != r.Module {
+			tier = 1
+		}
 		var age time.Duration
-		if r.Reviewed.IsZero() {
-			age = 1<<62 - 1 // never reviewed sorts before everything that was
-		} else {
+		switch {
+		case r.Reviewed.IsZero() && tier == 0:
+			age = 1<<62 - 1 // never reviewed sorts before every native item that was
+		case r.Reviewed.IsZero():
+			// A crossing record the model just wrote must not be asked at
+			// once: its age is how long it has sat unreviewed, not the
+			// never-reviewed sentinel a native record gets.
+			age = now.Sub(r.Updated)
+			if age <= time.Duration(kind.FreshnessDays)*24*time.Hour {
+				continue
+			}
+		default:
 			age = now.Sub(r.Reviewed)
 			if age <= time.Duration(kind.FreshnessDays)*24*time.Hour {
 				continue
@@ -103,12 +117,16 @@ func Compute(set *module.Set, records []store.Stored, now time.Time) []Item {
 		}
 		stale = append(stale, struct {
 			item     Item
+			tier     int
 			priority int
 			age      time.Duration
-		}{Item{Path: r.Path, Module: r.Module, Kind: r.Kind, ID: r.ID, Name: r.Name, Reason: Stale,
-			Question: render(kind.Interview, r), Revision: revision(r), Snoozes: r.Snoozes}, man.Priority, age})
+		}{Item{Path: r.Path, Module: r.Module, Kind: r.Kind, ID: r.ID, Name: r.Name, Reason: Stale, Fields: r.Fields,
+			Question: render(kind.Interview, r), Revision: revision(r), Snoozes: r.Snoozes}, tier, man.Priority, age})
 	}
 	sort.SliceStable(stale, func(i, j int) bool {
+		if stale[i].tier != stale[j].tier {
+			return stale[i].tier < stale[j].tier
+		}
 		if stale[i].priority != stale[j].priority {
 			return stale[i].priority < stale[j].priority
 		}
@@ -128,27 +146,6 @@ func Compute(set *module.Set, records []store.Stored, now time.Time) []Item {
 		}
 	}
 	return out
-}
-
-// ruleFor finds the manifest and kind that govern a record: its own module,
-// or, for the one crossing kind, the ratified module it is reviewed under.
-func ruleFor(set *module.Set, mod, kind string) (module.Manifest, module.Kind, bool) {
-	man, ok := set.Module(mod)
-	if !ok {
-		return module.Manifest{}, module.Kind{}, false
-	}
-	if bundle, _ := man.Profile.Bundle(); !bundle.Interviewed {
-		if target, crosses := crossing[kind]; crosses {
-			if tm, ok := set.Module(target); ok {
-				if tk, ok := tm.Kinds[kind]; ok {
-					return tm, tk, true
-				}
-			}
-		}
-		return man, module.Kind{}, true
-	}
-	k, ok := man.Kinds[kind]
-	return man, k, ok
 }
 
 // render fills {reviewed} and any {field} in a kind's prompt.

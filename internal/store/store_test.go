@@ -911,7 +911,9 @@ func setClock(t *testing.T, stamp string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	prev := now
 	now = func() time.Time { return ts }
+	t.Cleanup(func() { now = prev })
 }
 
 // The index is derived state. It must exist as soon as the store does, follow

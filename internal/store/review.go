@@ -38,6 +38,9 @@ func (s *Store) Review(rel, question string, a Answer, caller string) (string, e
 	if question == "" {
 		return "", fmt.Errorf("a review carries the question that was asked; none was given")
 	}
+	if shape := credentialShape(question); shape != "" {
+		return "", fmt.Errorf("refused: the question looks like it contains %s; credentials never enter the record (spec §11)", shape)
+	}
 	switch a.Verdict {
 	case Confirmed, Corrected, Retired, Later:
 	default:
@@ -68,16 +71,7 @@ func (s *Store) Review(rel, question string, a Answer, caller string) (string, e
 	// did not parse — and only a review may move them (§9). Same rule and
 	// wording as Write's refusal.
 	if len(meta.Malformed) > 0 {
-		fm := parseFrontmatter(string(old))
-		parts := make([]string, 0, len(meta.Malformed))
-		for _, key := range meta.Malformed {
-			want := "an RFC3339 stamp"
-			if key == "snoozes" {
-				want = "an integer"
-			}
-			parts = append(parts, fmt.Sprintf("%s: %q is not %s", key, fm[key], want))
-		}
-		return "", fmt.Errorf("%s; fix the file by hand, nothing was written", strings.Join(parts, "; "))
+		return "", malformedError(parseFrontmatter(string(old)), meta.Malformed)
 	}
 	if r.Module == "" {
 		return "", fmt.Errorf("%s predates modules; run the migration before reviewing it", rel)
@@ -92,6 +86,7 @@ func (s *Store) Review(rel, question string, a Answer, caller string) (string, e
 	}
 
 	stamp := now()
+	fieldOrder := append(append([]string{}, kind.Fields...), kind.Optional...)
 	switch a.Verdict {
 	case Confirmed:
 		meta.Reviewed = stamp
@@ -111,8 +106,29 @@ func (s *Store) Review(rel, question string, a Answer, caller string) (string, e
 			}
 			r.Fields[k] = v
 		}
-		if err := checkFields(kind, r.Fields); err != nil {
-			return "", err
+		// Only a correction that actually supplies a field is checked against
+		// a kind at all: a body-only correction changes nothing about the
+		// fields, so it must pass exactly as a plain Write of the same record
+		// would, not be re-validated against a kind whose required fields it
+		// never claimed to touch (a memory/preference body-only correction
+		// was refused for lacking identity's required "statement" before this
+		// fix, though nothing about statement was being corrected).
+		if len(a.Fields) > 0 {
+			// The kind that governs a crossing record differs from its own
+			// (module.Set.RuleFor, spec §7): a memory/preference correction
+			// may carry identity's "statement". Everywhere else, RuleFor's
+			// manifest is the record's own — including a non-crossing
+			// working-memory record, for which RuleFor returns a zero Kind —
+			// so fall back to the record's own kind rather than validate
+			// against one with nothing declared.
+			govMan, govKind, _ := s.modules.RuleFor(r.Module, r.Kind)
+			if govMan.Name == r.Module {
+				govKind = kind
+			}
+			if err := checkFields(govKind, r.Fields); err != nil {
+				return "", err
+			}
+			fieldOrder = append(append([]string{}, govKind.Fields...), govKind.Optional...)
 		}
 		r.ID = r.Fields["id"]
 		meta.Updated, meta.Reviewed = stamp, stamp
@@ -122,29 +138,13 @@ func (s *Store) Review(rel, question string, a Answer, caller string) (string, e
 		meta.Snoozes++
 	}
 
-	content := compose(r, meta, append(append([]string{}, kind.Fields...), kind.Optional...))
+	content := compose(r, meta, fieldOrder)
 	if err := os.WriteFile(full, []byte(content), 0o640); err != nil {
-		return "", err
-	}
-	if _, err := s.git(s.Dir, "add", "-A"); err != nil {
 		return "", err
 	}
 	msg := fmt.Sprintf("review %s/%s %s: %s\n\nQ: %s\nA: %s\n\nReviewed through the kernel at %s.",
 		r.Module, r.Kind, r.Name, a.Verdict, question, a.Verdict, time.Now().UTC().Format(time.RFC3339))
-	if _, err := s.git(s.Dir, "commit", "--quiet", "--author", authorFor(caller), "-m", msg); err != nil {
-		return "", err
-	}
-	if _, err := s.git(s.Dir, "push", "--quiet", "origin", s.Branch); err != nil {
-		return "", err
-	}
-	if err := s.reindex(); err != nil {
-		return "", err
-	}
-	head, err := s.git(s.Dir, "rev-parse", "--short", "HEAD")
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(head), nil
+	return s.commitAndPush(msg, caller)
 }
 
 // Stored is one record with what the kernel knows about it.
