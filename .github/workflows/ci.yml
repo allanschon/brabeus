@@ -4,6 +4,11 @@ on:
   push:
   pull_request:
 
+# Least privilege in the file, not only in the repository settings: every job
+# checks out code and nothing writes back.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -30,6 +35,10 @@ jobs:
 
   gitleaks:
     runs-on: ubuntu-latest
+    # On a pull request the action lists the PR's commits through the API.
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
