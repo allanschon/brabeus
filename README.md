@@ -7,7 +7,7 @@ the umpire at the Greek games.
 
 ## Status
 
-Specified at v1.4 (`docs/personal-context-system-v1.md`). Nothing beyond the kernel is built yet.
+Specified at v1.5 (`docs/personal-context-system-v1.md`). Nothing beyond the kernel is built yet.
 This is milestone M0: the public repository seeded with the kernel, the plugin, the five module
 manifests, a synthetic test corpus and the specification itself. See §14 for what comes next.
 
