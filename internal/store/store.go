@@ -355,21 +355,6 @@ func (s *Store) List(dir string) ([]Entry, error) {
 	return out, err
 }
 
-// ScopeOf reads only the scope of one memory, for filtering search hits.
-func (s *Store) ScopeOf(rel string) string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	full, err := resolvePath(s.Dir, rel)
-	if err != nil {
-		return ""
-	}
-	b, err := os.ReadFile(full)
-	if err != nil {
-		return ""
-	}
-	return parseFrontmatter(string(b))["scope"]
-}
-
 func (s *Store) Read(rel string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -397,6 +382,7 @@ type Visibility struct {
 // a file the migration has not tagged — is withheld only when HideUntagged
 // is set, so the person's own sessions still see a store mid-migration.
 func (v Visibility) Hides(module string) bool {
+	module = strings.ToLower(module)
 	if module == "" {
 		return v.HideUntagged
 	}
