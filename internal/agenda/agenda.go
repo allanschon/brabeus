@@ -50,6 +50,21 @@ func Compute(set *module.Set, records []store.Stored, now time.Time) []Item {
 		if !r.Retired.IsZero() {
 			continue
 		}
+		// A kernel key that failed to parse (store.Meta.Malformed) means the
+		// stamp cannot be trusted: treating it as "never reviewed" would
+		// render {reviewed} as a lie, and every verdict Review is given would
+		// be refused by the same Malformed check, so the item could never
+		// clear. Surface it as a fix-by-hand item instead, same as a
+		// pre-module record.
+		if len(r.Malformed) > 0 {
+			stale = append(stale, struct {
+				item     Item
+				priority int
+				age      time.Duration
+			}{Item{Path: r.Path, Name: r.Name, Module: r.Module, Kind: r.Kind, Reason: Stale,
+				Question: fmt.Sprintf("%s: %s malformed; fix the file by hand before it can be reviewed.", r.Path, strings.Join(r.Malformed, ", "))}, -1, 0})
+			continue
+		}
 		if r.Module == "" {
 			stale = append(stale, struct {
 				item     Item

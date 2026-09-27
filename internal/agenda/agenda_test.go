@@ -169,3 +169,24 @@ func TestAPreModuleRecordIsReportedNotSkipped(t *testing.T) {
 		t.Errorf("a pre-module file should surface as a stale item saying to migrate: %+v", items)
 	}
 }
+
+// A malformed reviewed/retired/snoozes key must not read as "never
+// reviewed": that would render {reviewed} as a lie, and Review refuses every
+// verdict on a Malformed record (the same check Write uses), so the item
+// could never be cleared from inside the system if it were asked under the
+// kind's normal prompt.
+func TestAMalformedRecordSurfacesAsFixByHandNotNeverReviewed(t *testing.T) {
+	r := rec("identity/value/bad.md", "identity", "value", nil, "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 0)
+	r.Malformed = []string{"reviewed"}
+	items := Compute(testSet(), []store.Stored{r}, at("2026-10-01T00:00:00Z"))
+	if len(items) == 0 || items[0].Reason != Stale {
+		t.Fatalf("items = %+v", items)
+	}
+	q := items[0].Question
+	if !strings.Contains(q, "malformed") || !strings.Contains(q, "by hand") {
+		t.Errorf("question = %q, want it to name the malformed key and say fix by hand", q)
+	}
+	if q == "Still one of the things you weigh decisions against?" {
+		t.Errorf("a malformed record must not be asked under the kind's normal interview prompt: %q", q)
+	}
+}

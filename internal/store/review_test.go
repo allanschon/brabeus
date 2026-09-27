@@ -158,14 +158,25 @@ func TestReviewedMovesOnlyOnReviewCommits(t *testing.T) {
 	// letter that also starts a diff keyword.
 	log := run(t, s.Dir, "log", "--format=COMMIT%x09%s", "-p", "--", "identity/value/a.md")
 	var subject string
+	var sawReviewedAdded int
 	for _, line := range strings.Split(log, "\n") {
 		if rest, ok := strings.CutPrefix(line, "COMMIT\t"); ok {
 			subject = rest
 			continue
 		}
+		if strings.HasPrefix(line, "+reviewed:") {
+			sawReviewedAdded++
+		}
 		if (strings.HasPrefix(line, "+reviewed:") || strings.HasPrefix(line, "-reviewed:")) && !strings.HasPrefix(subject, "review ") {
 			t.Errorf("reviewed changed in a commit that is not a review: %q", subject)
 		}
+	}
+	// A vacuous pass — an empty log, or one where Review stopped writing
+	// reviewed at all — would satisfy the loop above having found nothing to
+	// object to. The claim is that reviewed moves only on review commits, not
+	// that it never moves; this asserts it actually moved at least once.
+	if sawReviewedAdded == 0 {
+		t.Fatal("no +reviewed: line seen in the log; the test proves nothing without one")
 	}
 }
 
