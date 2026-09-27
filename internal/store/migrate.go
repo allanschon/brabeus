@@ -17,7 +17,7 @@ type MigrateReport struct {
 }
 
 // Migrate retags every pre-module record — one with `type` and no `module` —
-// through the module set's legacy_types (decision D2), in one commit. Paths
+// through the module set's legacy_types (spec §5, §6), in one commit. Paths
 // and the index are untouched and each file keeps its own updated stamp: a
 // retag is not a content change (spec §5).
 //

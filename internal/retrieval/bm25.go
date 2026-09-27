@@ -57,7 +57,7 @@ func tokenize(s string) []string {
 type Doc struct {
 	Path, Scope string
 	// Module and Kind are empty on a file the one-time migration has not yet
-	// retagged; LegacyType then carries its pre-module `type` (decision D6).
+	// retagged; LegacyType then carries its pre-module `type`.
 	Module, Kind, LegacyType string
 	// desc is kept because it is a dense LANE of its own, not merely a
 	// weighted field: it is the one line a memory is written to be found by.

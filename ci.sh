@@ -23,6 +23,12 @@ go test -buildvcs=false ./... "$@"
 # let an unrunnable commit through on 2026-09-06.
 go build -buildvcs=false -o /dev/null ./cmd/brabeus
 
+# Every reference in the tree must be one a reader can follow: no decision cited
+# by a label defined elsewhere, no path to a file that is not here. The test runs
+# first so a broken check cannot pass the tree by accident.
+bash scripts/refcheck.test.sh >/dev/null
+./scripts/refcheck.sh
+
 # ---------------------------------------------------------------------------
 # Backstop: did a plugin's content change without its version changing?
 #
