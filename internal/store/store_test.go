@@ -98,7 +98,11 @@ func testModules(t *testing.T) *module.Set {
 	write("telos", `{"name":"telos","version":1,"profile":"ratified-record","priority":10,"budget_bytes":600,
 	  "kinds":{"goal":{"fields":["id","title","ideal","by"],"optional":["serves"],"freshness_days":90}},
 	  "summary":"summary.md.tmpl"}`)
-	set, err := module.Load(dir, []string{"memory", "telos"})
+	write("identity", `{"name":"identity","version":1,"profile":"ratified-record","priority":5,"budget_bytes":400,
+	  "kinds":{"value":{"fields":["statement"],"freshness_days":365,"interview":"Still one of the things you weigh decisions against?","first":"What do you weigh decisions against?"},
+	           "preference":{"fields":["statement"],"freshness_days":120}},
+	  "onboarding":["value"],"summary":"summary.md.tmpl"}`)
+	set, err := module.Load(dir, []string{"memory", "telos", "identity"})
 	if err != nil {
 		t.Fatal(err)
 	}
