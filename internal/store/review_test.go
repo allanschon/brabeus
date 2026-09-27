@@ -134,6 +134,31 @@ func TestReviewRefusesACorrectedBodyThatLooksLikeACredential(t *testing.T) {
 	}
 }
 
+// B: a correction to a crossing record validates against the kind that
+// governs it, not its own — a memory/preference is governed by identity's
+// preference kind (spec §7), which declares "statement".
+func TestCorrectedFieldsValidateAgainstTheGoverningKindForACrossingRecord(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	if _, err := s.Write("personal/terse.md", Record{Name: "terse", Description: "terse answers", Module: "memory", Kind: "preference", Scope: "global", Body: "Prefers terse answers."}, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Review("personal/terse.md", "Still how you want to be worked with?", Answer{Verdict: Corrected, Fields: map[string]string{"statement": "second"}}, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	r, _ := ParseRecord(mustRead(t, filepath.Join(s.Dir, "personal/terse.md")))
+	if r.Fields["statement"] != "second" {
+		t.Errorf("statement = %q, want it stored under identity's rule for preference", r.Fields["statement"])
+	}
+
+	if _, err := s.Write("personal/note.md", Record{Name: "note", Description: "a note", Module: "memory", Kind: "note", Scope: "global", Body: "note body"}, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	_, err := s.Review("personal/note.md", "Still?", Answer{Verdict: Corrected, Fields: map[string]string{"statement": "x"}}, "test-machine")
+	if err == nil || !strings.Contains(err.Error(), "statement") {
+		t.Errorf("a memory/note correction with an undeclared field must be refused: %v", err)
+	}
+}
+
 func TestReviewRefusesWhatItCannotReview(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
 	writeValue(t, s, "identity/value/v.md", "v")

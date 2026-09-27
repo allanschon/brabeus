@@ -95,6 +95,7 @@ func (s *Store) Review(rel, question string, a Answer, caller string) (string, e
 	}
 
 	stamp := now()
+	fieldOrder := append(append([]string{}, kind.Fields...), kind.Optional...)
 	switch a.Verdict {
 	case Confirmed:
 		meta.Reviewed = stamp
@@ -114,9 +115,15 @@ func (s *Store) Review(rel, question string, a Answer, caller string) (string, e
 			}
 			r.Fields[k] = v
 		}
-		if err := checkFields(kind, r.Fields); err != nil {
+		// A correction is validated and composed against the kind that
+		// governs the record (module.Set.RuleFor), not necessarily its own:
+		// a memory/preference is governed by identity's preference kind
+		// (spec §7), so a correction to it may carry identity's fields.
+		_, govKind, _ := s.modules.RuleFor(r.Module, r.Kind)
+		if err := checkFields(govKind, r.Fields); err != nil {
 			return "", err
 		}
+		fieldOrder = append(append([]string{}, govKind.Fields...), govKind.Optional...)
 		r.ID = r.Fields["id"]
 		meta.Updated, meta.Reviewed = stamp, stamp
 	case Retired:
@@ -125,7 +132,7 @@ func (s *Store) Review(rel, question string, a Answer, caller string) (string, e
 		meta.Snoozes++
 	}
 
-	content := compose(r, meta, append(append([]string{}, kind.Fields...), kind.Optional...))
+	content := compose(r, meta, fieldOrder)
 	if err := os.WriteFile(full, []byte(content), 0o640); err != nil {
 		return "", err
 	}

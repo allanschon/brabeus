@@ -27,6 +27,15 @@ const memoryJSON = `{
   "adapters": ["manual"], "skills": ["health"]
 }`
 
+const identityJSON = `{
+  "name": "identity", "version": 1, "profile": "ratified-record", "priority": 5,
+  "budget_bytes": 300, "audience": "self",
+  "kinds": {
+    "preference": {"fields": ["statement"], "freshness_days": 120, "interview": "Still how you want to be worked with?"}
+  },
+  "summary": "summary.md.tmpl"
+}`
+
 const telosJSON = `{
   "name": "telos", "version": 1, "profile": "ratified-record", "priority": 10,
   "budget_bytes": 600, "audience": "self",
@@ -228,6 +237,52 @@ func TestTheShippedManifestsLoad(t *testing.T) {
 	}
 	if m, _ := set.Module("identity"); len(m.Onboarding) == 0 || m.Onboarding[0] != "value" {
 		t.Errorf("identity onboarding = %v; the first interview starts with values (§9)", m.Onboarding)
+	}
+}
+
+// B: the crossing rule (spec §7) lives once, in module.Set.RuleFor, and both
+// the agenda and Review ask it instead of keeping their own copy.
+func TestRuleForOwnModuleCase(t *testing.T) {
+	set, err := load(t, []string{"telos"}, map[string]string{"telos": telosJSON})
+	if err != nil {
+		t.Fatal(err)
+	}
+	man, k, ok := set.RuleFor("telos", "goal")
+	if !ok || man.Name != "telos" || k.FreshnessDays != 90 {
+		t.Errorf("own-module case: man=%+v k=%+v ok=%v", man, k, ok)
+	}
+}
+
+func TestRuleForCrossingCase(t *testing.T) {
+	set, err := load(t, []string{"memory", "identity"}, map[string]string{"memory": memoryJSON, "identity": identityJSON})
+	if err != nil {
+		t.Fatal(err)
+	}
+	man, k, ok := set.RuleFor("memory", "preference")
+	if !ok || man.Name != "identity" || len(k.Fields) != 1 || k.Fields[0] != "statement" {
+		t.Errorf("crossing case: man=%+v k=%+v ok=%v, want identity's preference kind", man, k, ok)
+	}
+}
+
+func TestRuleForNonCrossingWorkingMemoryCase(t *testing.T) {
+	set, err := load(t, []string{"memory", "identity"}, map[string]string{"memory": memoryJSON, "identity": identityJSON})
+	if err != nil {
+		t.Fatal(err)
+	}
+	man, k, ok := set.RuleFor("memory", "note")
+	if !ok || man.Name != "memory" || k.FreshnessDays != 0 || len(k.Fields) != 0 {
+		t.Errorf("non-crossing working-memory case: man=%+v k=%+v ok=%v, want memory's own manifest and a zero kind", man, k, ok)
+	}
+}
+
+func TestRuleForCrossingWhenTheGoverningModuleIsNotEnabled(t *testing.T) {
+	set, err := load(t, []string{"memory"}, map[string]string{"memory": memoryJSON})
+	if err != nil {
+		t.Fatal(err)
+	}
+	man, k, ok := set.RuleFor("memory", "preference")
+	if !ok || man.Name != "memory" || len(k.Fields) != 0 || k.FreshnessDays != 0 {
+		t.Errorf("identity not enabled: man=%+v k=%+v ok=%v, want the working-memory manifest and a zero kind", man, k, ok)
 	}
 }
 
