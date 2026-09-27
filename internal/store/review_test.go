@@ -102,6 +102,38 @@ func TestCorrectedReplacesContentAndIsValidatedLikeAWrite(t *testing.T) {
 	}
 }
 
+// A.1: the question reaches git in the commit message, so it is checked the
+// same way a name, description, body or field is (spec §11).
+func TestReviewRefusesAQuestionThatLooksLikeACredential(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	writeValue(t, s, "identity/value/v.md", "v")
+	before := run(t, s.Dir, "rev-parse", "HEAD")
+	question := "is " + "password: " + strings.Repeat("x", 20) + " still right?"
+	_, err := s.Review("identity/value/v.md", question, Answer{Verdict: Confirmed}, "test-machine")
+	if err == nil || !strings.Contains(err.Error(), "password") {
+		t.Fatalf("a credential-shaped question must be refused, naming the shape: %v", err)
+	}
+	if run(t, s.Dir, "rev-parse", "HEAD") != before {
+		t.Error("HEAD moved on a refused review")
+	}
+}
+
+// The correction path already checked a.Body for a credential shape; this was
+// the missing test for it.
+func TestReviewRefusesACorrectedBodyThatLooksLikeACredential(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	writeValue(t, s, "identity/value/v.md", "v")
+	before := run(t, s.Dir, "rev-parse", "HEAD")
+	body := "the " + "api_key: " + strings.Repeat("x", 20) + " changed"
+	_, err := s.Review("identity/value/v.md", "Still?", Answer{Verdict: Corrected, Body: body}, "test-machine")
+	if err == nil || !strings.Contains(err.Error(), "correction") {
+		t.Fatalf("a credential-shaped correction body must be refused: %v", err)
+	}
+	if run(t, s.Dir, "rev-parse", "HEAD") != before {
+		t.Error("HEAD moved on a refused review")
+	}
+}
+
 func TestReviewRefusesWhatItCannotReview(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
 	writeValue(t, s, "identity/value/v.md", "v")

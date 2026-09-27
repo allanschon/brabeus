@@ -38,6 +38,9 @@ func (s *Store) Review(rel, question string, a Answer, caller string) (string, e
 	if question == "" {
 		return "", fmt.Errorf("a review carries the question that was asked; none was given")
 	}
+	if shape := credentialShape(question); shape != "" {
+		return "", fmt.Errorf("refused: the question looks like it contains %s; credentials never enter the record (spec §11)", shape)
+	}
 	switch a.Verdict {
 	case Confirmed, Corrected, Retired, Later:
 	default:
