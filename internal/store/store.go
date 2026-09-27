@@ -384,6 +384,25 @@ func (s *Store) Read(rel string) (string, error) {
 	return string(b), nil
 }
 
+// Visibility is what a caller may not see, decided once per session from the
+// caller's class and the module set (spec §11) and, for search, the profile
+// asked for (§1.1). It is orthogonal to scope: scope says where a record
+// applies, visibility says who may read its module.
+type Visibility struct {
+	HideModules  map[string]bool // modules whose records, entries and vocabulary are withheld
+	HideUntagged bool            // also withhold records with no module (pre-migration files)
+}
+
+// Hides reports whether records of module are withheld. The empty module —
+// a file the migration has not tagged — is withheld only when HideUntagged
+// is set, so the person's own sessions still see a store mid-migration.
+func (v Visibility) Hides(module string) bool {
+	if module == "" {
+		return v.HideUntagged
+	}
+	return v.HideModules[module]
+}
+
 // SearchFilter narrows a search before ranking. An empty field means "any".
 type SearchFilter struct {
 	Scope  string // exact scope, e.g. machine/desk
@@ -391,9 +410,13 @@ type SearchFilter struct {
 	Kind   string // exact kind, e.g. trap
 	Prefix string // path prefix, e.g. infra/
 	Keep   func(scope string) bool
+	Visibility
 }
 
 func (f SearchFilter) keeps(d *retrieval.Doc) bool {
+	if f.Hides(d.Module) {
+		return false
+	}
 	if f.Scope != "" && !strings.EqualFold(d.Scope, f.Scope) {
 		return false
 	}
@@ -432,17 +455,23 @@ type Vocabulary struct {
 	Prefixes []string `json:"prefixes" jsonschema:"every top-level directory in use"`
 }
 
-func (s *Store) Vocabulary() Vocabulary {
+// Vocabulary reports what the store holds, with hidden modules not counted,
+// listed or paired (spec §11): a consumer's menu never names what it may not
+// read.
+func (s *Store) Vocabulary(v Visibility) Vocabulary {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	v := Vocabulary{}
+	out := Vocabulary{}
 	if s.index == nil {
-		return v
+		return out
 	}
 	scopes, modules, kinds, prefixes := map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for i := range s.index.Docs {
 		d := &s.index.Docs[i]
-		v.Memories++
+		if v.Hides(d.Module) {
+			continue
+		}
+		out.Memories++
 		if d.Scope != "" {
 			scopes[d.Scope] = true
 		}
@@ -456,8 +485,26 @@ func (s *Store) Vocabulary() Vocabulary {
 			prefixes[dir] = true
 		}
 	}
-	v.Scopes, v.Modules, v.Kinds, v.Prefixes = sortedKeys(scopes), sortedKeys(modules), sortedKeys(kinds), sortedKeys(prefixes)
-	return v
+	out.Scopes, out.Modules, out.Kinds, out.Prefixes = sortedKeys(scopes), sortedKeys(modules), sortedKeys(kinds), sortedKeys(prefixes)
+	return out
+}
+
+// Peek reads one file's frontmatter without the lock ordering Records needs.
+// It is the gate read for read, delete and review: scope and module, before
+// the content is touched. False for anything that is not a readable file.
+func (s *Store) Peek(rel string) (Record, Meta, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	full, err := resolvePath(s.Dir, rel)
+	if err != nil {
+		return Record{}, Meta{}, false
+	}
+	b, err := os.ReadFile(full)
+	if err != nil {
+		return Record{}, Meta{}, false
+	}
+	r, meta := ParseRecord(string(b))
+	return r, meta, true
 }
 
 func sortedKeys(m map[string]bool) []string {

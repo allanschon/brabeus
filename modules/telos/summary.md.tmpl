@@ -1,0 +1,16 @@
+telos:
+{{- range first 1 (.Kind "mission")}}
+- mission: {{index .Fields "statement"}}
+{{- end}}
+{{- range first 4 (.Kind "goal")}}
+- {{.ID}} {{index .Fields "title"}} by {{index .Fields "by"}}{{if .Reviewed.IsZero}} (unconfirmed){{else}} (reviewed {{date .Reviewed}}){{end}}
+{{- end}}
+{{- range first 1 (.Kind "problem")}}
+- problem: {{index .Fields "statement"}}
+{{- end}}
+{{- range first 1 (.Kind "strategy")}}
+- strategy: {{index .Fields "statement"}}
+{{- end}}
+{{- range first 1 (.Kind "decision")}}
+- decided: {{index .Fields "decided"}} (revisit {{index .Fields "revisit"}})
+{{- end}}

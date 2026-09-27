@@ -26,3 +26,8 @@ enforces the kinds on writes, and rendering the summaries lands with the context
 Five modules ship: `memory` under `working-memory` — the assistant's per-machine working notes,
 and the only module with scope keys — and four core modules under `ratified-record`: `identity`,
 `telos`, `health` and `finance`. See §7 for what each holds.
+
+Each of the four ratified-record modules ships `summary.md.tmpl`, a `text/template` over
+`internal/block.Data`. The custom functions are `first`, `date` and `age`; `text/template`'s own
+builtins (`index`, `or`, `printf` and the rest) are available as always. Nothing else is added
+deliberately.
