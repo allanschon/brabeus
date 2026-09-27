@@ -9,7 +9,9 @@
 # THE ROUTING IS ENFORCED, NOT DESCRIBED. The design axiom: "You should not have to remember
 #    anything. If the design requires that, the design is wrong." A CLAUDE.md line asking for the
 #    store is advisory, and the measured result of advisory was 73 files accumulating in scratch
-#    over nine days with none promoted. So the wrong path is made UNAVAILABLE.
+#    over nine days with none promoted. So the wrong path is made UNAVAILABLE. CONDITIONAL SINCE
+#    M1: enforced only where a working-memory module is enabled, decided per session from the
+#    kernel's profiles.
 #
 # BOTH ARMS ARE REQUIRED. Measured across 30 transcripts on 2026-09-06: Bash wrote memory
 #    MORE often than Write did — 20 calls against 18 — because the MEMORY.md index is appended
@@ -29,6 +31,18 @@ set -uo pipefail
 
 payload=$(cat)
 tool=$(printf '%s' "$payload" | jq -r '.tool_name // empty' 2>/dev/null)
+
+# CONDITIONAL SINCE M1. hooks.json is static, so the guard decides here. The session-start
+# hook writes the kernel's profiles to this file; scratch is denied only where a
+# working-memory module is enabled. No file means the kernel was unreachable, and a
+# session must not lose its store and its scratch at once: allow.
+RUNTIME="${XDG_RUNTIME_DIR:-/tmp/brabeus-$(id -u)}/brabeus"
+sid=$(printf '%s' "$payload" | jq -r '.session_id // empty' 2>/dev/null)
+PROFILES="$RUNTIME/profiles"
+[ -n "$sid" ] && [ -f "$RUNTIME/profiles-$sid" ] && PROFILES="$RUNTIME/profiles-$sid"
+if ! grep -qx 'working-memory' "$PROFILES" 2>/dev/null; then
+  exit 0
+fi
 
 deny() {
   jq -cn --arg r "$1" \

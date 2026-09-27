@@ -87,7 +87,8 @@ claude plugin install brabeus
 ```
 
 Then set `BRABEUS_URL` to your kernel's address — the plugin's `.mcp.json` reads it from the
-environment.
+environment. `bash plugins/brabeus/hooks/test.sh` checks a machine has the tooling the hooks
+need (bash, jq, curl, python3) before you rely on them there.
 
 ## Documents
 

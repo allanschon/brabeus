@@ -14,12 +14,20 @@ set -uo pipefail
 GUARD="${1:-$(dirname "${BASH_SOURCE[0]}")/brabeus-write-guard.sh}"
 M="$HOME/.claude/projects/$(printf '%s' "$PWD" | sed 's|/|-|g')/memory"
 
+# The guard decides per session from the kernel's profiles. The session-start hook
+# writes this file; the tests write it themselves so the guard is tested alone.
+export XDG_RUNTIME_DIR="$(mktemp -d)"
+trap 'rm -rf "$XDG_RUNTIME_DIR"' EXIT
+PROFILES="$XDG_RUNTIME_DIR/brabeus/profiles"
+mkdir -p "$(dirname "$PROFILES")"
+printf 'working-memory\nratified-record\n' > "$PROFILES"
+
 pass=0; fail=0
 check() { # $1=want  $2=name  $3=tool  $4=payload-field-value
   local want="$1" name="$2" tool="$3" val="$4" out got key=file_path
   [ "$tool" = Bash ] && key=command
-  out=$(jq -cn --arg t "$tool" --arg k "$key" --arg v "$val" \
-        '{tool_name:$t, tool_input:{($k):$v}}' | bash "$GUARD" 2>/dev/null)
+  out=$(jq -cn --arg t "$tool" --arg k "$key" --arg v "$val" --arg s "${SID:-}" \
+        '{tool_name:$t, tool_input:{($k):$v}} + (if $s != "" then {session_id:$s} else {} end)' | bash "$GUARD" 2>/dev/null)
   if [ -z "$out" ]; then got=allow
   else got=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision'); fi
   if [ "$got" = "$want" ]; then pass=$((pass+1)); printf 'ok   %-46s %s\n' "$name" "$got"
@@ -84,6 +92,19 @@ EOF"
 check deny  "heredoc HEADER still targets memory" Bash "cat > $M/a.md <<'EOF'
 harmless body
 EOF"
+
+# ── the guard is conditional on the kernel's profiles ───────────────────────────────────────
+printf 'ratified-record\n' > "$PROFILES"
+check allow "ratified-only deployment allows scratch" Write "$M/some-fact.md"
+check allow "ratified-only deployment allows bash"    Bash  "echo hi > $M/a.md"
+rm -f "$PROFILES"
+check allow "no profiles file (kernel unreachable) allows" Write "$M/some-fact.md"
+printf 'working-memory\n' > "$PROFILES"
+check deny  "working-memory listed denies again"     Write "$M/some-fact.md"
+# Per-session file wins over the shared one, and only for that session.
+printf 'ratified-record\n' > "$XDG_RUNTIME_DIR/brabeus/profiles-s1"
+SID=s1 check allow "own session file (ratified only) allows"  Write "$M/some-fact.md"
+SID=s2 check deny  "another session falls back to shared"     Write "$M/some-fact.md"
 
 echo
 echo "$((pass+fail)) cases · $pass ok · $fail failed"
