@@ -86,8 +86,25 @@ claude plugin marketplace add allanschon/brabeus
 claude plugin install brabeus
 ```
 
-Then set `BRABEUS_URL` to your kernel's address — the plugin's `.mcp.json` reads it from the
-environment.
+Then set `BRABEUS_URL` to your kernel's base address (scheme, host, port — no path). The
+plugin's `.mcp.json` appends `/mcp` to it for the tools, and the SessionStart hook appends
+`/healthz` and `/context`. `bash plugins/brabeus/hooks/test.sh` checks a machine has the
+tooling the hooks need (bash, jq, curl, python3) before you rely on them there.
+
+Set `BRABEUS_TOKEN` if your kernel runs token identity mode; the hooks send it as
+`Authorization: Bearer $BRABEUS_TOKEN`. Leave it unset where identity comes from the
+network itself instead — no header is sent.
+
+Every session start fetches the kernel's `/context` block and puts it first in the
+session's context, with a three-sentence routing reminder under it; if the kernel is
+unreachable the session still starts, just without the block. The write guard denies writing memory
+into per-machine scratch only where the kernel reports a working-memory module enabled for
+this session — when the kernel is unreachable or reports none, scratch is allowed rather
+than leaving a session with neither the shared store nor a local fallback.
+
+Two skills ship with the plugin: `/health` reports whether the kernel and guard are
+working on this machine, and `/interview` asks the top item on the kernel's agenda and
+records the person's answer.
 
 ## Documents
 

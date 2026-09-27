@@ -12,6 +12,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: ./ci.sh
 
+  plugin-hooks:
+    # The Go container above has no jq or python3; the hooks and their tests need
+    # both, so this job runs on the bare runner instead.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: bash plugins/brabeus/hooks/test.sh
+
   leakcheck:
     runs-on: ubuntu-latest
     steps:

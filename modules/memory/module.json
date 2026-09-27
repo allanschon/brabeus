@@ -9,7 +9,7 @@
   "kinds": {
     "note": {"fields": []},
     "trap": {"fields": []},
-    "preference": {"fields": []},
+    "preference": {"fields": [], "timeless": true},
     "project": {"fields": []}
   },
   "adapters": ["manual"],
