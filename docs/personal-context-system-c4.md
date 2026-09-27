@@ -1,6 +1,6 @@
 # The personal context system — C4 diagrams
 
-Companion to [`personal-context-system-v1.md`](personal-context-system-v1.md) at v1.4. These
+Companion to [`personal-context-system-v1.md`](personal-context-system-v1.md) at v1.5. These
 diagrams say the same thing as the spec at four altitudes; where they disagree, the spec wins.
 Names are the spec's descriptive ones. Written 2026-09-26; nothing is built.
 

@@ -7,7 +7,7 @@ the umpire at the Greek games.
 
 ## Status
 
-Specified at v1.4 (`docs/personal-context-system-v1.md`). Nothing beyond the kernel is built yet.
+Specified at v1.5 (`docs/personal-context-system-v1.md`). Nothing beyond the kernel is built yet.
 This is milestone M0: the public repository seeded with the kernel, the plugin, the five module
 manifests, a synthetic test corpus and the specification itself. See §14 for what comes next.
 
@@ -17,8 +17,9 @@ manifests, a synthetic test corpus and the specification itself. See §14 for wh
   repository over MCP with hybrid (lexical + dense) retrieval.
 - **The plugin** — a Claude Code plugin: a routing guard, an offline outbox drain, MCP server
   registration and a `/health` skill.
-- **The modules** — manifests for the five modules the spec ships (`memory`, `identity`, `telos`,
-  `health`, `finance`), as documents of intent; the module contract itself is not yet enforced.
+- **The modules** — `module.json` manifests for the five modules the spec ships (`memory`,
+  `identity`, `telos`, `health`, `finance`). The kernel loads and validates the enabled set on
+  startup; enforcing kinds on writes and rendering the context block follow in M1.
 - **The documents** — the full specification, a C4 diagram set, and a plain-language description.
 
 ## Running the kernel

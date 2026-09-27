@@ -1,0 +1,33 @@
+{
+  "name": "telos",
+  "version": 1,
+  "profile": "ratified-record",
+  "priority": 10,
+  "budget_bytes": 600,
+  "audience": "self",
+  "onboarding": ["mission", "goal", "problem"],
+  "kinds": {
+    "mission": {"fields": ["statement"], "freshness_days": 365,
+                "interview": "Still the reason you're doing this? Anything sharpen it?",
+                "first": "What are you here to do?"},
+    "goal": {"fields": ["id", "title", "ideal", "by"], "optional": ["claims", "serves", "notes"],
+             "freshness_days": 90, "interview": "Still right? Progress since {reviewed}?",
+             "first": "What are you working toward, and by when?"},
+    "problem": {"fields": ["statement"], "freshness_days": 120,
+                "interview": "Still in your way? Changed shape?",
+                "first": "What is in your way?"},
+    "challenge": {"fields": ["statement"], "freshness_days": 120,
+                  "interview": "Still true? Still hard for the same reason?"},
+    "strategy": {"fields": ["statement"], "freshness_days": 120,
+                 "interview": "Still the plan? Has the evidence changed it?"},
+    "current": {"fields": ["dimension", "text"], "freshness_days": 90,
+                "interview": "Where are you now on {dimension}?"},
+    "ideal": {"fields": ["dimension", "text"], "freshness_days": 365,
+              "interview": "Still where you want to end up on {dimension}?"},
+    "decision": {"fields": ["decided", "alternatives", "prediction", "confidence", "worst_case", "revisit"],
+                 "interview": "The revisit date passed. Did the prediction hold?"}
+  },
+  "summary": "summary.md.tmpl",
+  "adapters": ["tracker", "forge", "date", "manual"],
+  "skills": []
+}

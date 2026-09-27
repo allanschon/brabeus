@@ -13,6 +13,10 @@ FROM alpine:3.21
 RUN apk add --no-cache git openssh-client ca-certificates tini
 COPY --from=build /out/brabeus /usr/local/bin/brabeus
 
+# The shipped modules. A deployment that writes its own mounts a directory
+# over this path, or points BRABEUS_MODULES_DIR elsewhere.
+COPY modules/ /etc/brabeus/modules/
+
 # Runs as root deliberately: the deploy key is root:root 600 on the host
 # and is bind-mounted read-only. Giving the key a second owner to satisfy a
 # non-root container would widen who can read it on the host, which is the

@@ -1,0 +1,17 @@
+{
+  "name": "finance",
+  "version": 1,
+  "profile": "ratified-record",
+  "priority": 25,
+  "budget_bytes": 350,
+  "audience": "self",
+  "kinds": {
+    "account": {"fields": ["statement"], "freshness_days": 120},
+    "obligation": {"fields": ["statement", "due"], "freshness_days": 90, "interview": "Still owed? Still the same terms?"},
+    "target": {"fields": ["statement", "by"], "freshness_days": 120, "interview": "Still the target? Still on track?"},
+    "metric": {"fields": ["statement", "value", "measured"], "freshness_days": 90}
+  },
+  "summary": "summary.md.tmpl",
+  "adapters": ["manual"],
+  "skills": []
+}

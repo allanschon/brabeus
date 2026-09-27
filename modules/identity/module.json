@@ -1,0 +1,24 @@
+{
+  "name": "identity",
+  "version": 1,
+  "profile": "ratified-record",
+  "priority": 5,
+  "budget_bytes": 400,
+  "audience": "self",
+  "onboarding": ["value", "preference", "fact", "belief"],
+  "kinds": {
+    "fact": {"fields": ["statement"], "freshness_days": 365, "interview": "Still true?",
+             "first": "What should every session know about you that is simply true?"},
+    "belief": {"fields": ["statement"], "freshness_days": 365, "interview": "Do you still hold this?",
+               "first": "What do you hold to be true that shapes how you work?"},
+    "value": {"fields": ["statement"], "freshness_days": 365,
+              "interview": "Still one of the things you weigh decisions against?",
+              "first": "What do you weigh decisions against? Name one."},
+    "preference": {"fields": ["statement"], "freshness_days": 120,
+                   "interview": "Still how you want to be worked with?",
+                   "first": "How do you want to be worked with?"}
+  },
+  "summary": "summary.md.tmpl",
+  "adapters": ["manual"],
+  "skills": []
+}

@@ -1,8 +1,8 @@
-# A personal AI context system — v1.4 specification
+# A personal AI context system — v1.5 specification
 
 **Working name: Brabeus.** See §16.
 
-**Status: v1.4. M0 shipped this repository's first commits — the kernel and the plugin; see §14.**
+**Status: v1.5. M0 shipped this repository's first commits — the kernel and the plugin; see §14.**
 It describes a system built on the kernel this repository already contains
 — a private store with hybrid retrieval, a Claude Code plugin and a deploy agent. The kernel
 has no opinions about content; everything it stores belongs to a module, and every module runs
@@ -293,9 +293,10 @@ Added fields:
 | `id` | a stable short identifier for kinds that need to be referred to across edits (`G3` stays `G3` when edited or retired) |
 | `reviewed` | the date the person last confirmed the content. Moved only by the `review` operation (§9), never by `write`; distinct from `updated`, which any write bumps |
 
-Path: `<module>/<kind>/<slug>.md`. A `working-memory` module may add scope keys the plugin
-resolves — `memory/project/<remote-slug>/<slug>.md` — and declares that in its manifest. There is
-no unstructured tier: every record belongs to a module, and a file without one is refused.
+Path: for a `ratified-record` module, `<module>/<kind>/<slug>.md`. A `working-memory` module
+declares its layout (§6): `kind`, the same rule, or `free`, the store's existing tree, in which
+case the module also declares the scope keys the plugin resolves. There is no unstructured tier:
+every record belongs to a module, and a file without one is refused.
 
 **One repository per kernel instance, in this version.** A kernel serves one root, which is one
 private repository. Records for a different set of people are a different repository (§3.8) and
@@ -317,28 +318,31 @@ data.
 
 ## 6. The module contract
 
-`module.yaml` at the module root:
+`module.json` at the module root. JSON rather than YAML so the kernel parses it with its standard
+library and refuses any key it does not know (v1.5):
 
-```yaml
-name: telos
-version: 1
-profile: ratified-record   # working-memory | ratified-record — the kernel's closed set (§1.1)
-priority: 10            # order in the context block; lower renders first
-budget_bytes: 700       # this module's share of the 2 KB block; the kernel refuses a set that overflows
-audience: self          # who may read: self (the person's own sessions) or any (every consumer)
-kinds:
-  goal:
-    fields: [id, title, ideal, by]          # required
-    optional: [claims, serves, notes]       # serves: the identity/value ids this goal serves
-    freshness_days: 90
-    interview: "Still right? Progress since {reviewed}?"
-  belief:
-    fields: [statement]
-    freshness_days: 365
-    interview: "Do you still hold this?"
-summary: summary.md.tmpl   # renders this module's part of the context block
-adapters: [tracker, forge, date, manual]   # evidence adapters the module's claims may use
-skills: [ ]                # optional, loaded by the plugin
+```json
+{
+  "name": "telos",
+  "version": 1,
+  "profile": "ratified-record",
+  "priority": 10,
+  "budget_bytes": 600,
+  "audience": "self",
+  "kinds": {
+    "goal": {
+      "fields": ["id", "title", "ideal", "by"],
+      "optional": ["claims", "serves", "notes"],
+      "freshness_days": 90,
+      "interview": "Still right? Progress since {reviewed}?",
+      "first": "What are you working toward, and by when?"
+    },
+    "belief": {"fields": ["statement"], "freshness_days": 365, "interview": "Do you still hold this?"}
+  },
+  "summary": "summary.md.tmpl",
+  "adapters": ["tracker", "forge", "date", "manual"],
+  "skills": []
+}
 ```
 
 The kernel validates the manifest on load and refuses a module whose manifest it does not
@@ -359,6 +363,16 @@ consumers says so; a core module may not.
 | interview prompts and summary template | whether records are rendered or searched |
 | adapters, budget, priority, layout keys | the audience default, and for core modules the audience itself |
 | which profile it runs under | what the profile means |
+
+Keys by profile. A `ratified-record` module declares `budget_bytes` and `summary` and may not
+declare `scope_keys`, `layout` or `legacy_types`. A `working-memory` module declares none of the
+former — it is never in the block — and may declare `scope_keys`, a `layout` of `free` (the path
+rule is the store's own tree) or `kind` (`<module>/<kind>/<slug>.md`, the default), and
+`legacy_types`, the map the one-time migration (§5) uses. Per kind, `interview` and
+`freshness_days` are optional; `first` is the question asked when nothing of the kind is on file
+(§9); `timeless` exempts the kind from the freshness lint (§1.1). A `ratified-record` module's
+`onboarding` lists the kinds to ask for, in order, when none of that kind is on file; each named
+kind must carry `first`. `id` is the one reserved record field a kind may also declare.
 
 A module never carries credentials. If a module's adapter needs a token, the token is the
 deployment's configuration and the adapter reads it from the environment.
@@ -742,6 +756,18 @@ directly; two larger things opened rather than decided, because each carries a d
 | R | `working-memory` freshness is no longer "none": a record is timeless, dated, or a pointer, and `/health` lints it | §1.1, §4.2 |
 | S | `telos` gains a `decision` kind — alternatives, prediction, confidence, worst case, revisit date — whose revisit date is a `date` claim | §7 |
 | T | automatic capture for working memory, self-maintenance of the store, and portability beyond Claude Code are opened in §15 | §15 |
+
+### Changes in v1.5
+
+Decided 2026-09-27, while planning M1, because the kernel's loader forced each one.
+
+| | change | sections |
+|---|---|---|
+| U | manifests are `module.json`; unknown keys refuse the module | §6 |
+| V | the path rule is per profile; a `working-memory` module declares `layout` and, for `free`, its scope keys | §5, §6 |
+| W | `first` and `timeless` per kind, `onboarding` per ratified-record module; `interview` and `freshness_days` optional | §6, §9 |
+| X | `legacy_types` on the `working-memory` module that adopts pre-module records; the migration reads it | §5, §6 |
+| Y | a `working-memory` module has no budget and no summary; the agenda line reserves 256 bytes of the 2 KB | §6, §10 |
 
 ## Sources
 
