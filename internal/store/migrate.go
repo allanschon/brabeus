@@ -60,11 +60,10 @@ func (s *Store) Migrate(caller string) (MigrateReport, error) {
 		}
 		// A kernel key present but unparseable is a problem Migrate cannot
 		// map either: composing anyway would silently drop it, and only a
-		// review may move reviewed/retired/snoozes (§9).
+		// review may move reviewed/retired/snoozes (§9). Same helper Write and
+		// Review refuse with, so the three agree on the wording.
 		if len(meta.Malformed) > 0 {
-			for _, key := range meta.Malformed {
-				problems = append(problems, fmt.Sprintf("%s: %s is malformed; fix the file by hand", rel, key))
-			}
+			problems = append(problems, rel+": "+malformedError(parseFrontmatter(string(b)), meta.Malformed).Error())
 			return nil
 		}
 		// Normalised the same way Write normalises r.Type before its own
@@ -111,24 +110,12 @@ func (s *Store) Migrate(caller string) (MigrateReport, error) {
 	}
 	rep.Retagged = len(changes)
 
-	if _, err := s.git(s.Dir, "add", "-A"); err != nil {
-		return rep, err
-	}
 	msg := fmt.Sprintf("migrate: tag %d records with module and kind\n\nEvery record that carried a pre-module type now names its module and kind, through the memory module's legacy_types. Paths unchanged; updated stamps kept, except %d that had none and were given one. Migrated through the kernel at %s.",
 		rep.Retagged, rep.Stamped, time.Now().UTC().Format(time.RFC3339))
-	if _, err := s.git(s.Dir, "commit", "--quiet", "--author", authorFor(caller), "-m", msg); err != nil {
-		return rep, err
-	}
-	if _, err := s.git(s.Dir, "push", "--quiet", "origin", s.Branch); err != nil {
-		return rep, err
-	}
-	if err := s.reindex(); err != nil {
-		return rep, err
-	}
-	head, err := s.git(s.Dir, "rev-parse", "--short", "HEAD")
+	head, err := s.commitAndPush(msg, caller)
 	if err != nil {
 		return rep, err
 	}
-	rep.Commit = strings.TrimSpace(head)
+	rep.Commit = head
 	return rep, nil
 }

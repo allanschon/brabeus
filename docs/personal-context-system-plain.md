@@ -2,8 +2,8 @@
 
 This describes the system specified in [`personal-context-system-v1.md`](personal-context-system-v1.md)
 at version 1.5, for someone who might use it rather than build it. It assumes you have used an
-AI assistant and know it forgets you between conversations. Nothing described here is built yet;
-this is what it will do when it is.
+AI assistant and know it forgets you between conversations. The kernel through M1's record,
+migration, review and agenda is built; the context block, plugin changes and deployment are in progress.
 
 ## The problem it solves
 

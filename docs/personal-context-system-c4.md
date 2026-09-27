@@ -2,7 +2,7 @@
 
 Companion to [`personal-context-system-v1.md`](personal-context-system-v1.md) at v1.5. These
 diagrams say the same thing as the spec at four altitudes; where they disagree, the spec wins.
-Names are the spec's descriptive ones. Written 2026-09-26; nothing is built.
+Names are the spec's descriptive ones. Written 2026-09-26; the kernel through M1's record, migration, review and agenda is built, and the context block, plugin changes and deployment are in progress.
 
 The diagrams follow the [C4 model](https://c4model.com/): a context diagram for who uses the
 system and what it talks to; a container diagram for the separately deployable pieces; a

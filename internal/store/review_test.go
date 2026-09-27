@@ -237,6 +237,29 @@ func TestReviewedMovesOnlyOnReviewCommits(t *testing.T) {
 	}
 }
 
+// F: the four writers share one git tail (commitAndPush), whose guard is a
+// backstop — a second Confirmed under the same frozen clock recomposes the
+// same bytes, so there is nothing to commit.
+func TestASecondIdenticalConfirmedUnderAFrozenClockMakesNoCommit(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	writeValue(t, s, "identity/value/v.md", "v")
+	setClock(t, "2026-10-01T09:00:00Z")
+	if _, err := s.Review("identity/value/v.md", "Still?", Answer{Verdict: Confirmed}, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	before := run(t, s.Dir, "rev-parse", "HEAD")
+	commit, err := s.Review("identity/value/v.md", "Still?", Answer{Verdict: Confirmed}, "test-machine")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if commit != "no change" {
+		t.Errorf("commit = %q, want \"no change\"", commit)
+	}
+	if run(t, s.Dir, "rev-parse", "HEAD") != before {
+		t.Error("a second identical confirmation must not commit")
+	}
+}
+
 func TestRecordsEnumeratesEverythingWithMeta(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
 	writeValue(t, s, "identity/value/a.md", "a")
