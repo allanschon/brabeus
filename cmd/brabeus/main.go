@@ -16,11 +16,13 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/allanschon/brabeus/internal/identity"
+	"github.com/allanschon/brabeus/internal/module"
 	"github.com/allanschon/brabeus/internal/retrieval"
 	"github.com/allanschon/brabeus/internal/server"
 	"github.com/allanschon/brabeus/internal/store"
@@ -41,6 +43,16 @@ func main() {
 	if err := store.PrepareKnownHosts(knownHosts); err != nil {
 		log.Fatalf("known_hosts: %v", err)
 	}
+
+	// The enabled modules and their manifests. The kernel refuses to start on
+	// a set it does not understand (spec §6); a wrong set is a deployment
+	// error, and finding it at the first write would be later and quieter.
+	set, err := module.Load(env("BRABEUS_MODULES_DIR", "/etc/brabeus/modules"),
+		strings.Split(env("BRABEUS_MODULES", "memory"), ","))
+	if err != nil {
+		log.Fatalf("modules: %v", err)
+	}
+	log.Printf("modules: %s (profiles %v)", strings.Join(set.Names(), ","), set.Profiles())
 
 	// The dense leg is OFF unless a sidecar is named. That is deliberate:
 	// the server must remain a working keyword-only store when the sidecar is
@@ -129,7 +141,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", guarded)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "ok %s identity=%s\n", server.Version, id.Mode())
+		fmt.Fprint(w, healthz(server.Version, id.Mode(), set))
 	})
 
 	log.Printf("brabeus %s listening on %s", server.Version, addr)
