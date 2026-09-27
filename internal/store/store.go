@@ -634,7 +634,7 @@ func checkFields(kind module.Kind, fields map[string]string) error {
 	return nil
 }
 
-// checkLayout is the path rule per profile (decision D4). memoryPath has
+// checkLayout is the path rule per profile (spec §5, §6). memoryPath has
 // already canonicalised rel and refused the structural files. The path's
 // kind segment must be the record's kind, or the path and the frontmatter
 // could disagree about what a file is.
@@ -683,7 +683,8 @@ func (s *Store) Write(rel string, r Record, caller string) (string, error) {
 	r.Type = strings.ToLower(strings.TrimSpace(r.Type))
 	r.Module = strings.ToLower(strings.TrimSpace(r.Module))
 	r.Kind = strings.ToLower(strings.TrimSpace(r.Kind))
-	// The deprecated alias (decision D6): type in, module and kind out.
+	// The deprecated alias, accepted until M2 (see Record.Type): type in,
+	// module and kind out.
 	if r.Module == "" && r.Type != "" {
 		m, k, ok := s.modules.LegacyKind(r.Type)
 		if !ok {

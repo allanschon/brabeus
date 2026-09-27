@@ -174,7 +174,7 @@ func TestSearchLimitClampsRatherThanResets(t *testing.T) {
 	}
 }
 
-// The deprecated alias (decision D6) must be visible as deprecated in its own
+// The deprecated `type` alias must be visible as deprecated in its own
 // schema, not merely in a comment nobody outside this repository reads.
 func TestWriteInCarriesModuleKindAndFieldsAndTheDeprecatedAlias(t *testing.T) {
 	for _, f := range []string{"Module", "Kind", "Fields", "Type"} {

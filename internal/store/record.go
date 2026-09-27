@@ -28,8 +28,9 @@ type Record struct {
 	Scope       string
 	Fields      map[string]string
 	Body        string
-	// Type is the pre-module alias (decision D6). Write maps it through the
-	// module set when Module is empty. Removed in M2.
+	// Type is the pre-module alias, accepted until M2 so that clients and queued
+	// outbox files written before modules still land. Write maps it through the
+	// module set when Module is empty.
 	Type string
 }
 
@@ -52,7 +53,7 @@ type Meta struct {
 }
 
 // kernelKeys are the frontmatter keys compose writes itself: module.Reserved
-// plus "type", which predates modules (decision D6) and so is not in that
+// plus "type", which predates modules and so is not in that
 // list. Built from the shared list at init so the two cannot drift apart.
 var kernelKeys = func() map[string]bool {
 	m := map[string]bool{"type": true}

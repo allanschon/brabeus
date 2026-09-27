@@ -327,7 +327,8 @@ func (s *Set) RuleFor(mod, kind string) (Manifest, Kind, bool) {
 }
 
 // LegacyKind maps a pre-module `type` to the module and kind that adopts it,
-// through the first working-memory module that declares it (decision D2).
+// through the first working-memory module that declares it in legacy_types
+// (spec §5, §6).
 func (s *Set) LegacyKind(typ string) (module, kind string, ok bool) {
 	for _, m := range s.Modules {
 		if m.Profile != WorkingMemory {
