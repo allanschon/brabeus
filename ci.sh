@@ -21,7 +21,7 @@ go test -buildvcs=false ./... "$@"
 # Build LAST but still gate on it: vet and test do not link a binary, so a package
 # with no func main passes both while producing no server at all. That false green
 # let an unrunnable commit through on 2026-09-06.
-go build -buildvcs=false -o /dev/null .
+go build -buildvcs=false -o /dev/null ./cmd/brabeus
 
 # ---------------------------------------------------------------------------
 # Backstop: did a plugin's content change without its version changing?
