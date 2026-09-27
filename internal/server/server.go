@@ -51,19 +51,24 @@ func pickRepo(name string, memory, projects *store.Store, consumer bool) (*store
 }
 
 // gate is the shared read-before-touch check for read, delete and review:
-// missing file, then scope, then audience, in that order. refusalFmt takes
+// missing file, then audience, then scope, in that order. refusalFmt takes
 // the path, the record's scope and the caller, in that order, and is the one
 // place the three tools' wording differs.
+//
+// Audience before scope: the scope refusal names the record's machine, which
+// a consumer should not learn about a record it may not read at all — a
+// consumer asking after a machine-scoped record in a hidden module must get
+// the audience wording, never the scope one.
 func gate(st *store.Store, rel, caller string, includeAll bool, audience store.Visibility, refusalFmt string) (store.Record, error) {
 	r, _, ok := st.Peek(rel)
 	if !ok {
 		return store.Record{}, fmt.Errorf("no record at %q", rel)
 	}
-	if !scope.Visible(r.Scope, caller, includeAll) {
-		return store.Record{}, fmt.Errorf(refusalFmt, rel, r.Scope, caller)
-	}
 	if audience.Hides(r.Module) {
 		return store.Record{}, fmt.Errorf("%s is not readable by this caller", rel)
+	}
+	if !scope.Visible(r.Scope, caller, includeAll) {
+		return store.Record{}, fmt.Errorf(refusalFmt, rel, r.Scope, caller)
 	}
 	return r, nil
 }
@@ -160,7 +165,7 @@ func audienceFor(set *module.Set, consumer bool) store.Visibility {
 	v.HideUntagged = true
 	for _, m := range set.Modules {
 		if m.Audience != module.Any {
-			v.HideModules[m.Name] = true
+			v.HideModules[strings.ToLower(m.Name)] = true
 		}
 	}
 	return v
@@ -183,8 +188,8 @@ func hiddenFor(set *module.Set, consumer bool, profile, named string) (store.Vis
 		return v, fmt.Errorf("profile %q: use working-memory (default), ratified-record or all", profile)
 	}
 	for _, m := range set.Modules {
-		if hideProfile != "" && m.Profile == hideProfile && m.Name != named {
-			v.HideModules[m.Name] = true
+		if hideProfile != "" && m.Profile == hideProfile && strings.ToLower(m.Name) != named {
+			v.HideModules[strings.ToLower(m.Name)] = true
 		}
 	}
 	return v, nil

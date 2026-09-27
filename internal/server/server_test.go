@@ -59,8 +59,8 @@ func TestPickRepoRejectsAnUnknownName(t *testing.T) {
 // a consumer is refused it outright, not filtered within it.
 func TestPickRepoRefusesTheMirrorToAConsumer(t *testing.T) {
 	mem, proj := &store.Store{}, &store.Store{}
-	if _, err := pickRepo("projects", mem, proj, true); err == nil {
-		t.Error("a consumer was allowed the projects mirror")
+	if _, err := pickRepo("projects", mem, proj, true); err == nil || !strings.Contains(err.Error(), "not readable by this caller") {
+		t.Errorf("a consumer was allowed the projects mirror, or the wording drifted: %v", err)
 	}
 	if got, err := pickRepo("projects", mem, proj, false); err != nil || got != proj {
 		t.Errorf("a self caller must still get the mirror: got=%v err=%v", got, err)
@@ -211,6 +211,27 @@ func TestAudienceForAConsumerHidesSelfModulesAndUntagged(t *testing.T) {
 	}
 	if !cons.HideUntagged {
 		t.Error("consumer must not see untagged files")
+	}
+
+	// Hide-set keys are lower-cased at insertion: a manifest whose directory
+	// and name are both capitalised must still be hidden under its
+	// lower-cased key, since Module values on disk are not guaranteed to
+	// match a manifest's exact casing.
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "Health"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"name":"Health","version":1,"profile":"ratified-record","priority":1,"budget_bytes":100,
+	  "kinds":{"note":{"fields":[]}},"summary":"summary.md.tmpl"}`
+	if err := os.WriteFile(filepath.Join(dir, "Health", "module.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	capSet, err := module.Load(dir, []string{"Health"})
+	if err != nil {
+		t.Skipf("module.Load rejects a capitalised manifest name/directory, so this case cannot be exercised: %v", err)
+	}
+	if capCons := audienceFor(capSet, true); !capCons.Hides("health") {
+		t.Error("a capitalised module name must still be hidden under its lower-cased key")
 	}
 }
 
@@ -389,6 +410,13 @@ func TestGate(t *testing.T) {
 	if _, err := gate(st, "identity/value/family.md", "desk", false, store.Visibility{HideModules: map[string]bool{"identity": true}}, readScopeRefusal); err == nil ||
 		!strings.Contains(err.Error(), "is not readable by this caller") {
 		t.Errorf("hidden module: %v", err)
+	}
+	// Audience before scope: a hidden module AND a machine-scoped record this
+	// caller cannot see must still report the audience wording, and the error
+	// must never leak the other machine's name through the scope wording.
+	if _, err := gate(st, "infra/laptop.md", "desk", false, store.Visibility{HideModules: map[string]bool{"memory": true}}, readScopeRefusal); err == nil ||
+		!strings.Contains(err.Error(), "is not readable by this caller") || strings.Contains(err.Error(), "other") {
+		t.Errorf("audience must be checked before scope: %v", err)
 	}
 	r, err := gate(st, "identity/value/family.md", "desk", false, store.Visibility{}, readScopeRefusal)
 	if err != nil || r.Name != "family" {

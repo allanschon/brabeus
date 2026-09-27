@@ -40,7 +40,8 @@ to. See `.env.example` for every other variable and its default.
 ## Tools
 
 - **`list`** — memories with their module, kind, scope and one-line description.
-- **`read`** — one memory in full, or a `projects` mirror file.
+- **`read`** — one memory in full, or a `projects` mirror file (the mirror only for the person's
+  own sessions).
 - **`search`** — by relevance, lexical and (with a sidecar) meaning-based. Searches working-memory
   records by default; `profile: ratified-record` or `all` widens it, and naming a module widens it
   for that module alone.
@@ -61,7 +62,8 @@ behind the same identity and auth as `/mcp`, for the plugin's session start.
 
 A caller resolved as a **consumer** — named in `BRABEUS_CONSUMERS`, or unresolved — sees only
 modules whose manifest declares `audience: any`, on every read path: search, read, list, the
-vocabulary and the block. A consumer never writes, deletes or reviews.
+vocabulary and the block, and the `projects` mirror is refused to it entirely. A consumer never
+writes, deletes or reviews.
 
 ## Upgrading a record from before modules
 
