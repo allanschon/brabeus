@@ -8,7 +8,7 @@
 #      guard reads them, so the guard's decision this session matches the
 #      kernel's modules;
 #   3. fetch /context and emit it as the session's first context, with a
-#      three-line routing reminder under it.
+#      three-sentence routing reminder under it.
 #
 # BEST EFFORT, ALWAYS. A session must start whether or not the kernel is up,
 # so every step is bounded by a timeout and every failure is non-fatal. The
@@ -48,16 +48,28 @@ write_profiles() { # $1 = one profile per line
   printf '%s\n' "$1" > "$RUNTIME/profiles" 2>/dev/null || true
   [ -n "$sid" ] && printf '%s\n' "$1" > "$RUNTIME/profiles-$sid" 2>/dev/null || true
 }
-drop_profiles() { rm -f "$RUNTIME/profiles" ${sid:+"$RUNTIME/profiles-$sid"} 2>/dev/null || true; }
+drop_profiles() {
+  # Build the file list as an array (non-empty, so plain expansion is safe) rather than
+  # splicing ${sid:+...} unquoted into the command line, which would let a session id
+  # containing whitespace word-split into more than one path.
+  files=("$RUNTIME/profiles")
+  [ -n "$sid" ] && files+=("$RUNTIME/profiles-$sid")
+  rm -f "${files[@]}" 2>/dev/null || true
+}
 auth=()
 [ -n "${BRABEUS_TOKEN:-}" ] && auth=(-H "Authorization: Bearer $BRABEUS_TOKEN")
+# ${auth[@]+"${auth[@]}"}, not "${auth[@]}": with auth=() and `set -u`, a bare
+# "${auth[@]}" is an unbound-variable error on bash < 4.4 and would abort the
+# hook before it prints JSON — in the no-token case, which is the normal one.
+# The +"..." form expands to nothing when the array is empty, and to the
+# quoted elements otherwise, on every bash.
 
 block=""
 kernel_note=""
-if [ -n "${BRABEUS_URL:-}" ] && health=$(curl -sf --max-time 5 "${auth[@]}" "$BRABEUS_URL/healthz" 2>/dev/null); then
+if [ -n "${BRABEUS_URL:-}" ] && health=$(curl -sf --max-time 5 ${auth[@]+"${auth[@]}"} "$BRABEUS_URL/healthz" 2>/dev/null); then
   # "ok <ver> identity=<mode> modules=<a,b> profiles=<p,q>" → one profile per line.
   write_profiles "$(printf '%s\n' "$health" | sed -n 's/.*profiles=\([^ ]*\).*/\1/p' | tr ',' '\n' | sed '/^$/d')"
-  if ! block=$(curl -sf --max-time 5 "${auth[@]}" "$BRABEUS_URL/context" 2>/dev/null); then
+  if ! block=$(curl -sf --max-time 5 ${auth[@]+"${auth[@]}"} "$BRABEUS_URL/context" 2>/dev/null); then
     block=""
     kernel_note="Kernel answered /healthz but not /context; no context block this session."
   fi

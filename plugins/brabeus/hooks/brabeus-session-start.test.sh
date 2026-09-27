@@ -42,6 +42,14 @@ check "the routing reminder follows"         'printf "%s" "$ctx" | grep -q "brab
 check "profiles file written from healthz"   '[ "$(cat "$PROFILES")" = "$(printf "working-memory\nratified-record")" ]'
 check "per-session profiles file written"    '[ "$(cat "$PROFILES-s1")" = "$(cat "$PROFILES")" ]'
 
+# ── reachable kernel, wrong token: /healthz answers, /context 401s ─────────────────────────────
+out=$(printf '{"session_id":"s1"}' | BRABEUS_URL="http://127.0.0.1:$port" BRABEUS_TOKEN="$(printf 'x%.0s' $(seq 5))" bash "$HOOK")
+ctx=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')
+check "healthz-ok/context-fails: valid JSON"       '[ "$(printf "%s" "$out" | jq -r .hookSpecificOutput.hookEventName)" = SessionStart ]'
+check "healthz-ok/context-fails: says so"          'printf "%s" "$ctx" | grep -q "answered /healthz but not /context"'
+check "healthz-ok/context-fails: profiles written" '[ "$(cat "$PROFILES")" = "$(printf "working-memory\nratified-record")" ]'
+check "healthz-ok/context-fails: routing present"  'printf "%s" "$ctx" | grep -q "brabeus.*write"'
+
 # ── unreachable kernel ───────────────────────────────────────────────────────────────────────
 out=$(printf '{"session_id":"s1"}' | BRABEUS_URL="http://127.0.0.1:1" bash "$HOOK")
 ctx=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')
