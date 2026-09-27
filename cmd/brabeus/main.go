@@ -83,6 +83,17 @@ func main() {
 	// Every write is validated against this set from here on. The mirror below
 	// gets no set: it is read-only and never validates.
 	memory.SetModules(set)
+
+	// One-time, explicit, and removed from the environment once it has run:
+	// the migration is the only thing that rewrites records nobody asked to
+	// change, and it must not be a thing that happens to a restart.
+	if os.Getenv("BRABEUS_MIGRATE") == "1" {
+		rep, err := memory.Migrate("kernel")
+		if err != nil {
+			log.Fatalf("migration: %v", err)
+		}
+		log.Printf("migration: %d retagged (%d given a stamp), %d already tagged, commit %q — unset BRABEUS_MIGRATE", rep.Retagged, rep.Stamped, rep.Tagged, rep.Commit)
+	}
 	log.Printf("memory store ready at %s", memory.Dir)
 
 	// The mirror is optional: the server is useful without it, and failing to
