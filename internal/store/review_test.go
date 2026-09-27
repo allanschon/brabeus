@@ -159,6 +159,42 @@ func TestCorrectedFieldsValidateAgainstTheGoverningKindForACrossingRecord(t *tes
 	}
 }
 
+// Regression: a body-only correction changes nothing about the fields, so it
+// must not be checked against the governing kind's required fields — a
+// memory/preference has none of its own, and identity's preference kind
+// requires "statement", which a body-only correction never claims to supply.
+func TestABodyOnlyCorrectionOnACrossingRecordDoesNotRequireTheGoverningKindsFields(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	if _, err := s.Write("personal/terse.md", Record{Name: "terse", Description: "terse answers", Module: "memory", Kind: "preference", Scope: "global", Body: "Prefers terse answers."}, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Review("personal/terse.md", "Still how you want to be worked with?", Answer{Verdict: Corrected, Body: "Prefers blunt answers."}, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	r, _ := ParseRecord(mustRead(t, filepath.Join(s.Dir, "personal/terse.md")))
+	if strings.TrimSpace(r.Body) != "Prefers blunt answers." {
+		t.Errorf("body = %q, want it replaced", r.Body)
+	}
+}
+
+// The same, for a non-crossing working-memory kind, whose own kind (not
+// RuleFor's zero Kind for it) is what a body-only correction is measured
+// against — trivially satisfied here since memory/note declares no fields,
+// but the path must not be skipped entirely for the wrong reason.
+func TestABodyOnlyCorrectionOnANonCrossingWorkingMemoryRecordSucceeds(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	if _, err := s.Write("personal/note.md", Record{Name: "note", Description: "a note", Module: "memory", Kind: "note", Scope: "global", Body: "note body"}, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Review("personal/note.md", "Still?", Answer{Verdict: Corrected, Body: "revised note body"}, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	r, _ := ParseRecord(mustRead(t, filepath.Join(s.Dir, "personal/note.md")))
+	if strings.TrimSpace(r.Body) != "revised note body" {
+		t.Errorf("body = %q, want it replaced", r.Body)
+	}
+}
+
 func TestReviewRefusesWhatItCannotReview(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
 	writeValue(t, s, "identity/value/v.md", "v")

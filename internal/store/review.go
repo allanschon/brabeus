@@ -106,15 +106,30 @@ func (s *Store) Review(rel, question string, a Answer, caller string) (string, e
 			}
 			r.Fields[k] = v
 		}
-		// A correction is validated and composed against the kind that
-		// governs the record (module.Set.RuleFor), not necessarily its own:
-		// a memory/preference is governed by identity's preference kind
-		// (spec §7), so a correction to it may carry identity's fields.
-		_, govKind, _ := s.modules.RuleFor(r.Module, r.Kind)
-		if err := checkFields(govKind, r.Fields); err != nil {
-			return "", err
+		// Only a correction that actually supplies a field is checked against
+		// a kind at all: a body-only correction changes nothing about the
+		// fields, so it must pass exactly as a plain Write of the same record
+		// would, not be re-validated against a kind whose required fields it
+		// never claimed to touch (a memory/preference body-only correction
+		// was refused for lacking identity's required "statement" before this
+		// fix, though nothing about statement was being corrected).
+		if len(a.Fields) > 0 {
+			// The kind that governs a crossing record differs from its own
+			// (module.Set.RuleFor, spec §7): a memory/preference correction
+			// may carry identity's "statement". Everywhere else, RuleFor's
+			// manifest is the record's own — including a non-crossing
+			// working-memory record, for which RuleFor returns a zero Kind —
+			// so fall back to the record's own kind rather than validate
+			// against one with nothing declared.
+			govMan, govKind, _ := s.modules.RuleFor(r.Module, r.Kind)
+			if govMan.Name == r.Module {
+				govKind = kind
+			}
+			if err := checkFields(govKind, r.Fields); err != nil {
+				return "", err
+			}
+			fieldOrder = append(append([]string{}, govKind.Fields...), govKind.Optional...)
 		}
-		fieldOrder = append(append([]string{}, govKind.Fields...), govKind.Optional...)
 		r.ID = r.Fields["id"]
 		meta.Updated, meta.Reviewed = stamp, stamp
 	case Retired:
