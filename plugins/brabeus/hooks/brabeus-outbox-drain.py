@@ -44,7 +44,8 @@ def parse_outbox_file(text):
     missing = [k for k in REQUIRED if not fields.get(k)]
     if missing:
         raise ValueError("missing " + ", ".join(missing))
-    fields["type"] = fields.get("type", "reference")
+    if not fields.get("module"):
+        fields["type"] = fields.get("type", "reference")
     # Only the FIRST --- pair is frontmatter; the body is markdown and markdown
     # uses --- as a rule.
     fields["body"] = m.group(2).lstrip("\n")
@@ -114,7 +115,8 @@ def mcp_writer(url=None, timeout=20):
         res = rpc({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {
             "name": "write",
             "arguments": {k: memory[k] for k in
-                          ("path", "name", "description", "type", "scope", "body")}}})
+                          ("path", "name", "description", "module", "kind", "type", "scope", "body")
+                          if k in memory}}})
         if not res:
             raise RuntimeError(f"no response from the store for {memory['path']}")
         if res.get("result", {}).get("isError"):

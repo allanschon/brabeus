@@ -39,7 +39,7 @@ deny() {
 REASON='Memory belongs in the shared store, not in this machine'"'"'s scratch directory.
 
 Use the brabeus MCP server instead:
-  write(path, name, description, type, scope, body)
+  write(path, name, description, module, kind, scope, body)
 
 It composes the frontmatter, updates MEMORY.md and pushes to the record'"'"'s repository in one
 call, so the memory is available on every machine rather than only this one.

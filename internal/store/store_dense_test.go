@@ -49,8 +49,8 @@ func (e *blockingEmbedder) Embed(ctx context.Context, texts []string) ([][]float
 
 func writeMemory(t *testing.T, s *Store, path, desc, body string) {
 	t.Helper()
-	if _, err := s.Write(path, Memory{
-		Name: "n", Description: desc, Type: "reference", Scope: "global", Body: body,
+	if _, err := s.Write(path, Record{
+		Name: "n", Description: desc, Module: "memory", Kind: "note", Scope: "global", Body: body,
 	}, "test"); err != nil {
 		t.Fatalf("Write %s: %v", path, err)
 	}
@@ -252,8 +252,8 @@ func TestWriteSucceedsEvenWhenItLooksLikeADuplicate(t *testing.T) {
 	writeMemory(t, s, "personal/a.md", "identical", "first")
 	waitForDense(t, s, denseOn)
 
-	if _, err := s.Write("personal/b.md", Memory{
-		Name: "n", Description: "identical", Type: "reference", Scope: "global", Body: "second",
+	if _, err := s.Write("personal/b.md", Record{
+		Name: "n", Description: "identical", Module: "memory", Kind: "note", Scope: "global", Body: "second",
 	}, "test"); err != nil {
 		t.Fatalf("a near-duplicate write must still succeed: %v", err)
 	}

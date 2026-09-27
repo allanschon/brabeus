@@ -38,6 +38,9 @@ check("parses every field", m["path"] == "infra/a-fact.md" and m["name"] == "a-f
       and m["scope"] == "global" and m["type"] == "reference")
 check("body keeps its own divider", "And more." in m["body"] and m["body"].startswith("The body"))
 
+m2 = drain.parse_outbox_file(GOOD.replace("type: reference", "module: memory\nkind: trap"))
+check("module and kind pass through and type is not invented", m2["module"] == "memory" and m2["kind"] == "trap" and "type" not in m2)
+
 for bad, why in [("no frontmatter at all\n", "missing frontmatter"),
                  ("---\nname: x\n---\n\nbody\n", "missing path"),
                  ("---\npath: a.md\nname: x\n---\n\nbody\n", "missing scope")]:

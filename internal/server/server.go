@@ -104,7 +104,8 @@ type searchIn struct {
 	Repo             string `json:"repo,omitempty" jsonschema:"memory (default) or projects"`
 	Limit            int    `json:"limit,omitempty" jsonschema:"maximum memories to return, default 50"`
 	Scope            string `json:"scope,omitempty" jsonschema:"only this scope, e.g. global or machine/desk; a scope belonging to another machine needs include_all_scopes to return anything"`
-	Type             string `json:"type,omitempty" jsonschema:"only this type: user, feedback, project or reference"`
+	Module           string `json:"module,omitempty" jsonschema:"only this module"`
+	Kind             string `json:"kind,omitempty" jsonschema:"only this kind, e.g. trap"`
 	Prefix           string `json:"prefix,omitempty" jsonschema:"only memories in this directory and below, e.g. infra/"`
 	IncludeAllScopes bool   `json:"include_all_scopes,omitempty" jsonschema:"also search memories scoped to other machines"`
 }
@@ -124,12 +125,15 @@ type deleteOut struct {
 }
 
 type writeIn struct {
-	Path        string `json:"path" jsonschema:"path relative to the repository root, ending in .md"`
-	Name        string `json:"name" jsonschema:"short kebab-case slug, also the display name in the index"`
-	Description string `json:"description" jsonschema:"one line, used to judge relevance during recall"`
-	Type        string `json:"type" jsonschema:"user, feedback, project or reference"`
-	Scope       string `json:"scope" jsonschema:"global, project/<slug> or machine/<host>"`
-	Body        string `json:"body" jsonschema:"the memory itself, markdown, without frontmatter"`
+	Path        string            `json:"path" jsonschema:"path relative to the repository root, ending in .md; a ratified-record module's records live at <module>/<kind>/<slug>.md"`
+	Name        string            `json:"name" jsonschema:"short kebab-case slug, also the display name in the index"`
+	Description string            `json:"description" jsonschema:"one line, used to judge relevance during recall"`
+	Module      string            `json:"module,omitempty" jsonschema:"the module this record belongs to, e.g. memory; list shows what is enabled"`
+	Kind        string            `json:"kind,omitempty" jsonschema:"the module's kind, e.g. note, trap, preference, project"`
+	Fields      map[string]string `json:"fields,omitempty" jsonschema:"the kind's declared fields, required ones included; a working-memory kind has none"`
+	Scope       string            `json:"scope" jsonschema:"global, project/<slug> or machine/<host>"`
+	Body        string            `json:"body" jsonschema:"the record itself, markdown, without frontmatter"`
+	Type        string            `json:"type,omitempty" jsonschema:"deprecated: the pre-module type (user, feedback, project, reference), mapped to a module and kind for one milestone; name module and kind instead"`
 }
 type writeOut struct {
 	Path   string `json:"path"`
@@ -150,7 +154,7 @@ func New(memory, projects *store.Store, caller string) *mcp.Server {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list",
-		Description: "List memories with their scope, type and one-line description. Start here to see what is known.",
+		Description: "List memories with their module, kind, scope and one-line description. Start here to see what is known.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in listIn) (*mcp.CallToolResult, listOut, error) {
 		all, err := memory.List(in.Prefix)
 		if err != nil {
@@ -190,7 +194,7 @@ func New(memory, projects *store.Store, caller string) *mcp.Server {
 		Description: "Search memories by relevance, best first, one result per memory with the line it matched. " +
 			"Ask in your own words and in your own wording - it matches MEANING as well as keywords, so a memory " +
 			"that says \"terse\" is found by asking for \"brief\". Wrap a phrase in double quotes to require it " +
-			"literally, e.g. \"grub.cfg\". Narrow with scope, type or prefix. Set repo=projects to search the " +
+			"literally, e.g. \"grub.cfg\". Narrow with scope, module, kind or prefix. Set repo=projects to search the " +
 			"read-only mirror. An empty result can mean the scope you asked for is not visible to you; " +
 			"include_all_scopes will include it. Check the `dense` field: anything but \"on\" means these results " +
 			"are keyword-only and a paraphrase may have missed.",
@@ -199,7 +203,7 @@ func New(memory, projects *store.Store, caller string) *mcp.Server {
 		if err != nil {
 			return nil, searchOut{}, err
 		}
-		f := store.SearchFilter{Scope: in.Scope, Type: in.Type, Prefix: in.Prefix}
+		f := store.SearchFilter{Scope: in.Scope, Module: in.Module, Kind: in.Kind, Prefix: in.Prefix}
 		// The mirror has no scopes; only memories are filtered.
 		if st == memory {
 			f.Keep = func(sc string) bool { return scope.Visible(sc, caller, in.IncludeAllScopes) }
@@ -213,8 +217,9 @@ func New(memory, projects *store.Store, caller string) *mcp.Server {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "write",
-		Description: "Save a durable memory. Composes the frontmatter, updates MEMORY.md and pushes. " +
-			"Use this for anything worth carrying to another machine or another session. " +
+		Description: "Save a record. Name its module and kind (list shows what is enabled); a ratified-record " +
+			"module's kinds declare required fields, passed in `fields`. Composes the frontmatter, updates the " +
+			"index and pushes. " +
 			"The reply may carry `similar`: existing memories that appear to say the same thing. " +
 			"The write always succeeds - read them and decide whether to merge or delete one, " +
 			"because a duplicate is not a ranking problem and no search change will fix it.",
@@ -230,12 +235,9 @@ func New(memory, projects *store.Store, caller string) *mcp.Server {
 		// being recorded.
 		similar, _ := memory.SimilarTo(in.Description, memory.DuplicateThreshold(), rel)
 
-		commit, err := memory.Write(rel, store.Memory{
-			Name:        in.Name,
-			Description: in.Description,
-			Type:        in.Type,
-			Scope:       in.Scope,
-			Body:        in.Body,
+		commit, err := memory.Write(rel, store.Record{
+			Name: in.Name, Description: in.Description, Module: in.Module, Kind: in.Kind,
+			Fields: in.Fields, Scope: in.Scope, Body: in.Body, Type: in.Type,
 		}, caller)
 		if err != nil {
 			return nil, writeOut{}, err

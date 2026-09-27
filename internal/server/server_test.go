@@ -3,6 +3,8 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/allanschon/brabeus/internal/store"
@@ -148,5 +150,19 @@ func TestSearchLimitClampsRatherThanResets(t *testing.T) {
 		if got := searchLimit(in); got != want {
 			t.Errorf("searchLimit(%d) = %d, want %d", in, got, want)
 		}
+	}
+}
+
+// The deprecated alias (decision D6) must be visible as deprecated in its own
+// schema, not merely in a comment nobody outside this repository reads.
+func TestWriteInCarriesModuleKindAndFieldsAndTheDeprecatedAlias(t *testing.T) {
+	for _, f := range []string{"Module", "Kind", "Fields", "Type"} {
+		if _, ok := reflect.TypeOf(writeIn{}).FieldByName(f); !ok {
+			t.Errorf("writeIn lacks %s", f)
+		}
+	}
+	tag, _ := reflect.TypeOf(writeIn{}).FieldByName("Type")
+	if !strings.Contains(strings.ToLower(tag.Tag.Get("jsonschema")), "deprecated") {
+		t.Error("the type alias must say it is deprecated in its schema")
 	}
 }
