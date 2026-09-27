@@ -21,6 +21,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/allanschon/brabeus/internal/block"
 	"github.com/allanschon/brabeus/internal/identity"
 	"github.com/allanschon/brabeus/internal/module"
 	"github.com/allanschon/brabeus/internal/retrieval"
@@ -53,6 +54,14 @@ func main() {
 		log.Fatalf("modules: %v", err)
 	}
 	log.Printf("modules: %s (profiles %v)", strings.Join(set.Names(), ","), set.Profiles())
+
+	// Parsed here, beside the module set, so a broken summary template is a
+	// startup failure rather than a surprise at the first session.
+	renderer, err := block.New(set)
+	if err != nil {
+		log.Fatalf("templates: %v", err)
+	}
+	consumers := server.ParseConsumers(os.Getenv("BRABEUS_CONSUMERS"))
 
 	// The dense leg is OFF unless a sidecar is named. That is deliberate:
 	// the server must remain a working keyword-only store when the sidecar is
@@ -126,6 +135,8 @@ func main() {
 	}
 	log.Printf("identity: %s", id.Describe())
 
+	deps := server.Deps{Memory: memory, Projects: projects, Set: set, Block: renderer, Now: time.Now}
+
 	go func() {
 		for range time.Tick(15 * time.Minute) {
 			if err := memory.Sync(); err != nil {
@@ -140,20 +151,28 @@ func main() {
 	}()
 
 	mcpHandler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
-		caller := id.Machine(r)
+		caller, consumer := server.Caller(id, consumers, r)
 		if caller == "" {
 			log.Printf("unresolved caller from %s: machine-scoped memories will be hidden", r.RemoteAddr)
 		}
-		return server.New(memory, projects, caller)
+		return server.New(deps, caller, consumer)
 	}, nil)
 
-	guarded, err := server.AuthMiddleware(mcpHandler, env("BRABEUS_AUTH_MODE", "none"), os.Getenv("BRABEUS_AUTH_TOKEN"))
+	authMode, authToken := env("BRABEUS_AUTH_MODE", "none"), os.Getenv("BRABEUS_AUTH_TOKEN")
+	guarded, err := server.AuthMiddleware(mcpHandler, authMode, authToken)
+	if err != nil {
+		log.Fatalf("auth: %v", err)
+	}
+	// /context serves the same block a session's SessionStart hook wants, so
+	// it needs the same identity and auth boundary as /mcp, not a lighter one.
+	ctxGuarded, err := server.AuthMiddleware(server.ContextHandler(deps, id, consumers), authMode, authToken)
 	if err != nil {
 		log.Fatalf("auth: %v", err)
 	}
 
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", guarded)
+	mux.Handle("/context", ctxGuarded)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, healthz(server.Version, id.Mode(), set))
 	})

@@ -5,14 +5,19 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/allanschon/brabeus/internal/agenda"
+	"github.com/allanschon/brabeus/internal/block"
+	"github.com/allanschon/brabeus/internal/identity"
+	"github.com/allanschon/brabeus/internal/module"
 	"github.com/allanschon/brabeus/internal/scope"
 	"github.com/allanschon/brabeus/internal/store"
 )
 
-const Version = "0.2.0"
+const Version = "0.3.0"
 
 // pickRepo resolves the repo argument. An absent projects mirror is an error
 // rather than a fallback: silently reading the wrong repository is worse than
@@ -69,14 +74,137 @@ func searchLimit(n int) int {
 	return n
 }
 
-func filterEntries(in []store.Entry, caller string, includeAll bool) []store.Entry {
+func filterEntries(in []store.Entry, caller string, includeAll bool, v store.Visibility) []store.Entry {
 	out := make([]store.Entry, 0, len(in))
 	for _, e := range in {
+		if v.Hides(e.Module) {
+			continue
+		}
 		if scope.Visible(e.Scope, caller, includeAll) {
 			out = append(out, e)
 		}
 	}
 	return out
+}
+
+// Deps is what the server needs to build tools and the context block, gathered
+// so New and RenderContext take one thing rather than drifting parameter lists.
+type Deps struct {
+	Memory, Projects *store.Store
+	Set              *module.Set
+	Block            *block.Renderer
+	Now              func() time.Time // time.Now in production; tests pin it
+}
+
+// ParseConsumers reads BRABEUS_CONSUMERS: the machine names that are not the
+// person's own sessions. Spec §11: a consumer sees only modules whose
+// audience is any, and never writes.
+func ParseConsumers(spec string) map[string]bool {
+	out := map[string]bool{}
+	for _, n := range strings.Split(spec, ",") {
+		if n = scope.NormaliseHost(n); n != "" {
+			out[n] = true
+		}
+	}
+	return out
+}
+
+// Caller resolves who is calling and whether they are a consumer. A caller
+// identity cannot name is a consumer: it already sees only global scope, and
+// unnamed is not a class the person's record should trust.
+func Caller(id identity.Identity, consumers map[string]bool, r *http.Request) (string, bool) {
+	caller := scope.NormaliseHost(id.Machine(r))
+	return caller, caller == "" || consumers[caller]
+}
+
+// audienceFor is the hide-set spec §11 requires: for a consumer, every module
+// not declared audience any, and every file the migration has not tagged.
+func audienceFor(set *module.Set, consumer bool) store.Visibility {
+	v := store.Visibility{HideModules: map[string]bool{}}
+	if !consumer {
+		return v
+	}
+	v.HideUntagged = true
+	for _, m := range set.Modules {
+		if m.Audience != module.Any {
+			v.HideModules[m.Name] = true
+		}
+	}
+	return v
+}
+
+// hiddenFor folds the search profile (§1.1) into the audience: by default
+// ratified-record modules are searched only when asked, and naming a module
+// asks for it. Audience is never overridden.
+func hiddenFor(set *module.Set, consumer bool, profile, named string) (store.Visibility, error) {
+	v := audienceFor(set, consumer)
+	named = strings.ToLower(strings.TrimSpace(named))
+	var hideProfile module.Profile
+	switch profile {
+	case "", "working-memory":
+		hideProfile = module.RatifiedRecord
+	case "ratified-record":
+		hideProfile = module.WorkingMemory
+	case "all":
+	default:
+		return v, fmt.Errorf("profile %q: use working-memory (default), ratified-record or all", profile)
+	}
+	for _, m := range set.Modules {
+		if hideProfile != "" && m.Profile == hideProfile && m.Name != named {
+			v.HideModules[m.Name] = true
+		}
+	}
+	return v, nil
+}
+
+// RenderContext is the block for one caller: the records they may see, the
+// agenda over exactly those, the render. Shared by the context tool and GET
+// /context so the two cannot drift.
+func RenderContext(d Deps, caller string, consumer bool) (string, []block.Fault, *agenda.Item, error) {
+	all, err := d.Memory.Records()
+	if err != nil {
+		return "", nil, nil, err
+	}
+	audience := audienceFor(d.Set, consumer)
+	recs := make([]store.Stored, 0, len(all))
+	for _, r := range all {
+		if !r.Retired.IsZero() || audience.Hides(r.Module) || !scope.Visible(r.Scope, caller, false) {
+			continue
+		}
+		recs = append(recs, r)
+	}
+	now := d.Now()
+	// A consumer never reviews, so it is asked nothing: onboarding gaps come
+	// from the set, not the records, and would otherwise name modules the
+	// consumer may not see.
+	var items []agenda.Item
+	if !consumer {
+		items = agenda.Compute(d.Set, recs, now)
+	}
+	text, faults := d.Block.Render(items, recs, now, audience)
+	if top, ok := agenda.Top(items); ok {
+		return text, faults, &top, nil
+	}
+	return text, faults, nil, nil
+}
+
+// ContextHandler serves the same block as text for the plugin's SessionStart
+// hook, under the same identity and auth as /mcp.
+func ContextHandler(d Deps, id identity.Identity, consumers map[string]bool) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "GET only", http.StatusMethodNotAllowed)
+			return
+		}
+		caller, consumer := Caller(id, consumers, r)
+		text, _, _, err := RenderContext(d, caller, consumer)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		fmt.Fprint(w, text)
+	})
 }
 
 type listIn struct {
@@ -108,6 +236,7 @@ type searchIn struct {
 	Kind             string `json:"kind,omitempty" jsonschema:"only this kind, e.g. trap"`
 	Prefix           string `json:"prefix,omitempty" jsonschema:"only memories in this directory and below, e.g. infra/"`
 	IncludeAllScopes bool   `json:"include_all_scopes,omitempty" jsonschema:"also search memories scoped to other machines"`
+	Profile          string `json:"profile,omitempty" jsonschema:"working-memory (default): the assistant's own notes; ratified-record: the person's confirmed record; all"`
 }
 type searchOut struct {
 	Vocabulary store.Vocabulary `json:"vocabulary" jsonschema:"what the store holds, to narrow a further search by"`
@@ -142,9 +271,30 @@ type writeOut struct {
 	Similar []store.Match `json:"similar,omitempty" jsonschema:"existing memories that appear to say the same thing, closest first. The write SUCCEEDED - this is for you to judge whether to merge or delete one of them. Empty when nothing is close, or when the meaning index is unavailable"`
 }
 
-// newMCPServer builds a server bound to one caller. Identity is fixed when the
-// session is created, so the tools close over it rather than re-deriving it.
-func New(memory, projects *store.Store, caller string) *mcp.Server {
+type contextIn struct{}
+type contextOut struct {
+	Block  string        `json:"block" jsonschema:"the session context block, at most 2048 bytes: the agenda line first, then each enabled ratified-record module's summary in priority order. Scope-filtered to your machine; may be up to one sync interval behind another machine's writes"`
+	Faults []block.Fault `json:"faults,omitempty" jsonschema:"modules whose summary exceeded their budget and were replaced by one line saying so, or agenda when its line had to be cut"`
+	Agenda *agenda.Item  `json:"agenda,omitempty" jsonschema:"the top agenda item: the record, why it is asked, the question to ask, its revision line and snooze count. Absent when nothing is due"`
+}
+
+type reviewIn struct {
+	Path     string            `json:"path" jsonschema:"the record's path, as list or context give it"`
+	Question string            `json:"question" jsonschema:"the question that was asked, verbatim; it goes into the commit"`
+	Verdict  string            `json:"verdict" jsonschema:"confirmed, corrected, retired or later"`
+	Body     string            `json:"body,omitempty" jsonschema:"corrected only: the new body; empty keeps the old"`
+	Fields   map[string]string `json:"fields,omitempty" jsonschema:"corrected only: fields to replace, validated like a write"`
+}
+type reviewOut struct {
+	Path   string `json:"path"`
+	Commit string `json:"commit"`
+}
+
+// New builds a server bound to one caller. Identity is fixed when the session
+// is created, so the tools close over it rather than re-deriving it. consumer
+// marks a caller that is not the person's own session (spec §11): it sees
+// only modules with audience any, and never writes, deletes or reviews.
+func New(d Deps, caller string, consumer bool) *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{
 		Name:        "brabeus",
 		Title:       "Brabeus",
@@ -152,22 +302,24 @@ func New(memory, projects *store.Store, caller string) *mcp.Server {
 		Version:     Version,
 	}, nil)
 
+	audience := audienceFor(d.Set, consumer)
+
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list",
 		Description: "List memories with their module, kind, scope and one-line description. Start here to see what is known.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in listIn) (*mcp.CallToolResult, listOut, error) {
-		all, err := memory.List(in.Prefix)
+		all, err := d.Memory.List(in.Prefix)
 		if err != nil {
 			return nil, listOut{}, err
 		}
-		return nil, listOut{Caller: caller, Vocabulary: memory.Vocabulary(store.Visibility{}), Entries: filterEntries(all, caller, in.IncludeAllScopes)}, nil
+		return nil, listOut{Caller: caller, Vocabulary: d.Memory.Vocabulary(audience), Entries: filterEntries(all, caller, in.IncludeAllScopes, audience)}, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "read",
 		Description: "Read one memory in full. Set repo=projects to read the read-only mirror instead.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in readIn) (*mcp.CallToolResult, readOut, error) {
-		st, err := pickRepo(in.Repo, memory, projects)
+		st, err := pickRepo(in.Repo, d.Memory, d.Projects)
 		if err != nil {
 			return nil, readOut{}, err
 		}
@@ -175,11 +327,18 @@ func New(memory, projects *store.Store, caller string) *mcp.Server {
 		if err != nil {
 			return nil, readOut{}, err
 		}
-		if st == memory {
-			if sc := st.ScopeOf(rel); !scope.Visible(sc, caller, in.IncludeAllScopes) {
+		if st == d.Memory {
+			r, _, ok := st.Peek(rel)
+			if !ok {
+				return nil, readOut{}, fmt.Errorf("no record at %q", rel)
+			}
+			if !scope.Visible(r.Scope, caller, in.IncludeAllScopes) {
 				return nil, readOut{}, fmt.Errorf(
 					"%s is scoped %q and you are %q; pass include_all_scopes to read it anyway",
-					rel, sc, caller)
+					rel, r.Scope, caller)
+			}
+			if audience.Hides(r.Module) {
+				return nil, readOut{}, fmt.Errorf("%s is not readable by this caller", rel)
 			}
 		}
 		c, err := st.Read(rel)
@@ -199,20 +358,27 @@ func New(memory, projects *store.Store, caller string) *mcp.Server {
 			"include_all_scopes will include it. Check the `dense` field: anything but \"on\" means these results " +
 			"are keyword-only and a paraphrase may have missed.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in searchIn) (*mcp.CallToolResult, searchOut, error) {
-		st, err := pickRepo(in.Repo, memory, projects)
+		st, err := pickRepo(in.Repo, d.Memory, d.Projects)
 		if err != nil {
 			return nil, searchOut{}, err
 		}
 		f := store.SearchFilter{Scope: in.Scope, Module: in.Module, Kind: in.Kind, Prefix: in.Prefix}
-		// The mirror has no scopes; only memories are filtered.
-		if st == memory {
+		var v store.Visibility
+		// The mirror has no scopes and no modules of its own; it ignores
+		// visibility exactly as it ignores scope.
+		if st == d.Memory {
 			f.Keep = func(sc string) bool { return scope.Visible(sc, caller, in.IncludeAllScopes) }
+			v, err = hiddenFor(d.Set, consumer, in.Profile, in.Module)
+			if err != nil {
+				return nil, searchOut{}, err
+			}
 		}
+		f.Visibility = v
 		hits, dense, err := st.Search(in.Query, searchLimit(in.Limit), f)
 		if err != nil {
 			return nil, searchOut{}, err
 		}
-		return nil, searchOut{Vocabulary: st.Vocabulary(store.Visibility{}), Matches: hits, Dense: dense}, nil
+		return nil, searchOut{Vocabulary: st.Vocabulary(v), Matches: hits, Dense: dense}, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -224,6 +390,9 @@ func New(memory, projects *store.Store, caller string) *mcp.Server {
 			"The write always succeeds - read them and decide whether to merge or delete one, " +
 			"because a duplicate is not a ranking problem and no search change will fix it.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in writeIn) (*mcp.CallToolResult, writeOut, error) {
+		if consumer {
+			return nil, writeOut{}, fmt.Errorf("a consumer never writes (spec §11)")
+		}
 		// Report the path the store used, not the spelling we were given.
 		rel, err := store.MemoryPath(in.Path)
 		if err != nil {
@@ -233,9 +402,9 @@ func New(memory, projects *store.Store, caller string) *mcp.Server {
 		// its own nearest duplicate. Its error is deliberately discarded:
 		// this is a warning, and nothing about it may stand between a fact and
 		// being recorded.
-		similar, _ := memory.SimilarTo(in.Description, memory.DuplicateThreshold(), rel)
+		similar, _ := d.Memory.SimilarTo(in.Description, d.Memory.DuplicateThreshold(), rel)
 
-		commit, err := memory.Write(rel, store.Record{
+		commit, err := d.Memory.Write(rel, store.Record{
 			Name: in.Name, Description: in.Description, Module: in.Module, Kind: in.Kind,
 			Fields: in.Fields, Scope: in.Scope, Body: in.Body, Type: in.Type,
 		}, caller)
@@ -250,22 +419,81 @@ func New(memory, projects *store.Store, caller string) *mcp.Server {
 		Description: "Remove a memory. Deletes the file, drops its line from MEMORY.md and pushes. " +
 			"Use when a memory is wrong in a way no rewrite fixes, or superseded. Git keeps the history.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in deleteIn) (*mcp.CallToolResult, deleteOut, error) {
+		if consumer {
+			return nil, deleteOut{}, fmt.Errorf("a consumer never writes (spec §11)")
+		}
 		rel, err := store.MemoryPath(in.Path)
 		if err != nil {
 			return nil, deleteOut{}, err
 		}
-		// Same visibility rule as read: you should not be able to remove
-		// something this machine is not allowed to see.
-		if sc := memory.ScopeOf(rel); !scope.Visible(sc, caller, in.IncludeAllScopes) {
+		// Same gate as read: you should not be able to remove something this
+		// machine is not allowed to see, or a module this caller may not see.
+		r, _, ok := d.Memory.Peek(rel)
+		if !ok {
+			return nil, deleteOut{}, fmt.Errorf("no record at %q", rel)
+		}
+		if !scope.Visible(r.Scope, caller, in.IncludeAllScopes) {
 			return nil, deleteOut{}, fmt.Errorf(
 				"%s is scoped %q and you are %q; pass include_all_scopes to delete it anyway",
-				rel, sc, caller)
+				rel, r.Scope, caller)
 		}
-		commit, err := memory.Delete(rel, caller)
+		if audience.Hides(r.Module) {
+			return nil, deleteOut{}, fmt.Errorf("%s is not readable by this caller", rel)
+		}
+		commit, err := d.Memory.Delete(rel, caller)
 		if err != nil {
 			return nil, deleteOut{}, err
 		}
 		return nil, deleteOut{Path: rel, Commit: commit}, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "context",
+		Description: "The session context block: the one agenda item to raise first, then the person's confirmed " +
+			"record by module, within 2 KB. Read it at the start of a session; it is your view, scope-filtered, " +
+			"and may lag another machine's writes by up to one sync interval.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in contextIn) (*mcp.CallToolResult, contextOut, error) {
+		blockText, faults, top, err := RenderContext(d, caller, consumer)
+		if err != nil {
+			return nil, contextOut{}, err
+		}
+		return nil, contextOut{Block: blockText, Faults: faults, Agenda: top}, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "review",
+		Description: "Answer one agenda question. The only operation that moves a record's reviewed date; the " +
+			"question and the verdict go into the commit. Verdicts: confirmed, corrected (with body and/or fields), " +
+			"retired, later (counts a snooze).",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in reviewIn) (*mcp.CallToolResult, reviewOut, error) {
+		if consumer {
+			return nil, reviewOut{}, fmt.Errorf("a consumer never reviews (spec §11)")
+		}
+		rel, err := store.MemoryPath(in.Path)
+		if err != nil {
+			return nil, reviewOut{}, err
+		}
+		// A review is the person's own act on their own machine's view: no
+		// include_all_scopes, and the same wording read uses for the refusal.
+		r, _, ok := d.Memory.Peek(rel)
+		if !ok {
+			return nil, reviewOut{}, fmt.Errorf("no record at %q", rel)
+		}
+		if !scope.Visible(r.Scope, caller, false) {
+			return nil, reviewOut{}, fmt.Errorf(
+				"%s is scoped %q and you are %q; pass include_all_scopes to read it anyway",
+				rel, r.Scope, caller)
+		}
+		if audience.Hides(r.Module) {
+			return nil, reviewOut{}, fmt.Errorf("%s is not readable by this caller", rel)
+		}
+		commit, err := d.Memory.Review(rel, in.Question, store.Answer{
+			Verdict: store.Verdict(in.Verdict), Body: in.Body, Fields: in.Fields,
+		}, caller)
+		if err != nil {
+			return nil, reviewOut{}, err
+		}
+		return nil, reviewOut{Path: rel, Commit: commit}, nil
 	})
 
 	return s

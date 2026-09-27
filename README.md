@@ -37,6 +37,32 @@ docker run -d --name brabeus --restart always \
 `BRABEUS_REPO` is the one required value — the private repository the kernel writes your record
 to. See `.env.example` for every other variable and its default.
 
+## Tools
+
+- **`list`** — memories with their module, kind, scope and one-line description.
+- **`read`** — one memory in full, or a `projects` mirror file.
+- **`search`** — by relevance, lexical and (with a sidecar) meaning-based. Searches working-memory
+  records by default; `profile: ratified-record` or `all` widens it, and naming a module widens it
+  for that module alone.
+- **`write`** — save a memory.
+- **`delete`** — remove a memory.
+- **`context`** — the session context block (below).
+- **`review`** — answer one agenda question, confirming, correcting, retiring or snoozing a
+  ratified record. The only operation that moves a record's `reviewed` date.
+
+## The context block
+
+One rendered block, at most 2 KB: the agenda's top question first, then each enabled
+ratified-record module's summary, in priority order. A module over its byte budget is refused,
+not truncated — it renders one line saying so and reports a fault, same as the agenda line
+being cut. It is scope-filtered to the caller's own machine and may lag another machine's write
+by up to one sync interval (15 minutes). It is also served over plain HTTP at `GET /context`,
+behind the same identity and auth as `/mcp`, for the plugin's session start.
+
+A caller resolved as a **consumer** — named in `BRABEUS_CONSUMERS`, or unresolved — sees only
+modules whose manifest declares `audience: any`, on every read path: search, read, list, the
+vocabulary and the block. A consumer never writes, deletes or reviews.
+
 ## Upgrading a record from before modules
 
 A record written before modules existed carries `type` instead of `module` and `kind`. Setting
