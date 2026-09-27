@@ -1084,6 +1084,85 @@ func TestACredentialShapedWriteIsRefusedBeforeGit(t *testing.T) {
 	}
 }
 
+// The description reaches the frontmatter, MEMORY.md and the commit message,
+// same as the body — a credential-shaped description must be refused before
+// any of them are touched, same as the body is.
+func TestACredentialShapedDescriptionIsRefusedBeforeGit(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	before := run(t, s.Dir, "rev-parse", "HEAD")
+	r := Record{Name: "n", Description: "password: " + "Tr0ub4dor&3" + strings.Repeat("A", 9),
+		Module: "memory", Kind: "note", Scope: "global", Body: "b"} // built, not literal: see credential_test.go
+	if _, err := s.Write("infra/x.md", r, "test-machine"); err == nil || !strings.Contains(err.Error(), "description") {
+		t.Errorf("want a refusal naming the description, got %v", err)
+	}
+	if after := run(t, s.Dir, "rev-parse", "HEAD"); after != before {
+		t.Error("the refusal must happen before anything is committed")
+	}
+}
+
+// The deleted scope.CheckType lowercased and trimmed. The replacement lookup
+// must do the same, or an outbox file queued before this PR with
+// "type: Reference" — or any caller passing "  Memory  " / "NOTE" — is
+// permanently rejected, breaking the constraint that nothing queued is
+// rejected by this PR.
+func TestTheTypeAliasAndModuleKindAreNormalisedBeforeLookup(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	if _, err := s.Write("personal/r.md", Record{Name: "r", Description: "d", Type: "Reference", Scope: "global", Body: "b"}, "test-machine"); err != nil {
+		t.Fatalf("a differently-cased type must still map: %v", err)
+	}
+	r, _ := ParseRecord(mustRead(t, filepath.Join(s.Dir, "personal/r.md")))
+	if r.Module != "memory" || r.Kind != "note" {
+		t.Errorf("alias with mixed case: module=%q kind=%q", r.Module, r.Kind)
+	}
+	if _, err := s.Write("personal/s.md", Record{Name: "s", Description: "d", Module: " Memory ", Kind: "NOTE", Scope: "global", Body: "b"}, "test-machine"); err != nil {
+		t.Fatalf("a differently-cased module/kind must still validate: %v", err)
+	}
+	r2, _ := ParseRecord(mustRead(t, filepath.Join(s.Dir, "personal/s.md")))
+	if r2.Module != "memory" || r2.Kind != "note" {
+		t.Errorf("module/kind with mixed case: module=%q kind=%q", r2.Module, r2.Kind)
+	}
+}
+
+// A malformed kernel key must stop the write rather than be silently dropped:
+// compose only emits reviewed/retired/snoozes when non-zero, so composing
+// over a bare-date reviewed would erase it forever, and only review may move
+// it (§9).
+func TestAMalformedReviewedRefusesARewriteAndLeavesTheFileUnchanged(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	rel := "personal/p.md"
+	full := filepath.Join(s.Dir, rel)
+	seeded := "---\nname: p\ndescription: d\nmodule: memory\nkind: preference\nscope: global\nupdated: 2026-09-01T00:00:00Z\nreviewed: 2026-09-01\n---\n\nfirst\n"
+	if err := os.WriteFile(full, []byte(seeded), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	run(t, s.Dir, "add", "-A")
+	run(t, s.Dir, "commit", "-q", "-m", "seed a malformed reviewed")
+	run(t, s.Dir, "push", "-q", "origin", "main")
+
+	r := Record{Name: "p", Description: "d", Module: "memory", Kind: "preference", Scope: "global", Body: "second"}
+	if _, err := s.Write(rel, r, "test-machine"); err == nil || !strings.Contains(err.Error(), "reviewed") {
+		t.Errorf("a malformed reviewed must refuse the write, got %v", err)
+	}
+	if got := mustRead(t, full); got != seeded {
+		t.Error("a refused write must leave the file unchanged")
+	}
+}
+
+// The common case: a record with no reviewed at all must write without
+// tripping the malformed-key refusal above.
+func TestAFileWithNoReviewedStillWrites(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	r := Record{Name: "p", Description: "d", Module: "memory", Kind: "preference", Scope: "global", Body: "first"}
+	if _, err := s.Write("personal/p.md", r, "test-machine"); err != nil {
+		t.Fatalf("a record with no reviewed must still write: %v", err)
+	}
+	// And a rewrite of a file that still has no reviewed must also still write.
+	r.Body = "second"
+	if _, err := s.Write("personal/p.md", r, "test-machine"); err != nil {
+		t.Fatalf("a rewrite with no reviewed must still write: %v", err)
+	}
+}
+
 func TestListAndVocabularyReportModuleAndKind(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
 	if _, err := s.Write("infra/x.md", Record{Name: "x", Description: "d", Module: "memory", Kind: "trap", Scope: "global", Body: "b"}, "test-machine"); err != nil {

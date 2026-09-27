@@ -643,6 +643,13 @@ func (s *Store) Write(rel string, r Record, caller string) (string, error) {
 	if s.modules == nil {
 		return "", fmt.Errorf("this store validates nothing and therefore writes nothing")
 	}
+	// Normalise before lookup, the way the deleted scope.CheckType used to:
+	// an outbox file queued before this PR — or any caller — may carry
+	// "type: Reference" or "  Memory  ", and an exact-match lookup would
+	// permanently reject something that used to be accepted.
+	r.Type = strings.ToLower(strings.TrimSpace(r.Type))
+	r.Module = strings.ToLower(strings.TrimSpace(r.Module))
+	r.Kind = strings.ToLower(strings.TrimSpace(r.Kind))
 	// The deprecated alias (decision D6): type in, module and kind out.
 	if r.Module == "" && r.Type != "" {
 		m, k, ok := s.modules.LegacyKind(r.Type)
@@ -668,6 +675,12 @@ func (s *Store) Write(rel string, r Record, caller string) (string, error) {
 	r.ID = r.Fields["id"]
 	if err := checkLayout(man, r.Kind, rel); err != nil {
 		return "", err
+	}
+	if shape := credentialShape(r.Name); shape != "" {
+		return "", fmt.Errorf("refused: the name looks like it contains %s; credentials never enter the record (spec §11)", shape)
+	}
+	if shape := credentialShape(r.Description); shape != "" {
+		return "", fmt.Errorf("refused: the description looks like it contains %s; credentials never enter the record (spec §11)", shape)
 	}
 	if shape := credentialShape(r.Body); shape != "" {
 		return "", fmt.Errorf("refused: the body looks like it contains %s; credentials never enter the record (spec §11)", shape)
@@ -695,8 +708,31 @@ func (s *Store) Write(rel string, r Record, caller string) (string, error) {
 		return "", err
 	}
 	var meta Meta
-	if old, err := os.ReadFile(full); err == nil {
+	old, err := os.ReadFile(full)
+	switch {
+	case err == nil:
 		_, meta = ParseRecord(string(old))
+		// A kernel-owned key that failed to parse must stop the write rather
+		// than be silently dropped: compose only emits reviewed/retired/snoozes
+		// when they're non-zero, so composing anyway would erase whichever one
+		// did not parse — and only a review may move them (§9).
+		if len(meta.Malformed) > 0 {
+			fm := parseFrontmatter(string(old))
+			parts := make([]string, 0, len(meta.Malformed))
+			for _, key := range meta.Malformed {
+				want := "an RFC3339 stamp"
+				if key == "snoozes" {
+					want = "an integer"
+				}
+				parts = append(parts, fmt.Sprintf("%s: %q is not %s", key, fm[key], want))
+			}
+			return "", fmt.Errorf("%s; fix the file by hand, nothing was written", strings.Join(parts, "; "))
+		}
+	case os.IsNotExist(err):
+		// No existing file: nothing to carry forward, nothing malformed to
+		// refuse on.
+	default:
+		return "", fmt.Errorf("reading %s: %w", rel, err)
 	}
 	meta.Updated, meta.LegacyType = now(), ""
 	content := compose(r, meta, append(append([]string{}, kind.Fields...), kind.Optional...))

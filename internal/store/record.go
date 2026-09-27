@@ -3,9 +3,11 @@ package store
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/allanschon/brabeus/internal/module"
 	"github.com/allanschon/brabeus/internal/retrieval"
 )
 
@@ -40,12 +42,25 @@ type Meta struct {
 	Retired    time.Time
 	Snoozes    int
 	LegacyType string
+	// Malformed lists kernel keys (reviewed, retired, snoozes) whose value was
+	// present in the file but did not parse. Write refuses rather than
+	// composing anyway: silently dropping one of these would erase it, and
+	// only a review may move them (§9). updated is deliberately not tracked
+	// here — a value that fails to parse there means "restamp", which
+	// staleStamp already implements.
+	Malformed []string
 }
 
-// kernelKeys are the frontmatter keys compose writes itself. They are the
-// module package's Reserved list, kept here as the set parse strips out.
-var kernelKeys = map[string]bool{"name": true, "description": true, "module": true, "kind": true, "id": true,
-	"scope": true, "updated": true, "reviewed": true, "retired": true, "snoozes": true, "type": true}
+// kernelKeys are the frontmatter keys compose writes itself: module.Reserved
+// plus "type", which predates modules (decision D6) and so is not in that
+// list. Built from the shared list at init so the two cannot drift apart.
+var kernelKeys = func() map[string]bool {
+	m := map[string]bool{"type": true}
+	for _, k := range module.Reserved {
+		m[k] = true
+	}
+	return m
+}()
 
 // oneLine collapses a value onto a single line. The frontmatter and the index
 // are both line-oriented: a newline in either ends the entry early and leaves
@@ -129,9 +144,33 @@ func ParseRecord(content string) (Record, Meta) {
 	if r.ID != "" {
 		r.Fields["id"] = r.ID
 	}
-	parse := func(s string) time.Time { t, _ := time.Parse(time.RFC3339, s); return t }
-	meta.Updated, meta.Reviewed, meta.Retired = parse(fm["updated"]), parse(fm["reviewed"]), parse(fm["retired"])
-	fmt.Sscanf(fm["snoozes"], "%d", &meta.Snoozes)
+	// updated: a value that fails to parse means "restamp" (staleStamp already
+	// treats it that way), so it is never added to Malformed.
+	meta.Updated, _ = time.Parse(time.RFC3339, fm["updated"])
+	// reviewed and retired: absent is fine (zero value, never reviewed/retired);
+	// present but unparseable is not, and must stop the write rather than
+	// silently erase the key on rewrite (§9).
+	parseKernelTime := func(key string) time.Time {
+		s := fm[key]
+		if s == "" {
+			return time.Time{}
+		}
+		t, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			meta.Malformed = append(meta.Malformed, key)
+			return time.Time{}
+		}
+		return t
+	}
+	meta.Reviewed = parseKernelTime("reviewed")
+	meta.Retired = parseKernelTime("retired")
+	if s := fm["snoozes"]; s != "" {
+		if n, err := strconv.Atoi(s); err == nil {
+			meta.Snoozes = n
+		} else {
+			meta.Malformed = append(meta.Malformed, "snoozes")
+		}
+	}
 	r.Body = bodyAfterFrontmatter(content)
 	return r, meta
 }
