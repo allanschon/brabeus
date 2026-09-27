@@ -37,6 +37,20 @@ docker run -d --name brabeus --restart always \
 `BRABEUS_REPO` is the one required value — the private repository the kernel writes your record
 to. See `.env.example` for every other variable and its default.
 
+## Upgrading a record from before modules
+
+A record written before modules existed carries `type` instead of `module` and `kind`. Setting
+`BRABEUS_MIGRATE=1` for one start retags every such file through the enabled memory module's
+`legacy_types`, in a single commit, with paths and each file's `updated` stamp unchanged. A file
+that maps to nothing aborts the whole run before anything is written, and a second run with the
+flag still set finds nothing to do.
+
+Rehearse on a clone of the record first: run the kernel against it with the flag unset, save a
+set of search results, run it again with `BRABEUS_MIGRATE=1`, and diff the same searches after.
+They should be identical — a retag changes only frontmatter keys the ranking never scores.
+Unset the flag once the live run has happened; leaving it set makes the migration a thing every
+restart does rather than a thing you did once.
+
 ## Installing the plugin
 
 ```sh
