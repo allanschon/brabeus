@@ -13,8 +13,8 @@ manifests, a synthetic test corpus and the specification itself. See §14 for wh
 
 ## What is here
 
-- **The kernel** — a Go server, root package, serving a private git repository over MCP with
-  hybrid (lexical + dense) retrieval.
+- **`cmd/brabeus/` and `internal/` — the kernel (Go)** — a Go server serving a private git
+  repository over MCP with hybrid (lexical + dense) retrieval.
 - **The plugin** — a Claude Code plugin: a routing guard, an offline outbox drain, MCP server
   registration and a `/health` skill.
 - **The modules** — manifests for the five modules the spec ships (`memory`, `identity`, `telos`,
