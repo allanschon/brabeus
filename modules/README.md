@@ -1,6 +1,6 @@
 # Modules
 
-A module is a directory with a manifest, `module.yaml`. It declares a set of record kinds (each
+A module is a directory with a manifest, `module.json`. It declares a set of record kinds (each
 with its required and optional fields and a freshness threshold), an interview prompt per kind, a
 summary template that renders the module's part of the context block, the evidence adapters its
 claims may use, and which of the kernel's two fixed profiles it runs under —
@@ -8,11 +8,20 @@ claims may use, and which of the kernel's two fixed profiles it runs under —
 whether a record needs to be ratified before it renders. See `docs/personal-context-system-v1.md`
 §6 for the full contract.
 
-The kernel does not yet enforce any of this. Loading a module, validating its manifest, budgeting
-its share of the context block, and routing writes and searches through its kinds is the module
-contract itself — that lands in M1, once profiles and modules exist as real kernel concepts. What
-ships in this seed is the *shape*: the five manifests below, as documents of intent, so the layout
-exists from the first commit and later work has something concrete to build against.
+Two things a manifest cannot say, and where they are instead: a `working-memory` module has no
+budget and no summary template, because its records are searched and never rendered into the
+context block; and a core module's audience is `self` whatever the manifest says. The kernel
+refuses to start on either.
+
+Two optional keys per kind beyond the spec's example: `first`, the question the interview asks
+when nothing of that kind is on file yet, and `timeless`, which exempts a kind from the
+working-memory freshness lint. A ratified-record module lists in `onboarding` the kinds to ask
+for, in order, when none of that kind is on file; each must carry a `first` question. Two optional keys on a working-memory module: `layout`, `free` or
+`kind`, which says whether the path rule is the store's own tree or `<module>/<kind>/<slug>.md`;
+and `legacy_types`, the map the one-time migration uses to give pre-module records a kind.
+
+The kernel loads and validates these on startup and refuses a set it does not understand;
+enforcing the kinds on writes and rendering the summaries land in the next tasks of M1.
 
 Five modules ship: `memory` under `working-memory` — the assistant's per-machine working notes,
 and the only module with scope keys — and four core modules under `ratified-record`: `identity`,

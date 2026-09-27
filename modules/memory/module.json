@@ -1,0 +1,17 @@
+{
+  "name": "memory",
+  "version": 1,
+  "profile": "working-memory",
+  "priority": 20,
+  "scope_keys": ["machine", "project"],
+  "layout": "free",
+  "legacy_types": {"user": "note", "feedback": "preference", "project": "project", "reference": "note"},
+  "kinds": {
+    "note": {"fields": []},
+    "trap": {"fields": []},
+    "preference": {"fields": []},
+    "project": {"fields": []}
+  },
+  "adapters": ["manual"],
+  "skills": ["health"]
+}

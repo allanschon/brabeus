@@ -207,6 +207,30 @@ func TestBudgetsMustFitUnderTheCapLessTheReservation(t *testing.T) {
 	}
 }
 
+// The shipped manifests are the contract's worked example. They must load,
+// and they must fit the budget, or the README's promise is false.
+func TestTheShippedManifestsLoad(t *testing.T) {
+	dir := filepath.Join("..", "..", "modules")
+	set, err := Load(dir, []string{"memory", "identity", "telos", "health", "finance"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(set.Names(), ","); got != "identity,telos,health,memory,finance" {
+		t.Errorf("priority order: %s", got)
+	}
+	if m, _ := set.Module("memory"); m.Layout != "free" || len(m.LegacyTypes) != 4 {
+		t.Errorf("memory manifest: layout=%q legacy_types=%v", m.Layout, m.LegacyTypes)
+	}
+	for _, name := range []string{"identity", "telos", "health", "finance"} {
+		if m, _ := set.Module(name); m.Audience != Self {
+			t.Errorf("%s audience = %q", name, m.Audience)
+		}
+	}
+	if m, _ := set.Module("identity"); len(m.Onboarding) == 0 || m.Onboarding[0] != "value" {
+		t.Errorf("identity onboarding = %v; the first interview starts with values (§9)", m.Onboarding)
+	}
+}
+
 func TestTheBundleIsFixedByTheProfile(t *testing.T) {
 	wm, _ := WorkingMemory.Bundle()
 	rr, _ := RatifiedRecord.Bundle()
