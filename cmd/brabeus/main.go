@@ -152,9 +152,7 @@ func main() {
 
 	mcpHandler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		caller, consumer := server.Caller(id, consumers, r)
-		if caller == "" {
-			log.Printf("unresolved caller from %s: machine-scoped memories will be hidden", r.RemoteAddr)
-		}
+		server.LogUnresolvedCaller(caller, r.RemoteAddr)
 		return server.New(deps, caller, consumer)
 	}, nil)
 

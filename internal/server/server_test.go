@@ -19,7 +19,7 @@ import (
 func TestPickRepoDefaultsToMemory(t *testing.T) {
 	mem, proj := &store.Store{}, &store.Store{}
 	for _, name := range []string{"", "memory", "MEMORY"} {
-		got, err := pickRepo(name, mem, proj)
+		got, err := pickRepo(name, mem, proj, false)
 		if err != nil {
 			t.Fatalf("pickRepo(%q): %v", name, err)
 		}
@@ -31,7 +31,7 @@ func TestPickRepoDefaultsToMemory(t *testing.T) {
 
 func TestPickRepoReturnsTheProjectsMirror(t *testing.T) {
 	mem, proj := &store.Store{}, &store.Store{}
-	got, err := pickRepo("projects", mem, proj)
+	got, err := pickRepo("projects", mem, proj, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,14 +44,29 @@ func TestPickRepoReturnsTheProjectsMirror(t *testing.T) {
 // a silent fallback to the memory store — which would let a caller read the
 // wrong repository and never know.
 func TestPickRepoSaysSoWhenTheMirrorIsAbsent(t *testing.T) {
-	if _, err := pickRepo("projects", &store.Store{}, nil); err == nil {
+	if _, err := pickRepo("projects", &store.Store{}, nil, false); err == nil {
 		t.Error("an absent projects mirror was not reported")
 	}
 }
 
 func TestPickRepoRejectsAnUnknownName(t *testing.T) {
-	if _, err := pickRepo("secrets", &store.Store{}, &store.Store{}); err == nil {
+	if _, err := pickRepo("secrets", &store.Store{}, &store.Store{}, false); err == nil {
 		t.Error("an unknown repo name was accepted")
+	}
+}
+
+// The mirror is a second corpus with no modules of its own (spec §11):
+// a consumer is refused it outright, not filtered within it.
+func TestPickRepoRefusesTheMirrorToAConsumer(t *testing.T) {
+	mem, proj := &store.Store{}, &store.Store{}
+	if _, err := pickRepo("projects", mem, proj, true); err == nil {
+		t.Error("a consumer was allowed the projects mirror")
+	}
+	if got, err := pickRepo("projects", mem, proj, false); err != nil || got != proj {
+		t.Errorf("a self caller must still get the mirror: got=%v err=%v", got, err)
+	}
+	if got, err := pickRepo("memory", mem, proj, true); err != nil || got != mem {
+		t.Errorf("a consumer must still get memory: got=%v err=%v", got, err)
 	}
 }
 
@@ -349,6 +364,36 @@ func newServerStore(t *testing.T) *store.Store {
 	}
 	s.SetModules(testSet(t))
 	return s
+}
+
+func TestGate(t *testing.T) {
+	st := newServerStore(t)
+	if _, err := st.Write("identity/value/family.md", store.Record{Name: "family", Description: "family first", Module: "identity", Kind: "value", Scope: "global",
+		Fields: map[string]string{"statement": "family first"}, Body: "family first"}, "desk"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Write("infra/laptop.md", store.Record{Name: "laptop", Description: "the other machine", Module: "memory", Kind: "note", Scope: "machine/other", Body: "laptop notes"}, "desk"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := gate(st, "nowhere.md", "desk", false, store.Visibility{}, readScopeRefusal); err == nil || !strings.Contains(err.Error(), `no record at "nowhere.md"`) {
+		t.Errorf("missing file: %v", err)
+	}
+	if _, err := gate(st, "infra/laptop.md", "desk", false, store.Visibility{}, readScopeRefusal); err == nil || !strings.Contains(err.Error(), "pass include_all_scopes to read it anyway") {
+		t.Errorf("read scope refusal: %v", err)
+	}
+	if _, err := gate(st, "infra/laptop.md", "desk", false, store.Visibility{}, reviewScopeRefusal); err == nil ||
+		strings.Contains(err.Error(), "include_all_scopes") || !strings.Contains(err.Error(), "review it from that machine") {
+		t.Errorf("review scope refusal must not mention include_all_scopes: %v", err)
+	}
+	if _, err := gate(st, "identity/value/family.md", "desk", false, store.Visibility{HideModules: map[string]bool{"identity": true}}, readScopeRefusal); err == nil ||
+		!strings.Contains(err.Error(), "is not readable by this caller") {
+		t.Errorf("hidden module: %v", err)
+	}
+	r, err := gate(st, "identity/value/family.md", "desk", false, store.Visibility{}, readScopeRefusal)
+	if err != nil || r.Name != "family" {
+		t.Errorf("pass case: r=%+v err=%v", r, err)
+	}
 }
 
 func TestRenderContextEndToEnd(t *testing.T) {

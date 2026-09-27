@@ -22,12 +22,16 @@ const (
 )
 
 type Item struct {
-	Path, Module, Kind, ID, Name string
-	Reason                       Reason
-	Question                     string
-	Revision                     string
-	Snoozes                      int
-	Fields                       map[string]string
+	Path     string            `json:"path,omitempty"`
+	Module   string            `json:"module,omitempty"`
+	Kind     string            `json:"kind,omitempty"`
+	ID       string            `json:"id,omitempty"`
+	Name     string            `json:"name,omitempty"`
+	Reason   Reason            `json:"reason,omitempty"`
+	Question string            `json:"question,omitempty"`
+	Revision string            `json:"revision,omitempty"`
+	Snoozes  int               `json:"snoozes,omitempty"`
+	Fields   map[string]string `json:"fields,omitempty"`
 }
 
 // Compute orders the agenda: claims in fail first (M2; empty here), then

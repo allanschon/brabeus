@@ -1205,6 +1205,11 @@ func TestVisibilityHidesModulesAndOptionallyUntagged(t *testing.T) {
 	if (Visibility{}).Hides("") {
 		t.Error("a zero Visibility hides nothing")
 	}
+	// A hand-committed file can carry any casing in its module: key; the
+	// hide-set must not be dodgeable by capitalising it.
+	if !v.Hides("Health") {
+		t.Error("Hides must compare case-insensitively")
+	}
 }
 
 func TestSearchAndVocabularyRespectVisibility(t *testing.T) {

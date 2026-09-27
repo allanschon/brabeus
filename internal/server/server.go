@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -19,20 +20,52 @@ import (
 
 const Version = "0.3.0"
 
+// The scope-refusal wording gate hands to each caller: read and delete point
+// at include_all_scopes, which exists on those tools; review has no such
+// parameter, so it points at the machine instead.
+const (
+	readScopeRefusal   = "%s is scoped %q and you are %q; pass include_all_scopes to read it anyway"
+	deleteScopeRefusal = "%s is scoped %q and you are %q; pass include_all_scopes to delete it anyway"
+	reviewScopeRefusal = "%s is scoped %q and you are %q; review it from that machine"
+)
+
 // pickRepo resolves the repo argument. An absent projects mirror is an error
 // rather than a fallback: silently reading the wrong repository is worse than
-// failing the call.
-func pickRepo(name string, memory, projects *store.Store) (*store.Store, error) {
+// failing the call. A consumer is refused the mirror outright (spec §11): it
+// is a second corpus with no modules of its own, so no per-module audience
+// check could stand in for refusing it entirely.
+func pickRepo(name string, memory, projects *store.Store, consumer bool) (*store.Store, error) {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "", "memory":
 		return memory, nil
 	case "projects":
+		if consumer {
+			return nil, fmt.Errorf("the projects mirror is not readable by this caller")
+		}
 		if projects == nil {
 			return nil, fmt.Errorf("the projects mirror is not configured")
 		}
 		return projects, nil
 	}
 	return nil, fmt.Errorf("unknown repo %q: use memory or projects", name)
+}
+
+// gate is the shared read-before-touch check for read, delete and review:
+// missing file, then scope, then audience, in that order. refusalFmt takes
+// the path, the record's scope and the caller, in that order, and is the one
+// place the three tools' wording differs.
+func gate(st *store.Store, rel, caller string, includeAll bool, audience store.Visibility, refusalFmt string) (store.Record, error) {
+	r, _, ok := st.Peek(rel)
+	if !ok {
+		return store.Record{}, fmt.Errorf("no record at %q", rel)
+	}
+	if !scope.Visible(r.Scope, caller, includeAll) {
+		return store.Record{}, fmt.Errorf(refusalFmt, rel, r.Scope, caller)
+	}
+	if audience.Hides(r.Module) {
+		return store.Record{}, fmt.Errorf("%s is not readable by this caller", rel)
+	}
+	return r, nil
 }
 
 // authMiddleware sits in the request path even when it does nothing. On the
@@ -188,6 +221,16 @@ func RenderContext(d Deps, caller string, consumer bool) (string, []block.Fault,
 	return text, faults, nil, nil
 }
 
+// LogUnresolvedCaller logs the one line both /mcp and /context say when a
+// caller could not be resolved. Each entry point calls it itself rather than
+// sharing a single choke point, so a resolved caller is never logged at all —
+// this would be a line per request otherwise.
+func LogUnresolvedCaller(caller, remoteAddr string) {
+	if caller == "" {
+		log.Printf("unresolved caller from %s: treated as a consumer — machine-scoped memories and every self module are hidden", remoteAddr)
+	}
+}
+
 // ContextHandler serves the same block as text for the plugin's SessionStart
 // hook, under the same identity and auth as /mcp.
 func ContextHandler(d Deps, id identity.Identity, consumers map[string]bool) http.Handler {
@@ -197,9 +240,11 @@ func ContextHandler(d Deps, id identity.Identity, consumers map[string]bool) htt
 			return
 		}
 		caller, consumer := Caller(id, consumers, r)
+		LogUnresolvedCaller(caller, r.RemoteAddr)
 		text, _, _, err := RenderContext(d, caller, consumer)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Printf("context for %q: %v", caller, err)
+			http.Error(w, "context unavailable", http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -319,7 +364,7 @@ func New(d Deps, caller string, consumer bool) *mcp.Server {
 		Name:        "read",
 		Description: "Read one memory in full. Set repo=projects to read the read-only mirror instead.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in readIn) (*mcp.CallToolResult, readOut, error) {
-		st, err := pickRepo(in.Repo, d.Memory, d.Projects)
+		st, err := pickRepo(in.Repo, d.Memory, d.Projects, consumer)
 		if err != nil {
 			return nil, readOut{}, err
 		}
@@ -328,17 +373,8 @@ func New(d Deps, caller string, consumer bool) *mcp.Server {
 			return nil, readOut{}, err
 		}
 		if st == d.Memory {
-			r, _, ok := st.Peek(rel)
-			if !ok {
-				return nil, readOut{}, fmt.Errorf("no record at %q", rel)
-			}
-			if !scope.Visible(r.Scope, caller, in.IncludeAllScopes) {
-				return nil, readOut{}, fmt.Errorf(
-					"%s is scoped %q and you are %q; pass include_all_scopes to read it anyway",
-					rel, r.Scope, caller)
-			}
-			if audience.Hides(r.Module) {
-				return nil, readOut{}, fmt.Errorf("%s is not readable by this caller", rel)
+			if _, err := gate(st, rel, caller, in.IncludeAllScopes, audience, readScopeRefusal); err != nil {
+				return nil, readOut{}, err
 			}
 		}
 		c, err := st.Read(rel)
@@ -353,32 +389,37 @@ func New(d Deps, caller string, consumer bool) *mcp.Server {
 		Description: "Search memories by relevance, best first, one result per memory with the line it matched. " +
 			"Ask in your own words and in your own wording - it matches MEANING as well as keywords, so a memory " +
 			"that says \"terse\" is found by asking for \"brief\". Wrap a phrase in double quotes to require it " +
-			"literally, e.g. \"grub.cfg\". Narrow with scope, module, kind or prefix. Set repo=projects to search the " +
-			"read-only mirror. An empty result can mean the scope you asked for is not visible to you; " +
+			"literally, e.g. \"grub.cfg\". Narrow with scope, module, kind or prefix. By default only working-memory " +
+			"modules are searched; pass profile: ratified-record or all, or name a module, to widen. Set repo=projects " +
+			"to search the read-only mirror. An empty result can mean the scope you asked for is not visible to you; " +
 			"include_all_scopes will include it. Check the `dense` field: anything but \"on\" means these results " +
 			"are keyword-only and a paraphrase may have missed.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in searchIn) (*mcp.CallToolResult, searchOut, error) {
-		st, err := pickRepo(in.Repo, d.Memory, d.Projects)
+		// Validated before the repo branch, so an invalid profile is refused
+		// on the mirror too rather than silently ignored there.
+		v, err := hiddenFor(d.Set, consumer, in.Profile, in.Module)
+		if err != nil {
+			return nil, searchOut{}, err
+		}
+		st, err := pickRepo(in.Repo, d.Memory, d.Projects, consumer)
 		if err != nil {
 			return nil, searchOut{}, err
 		}
 		f := store.SearchFilter{Scope: in.Scope, Module: in.Module, Kind: in.Kind, Prefix: in.Prefix}
-		var v store.Visibility
 		// The mirror has no scopes and no modules of its own; it ignores
-		// visibility exactly as it ignores scope.
+		// profile and scope filtering exactly the same way.
 		if st == d.Memory {
 			f.Keep = func(sc string) bool { return scope.Visible(sc, caller, in.IncludeAllScopes) }
-			v, err = hiddenFor(d.Set, consumer, in.Profile, in.Module)
-			if err != nil {
-				return nil, searchOut{}, err
-			}
+			f.Visibility = v
 		}
-		f.Visibility = v
 		hits, dense, err := st.Search(in.Query, searchLimit(in.Limit), f)
 		if err != nil {
 			return nil, searchOut{}, err
 		}
-		return nil, searchOut{Vocabulary: st.Vocabulary(v), Matches: hits, Dense: dense}, nil
+		// The vocabulary is the session's own menu — the audience hide-set,
+		// not this call's profile-narrowed one — so widening the profile on
+		// the next search is visibly still possible.
+		return nil, searchOut{Vocabulary: st.Vocabulary(audience), Matches: hits, Dense: dense}, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -428,17 +469,8 @@ func New(d Deps, caller string, consumer bool) *mcp.Server {
 		}
 		// Same gate as read: you should not be able to remove something this
 		// machine is not allowed to see, or a module this caller may not see.
-		r, _, ok := d.Memory.Peek(rel)
-		if !ok {
-			return nil, deleteOut{}, fmt.Errorf("no record at %q", rel)
-		}
-		if !scope.Visible(r.Scope, caller, in.IncludeAllScopes) {
-			return nil, deleteOut{}, fmt.Errorf(
-				"%s is scoped %q and you are %q; pass include_all_scopes to delete it anyway",
-				rel, r.Scope, caller)
-		}
-		if audience.Hides(r.Module) {
-			return nil, deleteOut{}, fmt.Errorf("%s is not readable by this caller", rel)
+		if _, err := gate(d.Memory, rel, caller, in.IncludeAllScopes, audience, deleteScopeRefusal); err != nil {
+			return nil, deleteOut{}, err
 		}
 		commit, err := d.Memory.Delete(rel, caller)
 		if err != nil {
@@ -474,18 +506,9 @@ func New(d Deps, caller string, consumer bool) *mcp.Server {
 			return nil, reviewOut{}, err
 		}
 		// A review is the person's own act on their own machine's view: no
-		// include_all_scopes, and the same wording read uses for the refusal.
-		r, _, ok := d.Memory.Peek(rel)
-		if !ok {
-			return nil, reviewOut{}, fmt.Errorf("no record at %q", rel)
-		}
-		if !scope.Visible(r.Scope, caller, false) {
-			return nil, reviewOut{}, fmt.Errorf(
-				"%s is scoped %q and you are %q; pass include_all_scopes to read it anyway",
-				rel, r.Scope, caller)
-		}
-		if audience.Hides(r.Module) {
-			return nil, reviewOut{}, fmt.Errorf("%s is not readable by this caller", rel)
+		// include_all_scopes, and its own scope-refusal wording.
+		if _, err := gate(d.Memory, rel, caller, false, audience, reviewScopeRefusal); err != nil {
+			return nil, reviewOut{}, err
 		}
 		commit, err := d.Memory.Review(rel, in.Question, store.Answer{
 			Verdict: store.Verdict(in.Verdict), Body: in.Body, Fields: in.Fields,
