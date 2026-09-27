@@ -1,11 +1,13 @@
 package block
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/allanschon/brabeus/internal/agenda"
 	"github.com/allanschon/brabeus/internal/module"
@@ -129,6 +131,59 @@ func TestAnOverBudgetModuleRendersOneLineAndAFault(t *testing.T) {
 	}
 }
 
+// TestEveryShippedTemplateFitsItsBudgetWhenFullyPopulated is the plan's own
+// guard: the "first n" caps in the shipped templates must not overflow the
+// manifest's budget_bytes at realistic field lengths, because the budgets
+// cannot rise (they already sum to 1700 of the 1792 bytes available under
+// the cap and the reservation). If this fails, the caps go down further; the
+// budgets never go up.
+func TestEveryShippedTemplateFitsItsBudgetWhenFullyPopulated(t *testing.T) {
+	now := at("2026-10-01T00:00:00Z")
+	long := strings.Repeat("x", 40) // a plausible 40-byte field value
+	for _, name := range []string{"identity", "telos", "health", "finance"} {
+		set := shippedSet(t, name)
+		r, err := New(set)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		man, ok := set.Module(name)
+		if !ok {
+			t.Fatalf("%s: not in its own set", name)
+		}
+		var recs []store.Stored
+		for kind, k := range man.Kinds {
+			for i := 0; i < 10; i++ { // more than any shipped cap
+				fields := map[string]string{}
+				for _, f := range k.Fields {
+					switch f {
+					case "id":
+						fields[f] = fmt.Sprintf("G%d", i)
+					case "by", "due", "revisit", "measured":
+						fields[f] = "2027-01-01"
+					case "value":
+						fields[f] = "80 kg"
+					default:
+						fields[f] = long
+					}
+				}
+				path := fmt.Sprintf("%s/%s/%d.md", name, kind, i)
+				recs = append(recs, rec(path, name, kind, fields, "2026-09-20T00:00:00Z", "2026-09-20T00:00:00Z"))
+			}
+		}
+		text, faults := r.Render(nil, recs, now, store.Visibility{})
+		if len(faults) != 0 {
+			t.Errorf("%s: faults = %+v", name, faults)
+		}
+		_, section, ok := strings.Cut(text, "\n")
+		if !ok {
+			t.Fatalf("%s: no module section:\n%s", name, text)
+		}
+		if len(section) > man.BudgetBytes {
+			t.Errorf("%s: section is %d bytes, budget is %d:\n%s", name, len(section), man.BudgetBytes, section)
+		}
+	}
+}
+
 func TestAHiddenModuleContributesNothingNotEvenItsName(t *testing.T) {
 	set := shippedSet(t, "identity", "telos")
 	r, _ := New(set)
@@ -156,6 +211,13 @@ func TestTheAgendaLineOverflowRule(t *testing.T) {
 	line, _ = AgendaLine([]agenda.Item{{Module: "identity", Kind: "value", Reason: agenda.Empty, Question: "What do you weigh decisions against?"}})
 	if !strings.HasPrefix(line, "agenda: [identity/value] What do you") {
 		t.Errorf("onboarding line = %q", line)
+	}
+	// A multi-byte-rune question must still cut to a valid, in-budget line:
+	// the back-off must never land mid-rune.
+	multibyte := strings.Repeat("é", 300)
+	line, f = AgendaLine([]agenda.Item{{Module: "telos", Kind: "goal", ID: "G1", Reason: agenda.Stale, Question: multibyte}})
+	if !utf8.ValidString(line) || len(line) > Reservation || f == nil || !strings.HasSuffix(line, "…") {
+		t.Errorf("multibyte cut: valid=%v bytes=%d fault=%+v line=%q", utf8.ValidString(line), len(line), f, line)
 	}
 }
 

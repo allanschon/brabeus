@@ -2,9 +2,9 @@ health:
 {{- range first 2 (.Kind "condition")}}
 - {{index .Fields "statement"}}
 {{- end}}
-{{- range first 3 (.Kind "routine")}}
+{{- range first 2 (.Kind "routine")}}
 - routine: {{index .Fields "statement"}}
 {{- end}}
-{{- range first 3 (.Kind "metric")}}
+{{- range first 2 (.Kind "metric")}}
 - {{index .Fields "statement"}}: {{index .Fields "value"}} ({{index .Fields "measured"}})
 {{- end}}

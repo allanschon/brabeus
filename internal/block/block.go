@@ -26,11 +26,14 @@ const (
 	Reservation = module.Reservation
 )
 
-// Fault is a share of the block that could not be rendered as asked.
+// Fault is a share of the block that could not be rendered as asked. A fault
+// with Error set is a broken template; one without is over budget, or the
+// agenda line was cut.
 type Fault struct {
 	Module string `json:"module"`
 	Bytes  int    `json:"bytes"`
 	Budget int    `json:"budget"`
+	Error  string `json:"error,omitempty"`
 }
 
 // Data is what one module's template sees: its own records, already
@@ -139,7 +142,7 @@ func (r *Renderer) Render(items []agenda.Item, recs []store.Stored, now time.Tim
 		}
 		var buf bytes.Buffer
 		if err := t.Execute(&buf, data); err != nil {
-			faults = append(faults, Fault{Module: m.Name, Budget: m.BudgetBytes})
+			faults = append(faults, Fault{Module: m.Name, Budget: m.BudgetBytes, Error: err.Error()})
 			fmt.Fprintf(&out, "%s: template error (%v)\n", m.Name, err)
 			continue
 		}
@@ -186,7 +189,7 @@ func AgendaLine(items []agenda.Item) (string, *Fault) {
 	// Cut on a byte budget, then back off to a rune boundary so the
 	// ellipsis never follows half a character.
 	cut := base[:Reservation-len("…")]
-	for len(cut) > 0 && !utf8.ValidString(cut) {
+	for len(cut) > 0 && !utf8.RuneStart(base[len(cut)]) {
 		cut = cut[:len(cut)-1]
 	}
 	return cut + "…", &Fault{Module: "agenda", Bytes: len(base), Budget: Reservation}

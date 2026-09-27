@@ -28,5 +28,6 @@ and the only module with scope keys — and four core modules under `ratified-re
 `telos`, `health` and `finance`. See §7 for what each holds.
 
 Each of the four ratified-record modules ships `summary.md.tmpl`, a `text/template` over
-`internal/block.Data`, with `first`, `date` and `age` available and everything else deliberately
-absent.
+`internal/block.Data`. The custom functions are `first`, `date` and `age`; `text/template`'s own
+builtins (`index`, `or`, `printf` and the rest) are available as always. Nothing else is added
+deliberately.
