@@ -67,13 +67,19 @@ func (s *Store) Migrate(caller string) (MigrateReport, error) {
 			}
 			return nil
 		}
-		if meta.LegacyType == "" {
+		// Normalised the same way Write normalises r.Type before its own
+		// LegacyKind lookup (store.go): an outbox file queued before this PR
+		// — or any pre-module writer — may carry "type: Reference" or
+		// "  feedback  ", and an exact-match lookup would abort the whole
+		// migration on a type Write itself would have accepted.
+		legacyType := strings.ToLower(strings.TrimSpace(meta.LegacyType))
+		if legacyType == "" {
 			problems = append(problems, rel+": neither type nor module")
 			return nil
 		}
-		m, k, ok := s.modules.LegacyKind(meta.LegacyType)
+		m, k, ok := s.modules.LegacyKind(legacyType)
 		if !ok {
-			problems = append(problems, fmt.Sprintf("%s: type %q maps to no enabled module's kind", rel, meta.LegacyType))
+			problems = append(problems, fmt.Sprintf("%s: type %q maps to no enabled module's kind", rel, legacyType))
 			return nil
 		}
 		r.Module, r.Kind = m, k

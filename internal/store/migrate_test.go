@@ -172,6 +172,32 @@ func TestMigrateAbortsOnAMalformedKernelKey(t *testing.T) {
 	}
 }
 
+// LegacyKind's lookup must be case- and whitespace-insensitive the same way
+// Write's own lookup already is (store.go): a pre-module writer never
+// validated `type`, so a live record can carry "Reference" or " feedback "
+// and an exact-match lookup would abort the whole migration on a type Write
+// itself would have accepted.
+func TestMigrateNormalisesTheLegacyTypeBeforeLookup(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	seedLegacy(t, s, map[string]string{
+		"infra/cased.md":  legacyFile("cased", "Reference", "global", "cased type"),
+		"infra/spaced.md": legacyFile("spaced", " feedback ", "global", "spaced type"),
+	})
+	if _, err := s.Migrate("test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"infra/cased.md": "note", "infra/spaced.md": "preference"}
+	for rel, kind := range want {
+		r, meta := ParseRecord(mustRead(t, filepath.Join(s.Dir, rel)))
+		if r.Module != "memory" || r.Kind != kind {
+			t.Errorf("%s: module=%q kind=%q, want memory/%s", rel, r.Module, r.Kind, kind)
+		}
+		if meta.LegacyType != "" {
+			t.Errorf("%s still carries type", rel)
+		}
+	}
+}
+
 func TestMigrateRefusesAReadOnlyStore(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
 	s.ReadOnly = true
