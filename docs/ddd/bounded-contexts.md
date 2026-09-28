@@ -100,7 +100,7 @@ Relationships:
 - **Context block** (downstream). The top agenda item becomes the agenda line.
 - **Interview** (downstream). Reads the agenda, each item with its reason and question, and the
   facts `reflect` returns; returns answers through `review`.
-- **Intent** (upstream, M2). Failed claims will head the agenda.
+- **Intent** (upstream, M2). Failed claims head the agenda.
 
 ### Retrieval
 
@@ -209,9 +209,10 @@ depends on it.
 
 ### Intent (M2)
 
-Intent owns claims, adapters, claim states and the schedule that runs them. It is not built yet.
+Intent owns claims, adapters, claim states and the schedule that runs them. It was built in M2.
 
-It will live in `internal/claims`, beside `agenda` and `block`. Evidence sources sit behind
+It lives in `internal/claims`, beside `agenda` and `block`: the adapters, and the runner that
+`cmd/brabeus` starts on the deployment's interval. Evidence sources sit behind
 adapters by design (§8.1), which gives each backend its own anti-corruption layer. A new adapter
 is a kernel change, which a module then declares, because modules are data and carry no code.
 Results reach the store through a claim-result operation of Record's, so the kernel remains the
