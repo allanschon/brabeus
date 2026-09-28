@@ -86,7 +86,7 @@ Where the spec gives the reason for a rule, the row cites it. Terms are the
 | The agenda line is the only thing ever cut, and a cut is reported as a fault                      | enforced                                                      | `block.AgendaLine`; `TestTheAgendaLineOverflowRule`                                                                                                                                                                        |
 | A working-memory module is never in the block                                                     | enforced                                                      | `block.New`; `TestModulesRenderInPriorityOrderAndOnlyRatifiedOnes`                                                                                                                                                         |
 | A forbidden module contributes nothing, not even its name                                         | enforced                                                      | `block.Render`; `TestAHiddenModuleContributesNothingNotEvenItsName`. The name of a module the person added is itself something they may not want a reader to know (spec §11)                                               |
-| A record in a ratified-record module renders marked unconfirmed until reviewed, whatever its kind | **not enforced**                                              | spec §10. The marker is left to each summary template, and only two shipped templates carry it: `identity` for values, `telos` for goals. An unreviewed `identity` fact, belief or preference renders as the person's word |
+| A record in a ratified-record module renders marked unconfirmed until reviewed, whatever its kind | enforced for the shipped modules                               | spec §10. `block.Render` fills `Rec.Mark` for every record before the template sees it, and every shipped template writes it at the end of every rendered line; `TestEveryShippedTemplateMarksAnUnreviewedRecordOfEveryKind`. See *Where the rules do not hold* |
 
 ## Callers and audience
 
@@ -140,6 +140,13 @@ after the agenda line and after any module output that lacks one, outside both t
 the budgets. With budgets summing to the full 1792 bytes and every template filling its budget
 exactly, a two-module block renders at 2051 bytes. The shipped budgets sum to 1700, leaving 92
 bytes of margin, so no shipped configuration can overflow.
+
+**A custom module's template can omit the unconfirmed marker.** `block.Render` fills `Rec.Mark`
+for every record it hands to a template, but nothing checks that the template writes `{{.Mark}}`
+anywhere. Every shipped template does, and `TestEveryShippedTemplateMarksAnUnreviewedRecordOfEveryKind`
+covers them, but a person-added `ratified-record` module whose `summary.md.tmpl` drops `{{.Mark}}`
+from a line would render an unreviewed record as the person's confirmed word, with no test or
+code path to catch it.
 
 **An unidentified caller sees what a consumer sees, not nothing.** Spec §11 says an unidentified
 caller is refused. `server.Caller` treats an unresolved caller as a consumer, which reads every
