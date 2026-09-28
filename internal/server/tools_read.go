@@ -5,6 +5,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/allanschon/brabeus/internal/module"
 	"github.com/allanschon/brabeus/internal/scope"
 	"github.com/allanschon/brabeus/internal/store"
 )
@@ -71,9 +72,52 @@ type searchOut struct {
 	Matches    []store.Match    `json:"matches"`
 }
 
-// registerReadTools registers the tools that only ever read: list, read and
-// search. Kept apart from the write tools so the read/write boundary in the
-// server package matches the boundary spec §11 enforces at runtime.
+type kindOut struct {
+	Fields        []string `json:"fields"`
+	Optional      []string `json:"optional,omitempty"`
+	FreshnessDays int      `json:"freshness_days,omitempty"`
+	Interview     string   `json:"interview,omitempty"`
+	First         string   `json:"first,omitempty"`
+	Lenses        []string `json:"lenses,omitempty"`
+	Draft         string   `json:"draft,omitempty"`
+	DueField      string   `json:"due_field,omitempty"`
+}
+type moduleOut struct {
+	Name       string             `json:"name"`
+	Profile    string             `json:"profile"`
+	Priority   int                `json:"priority"`
+	Intro      string             `json:"intro,omitempty"`
+	Onboarding []string           `json:"onboarding,omitempty"`
+	Kinds      map[string]kindOut `json:"kinds"`
+}
+type modulesIn struct{}
+type modulesOut struct {
+	Modules []moduleOut `json:"modules" jsonschema:"the enabled modules this caller may read, in priority order, with each kind's fields and the interview's questions: first, lenses, draft, interview"`
+}
+
+// modulesFor is the read-only view of the module set spec §11's `modules`
+// tool serves: every enabled module the caller's audience does not hide, with
+// its kinds' interview scaffolding. A hidden module is absent, not empty —
+// its name is itself something a consumer may not learn (spec §11).
+func modulesFor(set *module.Set, v store.Visibility) modulesOut {
+	out := modulesOut{Modules: []moduleOut{}}
+	for _, m := range set.Modules {
+		if v.Hides(m.Name) {
+			continue
+		}
+		mo := moduleOut{Name: m.Name, Profile: string(m.Profile), Priority: m.Priority, Intro: m.Intro, Onboarding: m.Onboarding, Kinds: map[string]kindOut{}}
+		for name, k := range m.Kinds {
+			mo.Kinds[name] = kindOut{Fields: k.Fields, Optional: k.Optional, FreshnessDays: k.FreshnessDays, Interview: k.Interview, First: k.First, Lenses: k.Lenses, Draft: k.Draft, DueField: k.DueField}
+		}
+		out.Modules = append(out.Modules, mo)
+	}
+	return out
+}
+
+// registerReadTools registers the tools that only ever read: list, read,
+// search and modules. Kept apart from the write tools so the read/write
+// boundary in the server package matches the boundary spec §11 enforces at
+// runtime.
 func registerReadTools(s *mcp.Server, d Deps, caller string, consumer bool, audience store.Visibility) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list",
@@ -146,5 +190,13 @@ func registerReadTools(s *mcp.Server, d Deps, caller string, consumer bool, audi
 		// not this call's profile-narrowed one — so widening the profile on
 		// the next search is visibly still possible.
 		return nil, searchOut{Vocabulary: st.Vocabulary(audience), Matches: hits, Dense: dense}, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "modules",
+		Description: "The enabled modules and their kinds, fields and interview questions — lenses, first, draft " +
+			"and interview — for the caller. Read it before an interview; a module you may not read is absent.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in modulesIn) (*mcp.CallToolResult, modulesOut, error) {
+		return nil, modulesFor(d.Set, audience), nil
 	})
 }

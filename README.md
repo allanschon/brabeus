@@ -79,11 +79,12 @@ machine by up to one sync interval, which is 15 minutes. The plugin fetches it a
 over plain HTTP at `GET /context`, which sits behind the same identity and authentication as
 `/mcp`.
 
-A caller resolved as a consumer, meaning one named in `BRABEUS_CONSUMERS` or one the kernel could
-not identify, sees only modules whose manifest declares `audience: any`. That holds on every read
-path: search, read, list, the vocabulary and the block. A consumer is refused the notebook
-entirely, because the notebook has no modules and so no audience of its own. A consumer never
-writes, deletes or reviews.
+A caller resolved as a consumer, meaning one named in `BRABEUS_CONSUMERS`, sees only modules whose
+manifest declares `audience: any`. That holds on every read path: search, read, list, the
+vocabulary and the block. A consumer is refused the notebook entirely, because the notebook has no
+modules and so no audience of its own. A consumer never writes, deletes or reviews. A caller the
+kernel cannot identify at all is not a consumer — it is refused outright, with a 403, before any
+tool runs (spec §11).
 
 ## Upgrading a record from before modules
 
