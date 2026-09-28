@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -634,6 +635,31 @@ func checkFields(kind module.Kind, fields map[string]string) error {
 	return nil
 }
 
+// ErrFrozen marks a refusal under spec §9's rule that a confirmed record
+// changes only through review: a reviewed record whose governing module is
+// ratified-record refuses write and delete. Wrapped, not returned bare, so a
+// caller that needs to distinguish this refusal from any other can with
+// errors.Is rather than by matching text.
+var ErrFrozen = errors.New("confirmed record")
+
+// frozen reports whether a stored record is confirmed under a ratified-record
+// module's governance. The rule follows the governing module, not the file's
+// own, so a confirmed crossing preference is frozen too (§9). A retired
+// record carries reviewed too, by construction (Review stamps both on
+// Retired), so it stays frozen through this same check — retirement is
+// terminal, not an opening back to a plain write.
+func (s *Store) frozen(r Record, meta Meta) bool {
+	if meta.Reviewed.IsZero() {
+		return false // a draft; retired records carry reviewed too and stay frozen
+	}
+	gov, _, ok := s.modules.RuleFor(r.Module, r.Kind)
+	if !ok {
+		return false
+	}
+	bundle, _ := gov.Profile.Bundle()
+	return bundle.Interviewed
+}
+
 // checkLayout is the path rule per profile (spec §5, §6). memoryPath has
 // already canonicalised rel and refused the structural files. The path's
 // kind segment must be the record's kind, or the path and the frontmatter
@@ -667,6 +693,12 @@ func (s *Store) Write(rel string, r Record, caller string) (string, error) {
 	r.Name, r.Description = oneLine(r.Name), oneLine(r.Description)
 	if r.Name == "" || r.Description == "" {
 		return "", fmt.Errorf("name and description are required: the index is built from them")
+	}
+	// An empty scope defaults to global (spec §5, AP): a ratified record is
+	// global unless written with a scope, and a caller that forgot to set one
+	// should not be refused for the omission.
+	if strings.TrimSpace(r.Scope) == "" {
+		r.Scope = "global"
 	}
 	// Stored in the form scope.Visible() compares, so a scope that validates is a
 	// scope that matches.
@@ -706,6 +738,17 @@ func (s *Store) Write(rel string, r Record, caller string) (string, error) {
 	if err := checkFields(kind, r.Fields); err != nil {
 		return "", err
 	}
+	// A thread naming a core module holds a pointer only (spec §7): the
+	// substance waits for the module's ratified home, whether or not that
+	// module is enabled here — Core is closed and the kernel knows it either
+	// way. A thread for any other module, known to the kernel or not, keeps
+	// its summary.
+	if man.Profile == module.WorkingMemory && r.Kind == module.Thread {
+		target := strings.ToLower(strings.TrimSpace(r.Fields[module.BelongsTo]))
+		if module.Core[target] && strings.TrimSpace(r.Body) != "" {
+			return "", fmt.Errorf("a thread for %s holds a pointer only: %s is a core module with audience self, so the substance waits for its ratified home (spec §7); keep the name and description to the topic and leave the body empty", target, target)
+		}
+	}
 	r.ID = r.Fields["id"]
 	if err := checkLayout(man, r.Kind, rel); err != nil {
 		return "", err
@@ -742,10 +785,11 @@ func (s *Store) Write(rel string, r Record, caller string) (string, error) {
 		return "", err
 	}
 	var meta Meta
+	var oldRecord Record
 	old, err := os.ReadFile(full)
 	switch {
 	case err == nil:
-		_, meta = ParseRecord(string(old))
+		oldRecord, meta = ParseRecord(string(old))
 		// A kernel-owned key that failed to parse must stop the write rather
 		// than be silently dropped: compose only emits reviewed/retired/snoozes
 		// when they're non-zero, so composing anyway would erase whichever one
@@ -766,6 +810,23 @@ func (s *Store) Write(rel string, r Record, caller string) (string, error) {
 	if old, err := os.ReadFile(full); err == nil &&
 		sansUpdated(string(old)) == sansUpdated(content) && !staleStamp(string(old)) {
 		content = string(old)
+	}
+	// The freeze (spec §9): once a record governed by a ratified-record
+	// module has been reviewed, a write that would change its content is
+	// refused — its content changes only through a corrected review. `err`
+	// here is still the read at the top of this switch (err == nil means
+	// there was an old file to freeze against); the reassignment above is
+	// scoped to its own if-statement and does not shadow it. A retired
+	// record gets its own wording: there is no "corrected" to point back to,
+	// only a new path (§9, and the K4 ruling against pointing refusals at
+	// each other in a circle).
+	if err == nil && s.frozen(oldRecord, meta) && sansUpdated(string(old)) != sansUpdated(content) {
+		if !meta.Retired.IsZero() {
+			return "", fmt.Errorf("%w: %s was retired on %s and stays in history as it was; write the new statement at a new path (spec §9)",
+				ErrFrozen, rel, meta.Retired.UTC().Format("2006-01-02"))
+		}
+		return "", fmt.Errorf("%w: %s was confirmed on %s; its content changes only through review with verdict corrected (spec §9)",
+			ErrFrozen, rel, meta.Reviewed.UTC().Format("2006-01-02"))
 	}
 	if err := os.WriteFile(full, []byte(content), 0o640); err != nil {
 		return "", err
@@ -814,6 +875,18 @@ func (s *Store) Delete(rel string, caller string) (string, error) {
 	old, err := os.ReadFile(full)
 	if err != nil {
 		return "", fmt.Errorf("no memory at %q — nothing was deleted", rel)
+	}
+	// The freeze (spec §9): a confirmed record leaves the store only through
+	// a retired review, which keeps it in history; a draft may still be
+	// deleted. s.modules can be nil on the read-only mirror, which never
+	// deletes, but frozen calls RuleFor on the set and would panic on nil.
+	if r, meta := ParseRecord(string(old)); s.modules != nil && s.frozen(r, meta) {
+		if !meta.Retired.IsZero() {
+			return "", fmt.Errorf("%w: %s was retired on %s and stays in history (spec §9)",
+				ErrFrozen, rel, meta.Retired.UTC().Format("2006-01-02"))
+		}
+		return "", fmt.Errorf("%w: %s was confirmed on %s; it leaves the record only through review with verdict retired (spec §9)",
+			ErrFrozen, rel, meta.Reviewed.UTC().Format("2006-01-02"))
 	}
 	if err := os.Remove(full); err != nil {
 		return "", err

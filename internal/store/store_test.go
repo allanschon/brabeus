@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -82,6 +83,14 @@ func newTestStore(t *testing.T, remote string) *Store {
 // loaded from a temp dir so the tests do not depend on ../../modules.
 func testModules(t *testing.T) *module.Set {
 	t.Helper()
+	return testModulesWith(t, "memory", "telos", "identity")
+}
+
+// testModulesWith writes the same three manifests testModules does, but
+// loads only the named ones — so a test can ask what a crossing kind does
+// when the module it crosses into (identity) is not enabled (spec §7, AP).
+func testModulesWith(t *testing.T, enabled ...string) *module.Set {
+	t.Helper()
 	dir := t.TempDir()
 	write := func(name, body string) {
 		if err := os.MkdirAll(filepath.Join(dir, name), 0o755); err != nil {
@@ -94,7 +103,8 @@ func testModules(t *testing.T) *module.Set {
 	write("memory", `{"name":"memory","version":1,"profile":"working-memory","priority":20,"layout":"free",
 	  "scope_keys":["machine","project"],
 	  "legacy_types":{"user":"note","feedback":"preference","project":"project","reference":"note"},
-	  "kinds":{"note":{"fields":[]},"trap":{"fields":[]},"preference":{"fields":[]},"project":{"fields":[]}}}`)
+	  "kinds":{"note":{"fields":[]},"trap":{"fields":[]},"preference":{"fields":[]},"project":{"fields":[]},
+	           "thread":{"fields":["belongs_to"],"timeless":true}}}`)
 	write("telos", `{"name":"telos","version":1,"profile":"ratified-record","priority":10,"budget_bytes":600,
 	  "kinds":{"goal":{"fields":["id","title","ideal","by"],"optional":["serves"],"freshness_days":90}},
 	  "summary":"summary.md.tmpl"}`)
@@ -102,7 +112,7 @@ func testModules(t *testing.T) *module.Set {
 	  "kinds":{"value":{"fields":["statement"],"freshness_days":365,"interview":"Still one of the things you weigh decisions against?","first":"What do you weigh decisions against?"},
 	           "preference":{"fields":["statement"],"freshness_days":120}},
 	  "onboarding":["value"],"summary":"summary.md.tmpl"}`)
-	set, err := module.Load(dir, []string{"memory", "telos", "identity"})
+	set, err := module.Load(dir, enabled)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -772,7 +782,6 @@ func TestWriteNormalisesNameAndDescriptionOnceForEveryRecord(t *testing.T) {
 func TestWriteRefusesAMalformedScope(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
 	for _, m := range []Record{
-		{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: ""},
 		{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "delta"},
 		{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "machine/"},
 		{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "project/"},
@@ -789,6 +798,10 @@ func TestWriteRefusesAMalformedScope(t *testing.T) {
 	}
 	for _, m := range []Record{
 		{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "global"},
+		// An empty scope defaults to global rather than being refused (spec
+		// \u00a75, AP): see TestAWriteWithNoScopeDefaultsToGlobal for the assertion
+		// that it actually lands as global, not merely that it is accepted.
+		{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: ""},
 		{Name: "n", Description: "d", Module: "memory", Kind: "preference", Scope: "project/example--repo"},
 		{Name: "n", Description: "d", Module: "memory", Kind: "project", Scope: "machine/delta"},
 		{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "Machine/Delta"},
@@ -796,6 +809,19 @@ func TestWriteRefusesAMalformedScope(t *testing.T) {
 		if _, err := s.Write("infra/good.md", m, "test-machine"); err != nil {
 			t.Errorf("scope %q was refused: %v", m.Scope, err)
 		}
+	}
+}
+
+// AP: a write with no scope at all is not a malformed one to refuse; it is
+// the common case, and it lands as global (spec \u00a75).
+func TestAWriteWithNoScopeDefaultsToGlobal(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	if _, err := s.Write("infra/noscope.md", Record{Name: "n", Description: "d", Module: "memory", Kind: "note"}, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	fm := parseFrontmatter(mustRead(t, filepath.Join(s.Dir, "infra", "noscope.md")))
+	if fm["scope"] != "global" {
+		t.Errorf("scope = %q, want global", fm["scope"])
 	}
 }
 
@@ -1068,8 +1094,14 @@ func TestThePathRuleFollowsTheProfile(t *testing.T) {
 	}
 }
 
+// §7 still requires a plain write to carry a stale `reviewed` through when
+// `identity` is off (AP): a deployment without identity leaves
+// memory/preference an ordinary working-memory record, ungoverned by any
+// ratified-record module, so it is never frozen — a `reviewed` it already
+// carries from when identity WAS enabled just rides along.
 func TestARewriteKeepsReviewedWhereItWas(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
+	s.SetModules(testModulesWith(t, "memory", "telos"))
 	rel := "personal/p.md"
 	r := Record{Name: "p", Description: "d", Module: "memory", Kind: "preference", Scope: "global", Body: "first"}
 	if _, err := s.Write(rel, r, "test-machine"); err != nil {
@@ -1091,6 +1123,130 @@ func TestARewriteKeepsReviewedWhereItWas(t *testing.T) {
 	_, meta := ParseRecord(mustRead(t, full))
 	if meta.Reviewed.IsZero() {
 		t.Error("a plain write must not drop reviewed")
+	}
+}
+
+// AU: once reviewed, a record governed by a ratified-record module is frozen —
+// a write that would change its content is refused, and so is delete; the
+// refusal names the corrected and retired verdicts. A draft may still be
+// rewritten or deleted. Identical content stays a no-op, because the outbox
+// replays writes and a replay must not read as an attempt to change anything.
+func TestAReviewedRatifiedRecordRefusesWriteAndDeleteButADraftDoesNot(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	draft := Record{Name: "family", Description: "family time", Module: "identity", Kind: "value", Scope: "global", Fields: map[string]string{"statement": "family time"}, Body: "family time"}
+	if _, err := s.Write("identity/value/family.md", draft, "m"); err != nil {
+		t.Fatal(err)
+	}
+	reworded := draft
+	reworded.Fields = map[string]string{"statement": "family first"}
+	reworded.Body = "family first"
+	if _, err := s.Write("identity/value/family.md", reworded, "m"); err != nil {
+		t.Fatalf("a draft may be rewritten: %v", err)
+	}
+	if _, err := s.Review("identity/value/family.md", ReviewInput{Question: "Still?", Verdict: Confirmed, Answer: "yes"}, "m"); err != nil {
+		t.Fatal(err)
+	}
+	before := run(t, s.Dir, "rev-parse", "HEAD")
+	if commit, err := s.Write("identity/value/family.md", reworded, "m"); err != nil || commit != "no change" {
+		t.Errorf("identical content after a review is a no-op, got commit=%q err=%v", commit, err)
+	}
+	changed := reworded
+	changed.Body = "family, mostly"
+	_, err := s.Write("identity/value/family.md", changed, "m")
+	if err == nil || !strings.Contains(err.Error(), "corrected") {
+		t.Errorf("a write that changes a confirmed record must be refused, naming corrected: %v", err)
+	}
+	if !errors.Is(err, ErrFrozen) {
+		t.Errorf("the write refusal must wrap ErrFrozen: %v", err)
+	}
+	_, err = s.Delete("identity/value/family.md", "m")
+	if err == nil || !strings.Contains(err.Error(), "retired") {
+		t.Errorf("delete of a confirmed record must be refused, naming retired: %v", err)
+	}
+	if !errors.Is(err, ErrFrozen) {
+		t.Errorf("the delete refusal must wrap ErrFrozen: %v", err)
+	}
+	if run(t, s.Dir, "rev-parse", "HEAD") != before {
+		t.Error("HEAD moved on a refused write or delete")
+	}
+	if _, err := s.Write("identity/value/other.md", draft, "m"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Delete("identity/value/other.md", "m"); err != nil {
+		t.Errorf("a draft may be deleted: %v", err)
+	}
+}
+
+// The same rule follows the governing module: a confirmed crossing preference
+// is frozen too, and a refinement becomes a new memory/preference (§9).
+func TestAConfirmedCrossingPreferenceIsFrozenLikeTheRest(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	p := Record{Name: "terse", Description: "terse answers", Module: "memory", Kind: "preference", Scope: "global", Body: "Prefers terse answers."}
+	if _, err := s.Write("personal/terse.md", p, "m"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Review("personal/terse.md", ReviewInput{Question: "Still?", Verdict: Confirmed, Answer: "yes"}, "m"); err != nil {
+		t.Fatal(err)
+	}
+	p.Body = "Prefers blunt answers."
+	if _, err := s.Write("personal/terse.md", p, "m"); err == nil {
+		t.Error("a confirmed crossing preference must refuse a content change")
+	}
+	if _, err := s.Delete("personal/terse.md", "m"); err == nil {
+		t.Error("a confirmed crossing preference must refuse delete")
+	}
+	note := Record{Name: "n", Description: "a note", Module: "memory", Kind: "note", Scope: "global", Body: "b"}
+	if _, err := s.Write("personal/n.md", note, "m"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Delete("personal/n.md", "m"); err != nil {
+		t.Errorf("a working-memory note stays deletable: %v", err)
+	}
+}
+
+// K4: a retired record has left the record, and the write, delete and review
+// refusals for it must not point at each other in a loop. Each names "a new
+// path" instead of pointing back at another operation on the same one.
+func TestARetiredRecordCannotBeReviewedAgain(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	writeValue(t, s, "identity/value/old.md", "old")
+	if _, err := s.Review("identity/value/old.md", ReviewInput{Question: "Still?", Verdict: Retired, Answer: "no longer"}, "m"); err != nil {
+		t.Fatal(err)
+	}
+	_, err := s.Review("identity/value/old.md", ReviewInput{Question: "Still?", Verdict: Confirmed, Answer: "yes"}, "m")
+	if err == nil || !strings.Contains(err.Error(), "retired") || !strings.Contains(err.Error(), "new path") {
+		t.Errorf("a retired record has left the record; reviewing it again must be refused, naming a new path: %v", err)
+	}
+	changed := Record{Name: "old", Description: "old", Module: "identity", Kind: "value", Scope: "global", Fields: map[string]string{"statement": "old, changed"}, Body: "old, changed"}
+	_, err = s.Write("identity/value/old.md", changed, "m")
+	if err == nil || !strings.Contains(err.Error(), "new path") || strings.Contains(err.Error(), "corrected") {
+		t.Errorf("a write to a retired record must point at a new path, not at correcting this one: %v", err)
+	}
+	_, err = s.Delete("identity/value/old.md", "m")
+	if err == nil || strings.Contains(err.Error(), "verdict retired") {
+		t.Errorf("a delete of a retired record must not point back at reviewing it retired, which already happened: %v", err)
+	}
+}
+
+// AE, §7: a thread whose belongs_to names a core module holds a pointer only;
+// the kernel refuses it a body, whether or not that module is enabled, and
+// however the name is spelled. A thread naming any other module keeps a summary.
+func TestAThreadNamingACoreModuleIsRefusedABody(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t)) // testModules enables memory, telos, identity — not health
+	thread := func(belongsTo, body string) error {
+		_, err := s.Write("memory/thread/sleep.md", Record{Name: "sleep", Description: "sleep and the 5 am starts", Module: "memory", Kind: "thread", Scope: "global", Fields: map[string]string{"belongs_to": belongsTo}, Body: body}, "m")
+		return err
+	}
+	for _, name := range []string{"health", " Health ", "telos"} {
+		if err := thread(name, "He said he sleeps five hours and wants seven."); err == nil || !strings.Contains(err.Error(), "pointer") {
+			t.Errorf("belongs_to %q with a body must be refused as pointer-only: %v", name, err)
+		}
+		if err := thread(name, ""); err != nil {
+			t.Errorf("belongs_to %q with no body is the pointer the spec wants: %v", name, err)
+		}
+	}
+	if err := thread("sports", "Wants to run a 10k; no module for it yet."); err != nil {
+		t.Errorf("a thread for a module the kernel does not know keeps its summary: %v", err)
 	}
 }
 
