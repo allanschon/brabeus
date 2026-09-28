@@ -66,7 +66,7 @@ func TestAStaleRecordIsTheFirstLine(t *testing.T) {
 		rec("identity/value/family.md", "identity", "value", map[string]string{"statement": "family time"}, "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z"), // 395 days: stale at 365
 		rec("telos/goal/g1.md", "telos", "goal", map[string]string{"id": "G1", "title": "Ship the guide", "ideal": "published", "by": "2027-12-01"}, "2027-09-20T00:00:00Z", "2027-09-20T00:00:00Z"),
 	}
-	items := agenda.Compute(set, recs, now)
+	items := agenda.Compute(set, recs, nil, now)
 	text, faults := r.Render(items, recs, now, store.Visibility{})
 	first, _, _ := strings.Cut(text, "\n")
 	if !strings.HasPrefix(first, "agenda: [identity/value family]") || !strings.Contains(first, "Still one of the things") {
@@ -148,7 +148,7 @@ func TestModulesRenderInPriorityOrderAndOnlyRatifiedOnes(t *testing.T) {
 		rec("telos/goal/g1.md", "telos", "goal", map[string]string{"id": "G1", "title": "T", "ideal": "i", "by": "b"}, "2026-09-20T00:00:00Z", "2026-09-20T00:00:00Z"),
 		rec("identity/value/v.md", "identity", "value", map[string]string{"statement": "craft"}, "2026-09-20T00:00:00Z", "2026-09-20T00:00:00Z"),
 	}
-	text, _ := r.Render(agenda.Compute(set, recs, now), recs, now, store.Visibility{})
+	text, _ := r.Render(agenda.Compute(set, recs, nil, now), recs, now, store.Visibility{})
 	i, tl := strings.Index(text, "\nidentity:"), strings.Index(text, "\ntelos:")
 	if i < 0 || tl < 0 || i > tl {
 		t.Errorf("identity (priority 5) must precede telos (10):\n%s", text)
