@@ -208,9 +208,15 @@ func TestTheAgendaLineOverflowRule(t *testing.T) {
 	if line, f := AgendaLine(nil); line != "agenda: nothing due" || f != nil {
 		t.Errorf("empty = %q", line)
 	}
-	line, _ = AgendaLine([]agenda.Item{{Module: "identity", Kind: "value", Reason: agenda.Empty, Question: "What do you weigh decisions against?"}})
+	line, _ = AgendaLine([]agenda.Item{{Module: "identity", Kind: "value", Reason: agenda.Onboarding, Question: "What do you weigh decisions against?"}})
 	if !strings.HasPrefix(line, "agenda: [identity/value] What do you") {
 		t.Errorf("onboarding line = %q", line)
+	}
+	// An untagged item (no module: a pre-module record, or one whose kernel
+	// keys failed to parse) is named by its path, not "[/ name]".
+	line, _ = AgendaLine([]agenda.Item{{Path: "personal/old.md", Reason: agenda.Stale, Question: "personal/old.md predates modules and cannot be reviewed until the migration has run."}})
+	if !strings.HasPrefix(line, "agenda: [personal/old.md] ") {
+		t.Errorf("untagged line = %q", line)
 	}
 	// A multi-byte-rune question must still cut to a valid, in-budget line:
 	// the back-off must never land mid-rune.
