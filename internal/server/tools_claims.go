@@ -55,13 +55,10 @@ type claimResultOut struct {
 
 // governedByRatified reports whether a record's governing module is one the
 // person ratifies: the only records whose claims the kernel reads (§8.1).
+// module.Set.Interviewed is the shared predicate; agenda.Reflect uses the
+// same one, since agenda cannot import server to call this directly.
 func governedByRatified(d Deps, r store.Stored) bool {
-	gov, _, ok := d.Set.RuleFor(r.Module, r.Kind)
-	if !ok {
-		return false
-	}
-	bundle, _ := gov.Profile.Bundle()
-	return bundle.Interviewed
+	return d.Set.Interviewed(r.Module, r.Kind)
 }
 
 func nowFor(d Deps) time.Time {
