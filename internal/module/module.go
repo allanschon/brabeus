@@ -61,6 +61,12 @@ type Kind struct {
 	Interview     string   `json:"interview,omitempty"`
 	First         string   `json:"first,omitempty"`
 	Timeless      bool     `json:"timeless,omitempty"`
+	// Lenses, Draft and DueField are v1.7 keys (spec §6). The kernel validates
+	// their shape and attaches no meaning to the text: how to ask belongs to
+	// the module, what is due belongs to the kernel (§3.9).
+	Lenses   []string `json:"lenses,omitempty"`
+	Draft    string   `json:"draft,omitempty"`
+	DueField string   `json:"due_field,omitempty"`
 }
 
 type Manifest struct {
@@ -70,6 +76,7 @@ type Manifest struct {
 	Priority    int               `json:"priority"`
 	BudgetBytes int               `json:"budget_bytes,omitempty"`
 	Audience    Audience          `json:"audience,omitempty"`
+	Intro       string            `json:"intro,omitempty"`
 	Kinds       map[string]Kind   `json:"kinds"`
 	Summary     string            `json:"summary,omitempty"`
 	Adapters    []string          `json:"adapters,omitempty"`
@@ -91,6 +98,19 @@ var Core = map[string]bool{"identity": true, "telos": true, "health": true, "fin
 // the named ratified-record module's rule for the same kind. Nothing else
 // crosses, which is why this is a constant and not a manifest key.
 var Crossing = map[string]string{"preference": "identity"}
+
+// Adapters is the closed set of evidence adapters this kernel implements (§8.1).
+// A manifest may declare a subset; a claim may name only what its module declared.
+var Adapters = []string{"tracker", "forge", "date", "manual"}
+
+// Thread is the working-memory kind the interview leaves for a topic no enabled
+// module holds, and BelongsTo its one field: the module it seems to belong in
+// (§7). Both are constants because the kernel enforces one rule on them — a
+// thread naming a core module holds no body — and a rule needs a fixed name.
+const (
+	Thread    = "thread"
+	BelongsTo = "belongs_to"
+)
 
 // Reserved are the frontmatter keys the kernel composes itself (spec §5). A
 // kind may declare "id" — the kernel reads Record.ID from it — and no other.
@@ -163,6 +183,15 @@ func (m *Manifest) validate() error {
 	if Core[m.Name] && m.Audience != Self {
 		return fmt.Errorf("audience %q: %s is a core module and its audience is self (spec §7)", m.Audience, m.Name)
 	}
+	known := map[string]bool{}
+	for _, a := range Adapters {
+		known[a] = true
+	}
+	for _, a := range m.Adapters {
+		if !known[a] {
+			return fmt.Errorf("adapters: %q is not one this kernel implements (%s); a new adapter is a kernel change (spec §7)", a, strings.Join(Adapters, ", "))
+		}
+	}
 	if len(m.Kinds) == 0 {
 		return fmt.Errorf("a module declares at least one kind")
 	}
@@ -181,6 +210,14 @@ func (m *Manifest) validate() error {
 		}
 		if m.Summary != "" {
 			return fmt.Errorf("summary: a working-memory module is never in the context block")
+		}
+		if m.Intro != "" {
+			return fmt.Errorf("intro: a working-memory module is not interviewed (spec §6)")
+		}
+		for name, k := range m.Kinds {
+			if len(k.Lenses) > 0 || k.Draft != "" || k.DueField != "" {
+				return fmt.Errorf("kind %s: lenses, draft and due_field belong to a ratified-record kind; a working-memory module is not interviewed (spec §6)", name)
+			}
 		}
 		if m.Layout == "" {
 			m.Layout = "kind"
@@ -210,6 +247,20 @@ func (m *Manifest) validate() error {
 			}
 			if kind.First == "" {
 				return fmt.Errorf("onboarding names %q, which has no first question", k)
+			}
+		}
+		for name, k := range m.Kinds {
+			if n := len(k.Lenses); n != 0 && (n < 2 || n > 4) {
+				return fmt.Errorf("kind %s: lenses holds %d questions; two to four (spec §6)", name, n)
+			}
+			if k.DueField != "" {
+				declared := false
+				for _, f := range append(append([]string{}, k.Fields...), k.Optional...) {
+					declared = declared || f == k.DueField
+				}
+				if !declared {
+					return fmt.Errorf("kind %s: due_field %q is not a field of this kind (spec §6)", name, k.DueField)
+				}
 			}
 		}
 	}

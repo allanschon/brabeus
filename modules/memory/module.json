@@ -10,7 +10,8 @@
     "note": {"fields": []},
     "trap": {"fields": []},
     "preference": {"fields": [], "timeless": true},
-    "project": {"fields": []}
+    "project": {"fields": []},
+    "thread": {"fields": ["belongs_to"], "timeless": true}
   },
   "adapters": ["manual"],
   "skills": ["health"]
