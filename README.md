@@ -86,6 +86,60 @@ modules and so no audience of its own. A consumer never writes, deletes or revie
 kernel cannot identify at all is not a consumer — it is refused outright, with a 403, before any
 tool runs (spec §11).
 
+## Claims
+
+A goal may carry claims: short statements of what true would look like, each naming the evidence
+that would show it (spec §8.1).
+
+```yaml
+claims:
+  - text: "At least three articles published since the quarter began"
+    check: { adapter: tracker, done: true, label: article, since: 2026-07-01, min: 3 }
+  - text: "The side project has a commit in the last fortnight"
+    check: { adapter: forge, repo: side-project, since: -14d, min: 1 }
+  - text: "The target date still holds"
+    check: { adapter: manual }
+```
+
+A module declares which adapters its goals may name. The kernel checks every claim's arguments
+when the goal is written, so a goal never carries a claim that no run could evaluate.
+
+| adapter | required | optional | rule |
+|---|---|---|---|
+| `tracker` | `label`, `since`, `min` | `done`: `true` (default) counts done tasks, `false` counts open ones | `since` is `YYYY-MM-DD` or `-Nd` with N of at least 1; `min` is an integer of at least 1; no other key |
+| `forge` | `repo`, `since`, `min` | `merged`: `true` counts merged pull requests instead of commits | `repo` is `owner/name`, or a bare `name` that resolves against `BRABEUS_FORGE_OWNER`; `since` and `min` as above |
+| `date` | one or both of `before`, `after` | — | each `YYYY-MM-DD`; `after` earlier than `before` when both are given |
+| `manual` | — | — | no arguments; it is asked at interview |
+
+No argument value may contain a comma, because the check map is split on commas.
+
+A result is one of three states:
+
+| state | means |
+|---|---|
+| `pass` | the adapter returned evidence and the claim held |
+| `fail` | the adapter returned evidence and the claim did not hold |
+| `no-evidence` | the adapter could not answer |
+
+Only `fail` is a contradiction. A refused credential, a repository or tracker the backend does
+not have, an unreachable host and an unreadable answer are all `no-evidence`, with the reason as
+the detail. The same applies to a tracker label that appears on no task at all. A claim naming an
+adapter this deployment has not configured also reads `no-evidence`, and the detail says why.
+
+Each deployment configures its backends with these variables:
+
+- `BRABEUS_TRACKER`: `vikunja`, or empty for no tracker.
+- `BRABEUS_TRACKER_URL`: the tracker's base URL. It is required when a tracker is named.
+- `BRABEUS_TRACKER_TOKEN`: an API token that can read the person's tasks.
+- `BRABEUS_FORGE`: `gitea`, `github`, or empty for no forge.
+- `BRABEUS_FORGE_URL`: the forge's base URL. It is required for Gitea. For GitHub it defaults to
+  `https://api.github.com`.
+- `BRABEUS_FORGE_TOKEN`: a read-only token for the repositories that claims name.
+- `BRABEUS_FORGE_OWNER`: the owner a bare `repo:` name resolves against. If it is empty, such a
+  claim reads `no-evidence`.
+
+An unknown backend name, or a named backend without its URL, stops the kernel at startup.
+
 ## Upgrading a record from before modules
 
 A record written before modules existed carries `type` instead of `module` and `kind`. Setting
