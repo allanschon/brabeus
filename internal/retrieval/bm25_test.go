@@ -175,3 +175,33 @@ func TestAQuotedPhraseMatchesThePathToo(t *testing.T) {
 		t.Errorf(`rank("grub.cfg" quoted) returned %d hits, want only infra/grub.cfg-notes.md`, len(got))
 	}
 }
+
+// Spec §8.1 writes claims as a block under one key. A key with no value on its
+// line, followed by indented lines, takes those lines as its value with their
+// indent removed; the lines are never read as keys of their own.
+func TestABlockValueIsOneFieldAndItsLinesAreNotKeys(t *testing.T) {
+	doc := "---\nname: g3\nclaims:\n  - text: \"three articles\"\n    check: {adapter: tracker, min: 3}\n  - text: \"date holds\"\n    check: {adapter: manual}\nby: 2026-10-01\n---\n\nbody\n"
+	fm := ParseFrontmatter(doc)
+	want := "- text: \"three articles\"\n  check: {adapter: tracker, min: 3}\n- text: \"date holds\"\n  check: {adapter: manual}"
+	if fm["claims"] != want {
+		t.Errorf("claims =\n%q\nwant\n%q", fm["claims"], want)
+	}
+	if _, leaked := fm["check"]; leaked {
+		t.Error("an indented line inside a block was read as a top-level key")
+	}
+	if fm["by"] != "2026-10-01" || fm["name"] != "g3" {
+		t.Errorf("keys after the block are still read: %v", fm)
+	}
+	if fm := ParseFrontmatter("---\nname: x\nempty:\nnext: y\n---\n"); fm["empty"] != "" || fm["next"] != "y" {
+		t.Errorf("an empty value with no block stays empty: %v", fm)
+	}
+}
+
+// A block line that reads "---" once its indent is gone is still inside the
+// block: only a divider at column zero closes the frontmatter.
+func TestAnIndentedDividerInsideABlockDoesNotCloseTheFrontmatter(t *testing.T) {
+	fm := ParseFrontmatter("---\nnotes:\n  above\n  ---\n  below\nby: 2026-10-01\n---\n\nbody\n")
+	if fm["notes"] != "above\n---\nbelow" || fm["by"] != "2026-10-01" {
+		t.Errorf("fm = %q", fm)
+	}
+}

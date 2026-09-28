@@ -89,3 +89,26 @@ func TestComposeThenParseRoundTrips(t *testing.T) {
 		t.Errorf("updated = %v", meta.Updated)
 	}
 }
+
+func TestAMultiLineFieldRoundTripsThroughComposeAndParse(t *testing.T) {
+	block := "- text: \"three articles\"\n  check: {adapter: tracker, min: 3}"
+	r := Record{Name: "g3", Description: "d", Module: "telos", Kind: "goal", Scope: "global",
+		Fields: map[string]string{"title": "t", "claims": block}}
+	text := compose(r, Meta{Updated: at("2026-09-01T00:00:00Z")}, []string{"title", "claims"})
+	if !strings.Contains(text, "claims:\n  - text: \"three articles\"\n    check: {adapter: tracker, min: 3}\nupdated:") {
+		t.Errorf("block not written as a block:\n%s", text)
+	}
+	back, _ := ParseRecord(text)
+	if back.Fields["claims"] != block {
+		t.Errorf("round trip changed the block:\n%q\nwant\n%q", back.Fields["claims"], block)
+	}
+	// The no-change path compares files without their updated line; a block
+	// line that reads "---" must not end that comparison early.
+	notes := Record{Name: "g3", Description: "d", Module: "telos", Kind: "goal", Scope: "global",
+		Fields: map[string]string{"notes": "above\n---\nbelow"}}
+	a := compose(notes, Meta{Updated: at("2026-09-01T00:00:00Z")}, []string{"notes"})
+	b := compose(notes, Meta{Updated: at("2026-09-02T00:00:00Z")}, []string{"notes"})
+	if sansUpdated(a) != sansUpdated(b) {
+		t.Errorf("a block containing a divider defeats the no-change path:\n%s", a)
+	}
+}
