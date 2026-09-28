@@ -14,6 +14,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/allanschon/brabeus/internal/agenda"
 	"github.com/allanschon/brabeus/internal/block"
 	"github.com/allanschon/brabeus/internal/module"
 	"github.com/allanschon/brabeus/internal/store"
@@ -586,5 +587,149 @@ func TestNewRegistersTheToolsForBothCallerClasses(t *testing.T) {
 		if s := New(d, "desk", consumer); s == nil {
 			t.Fatalf("consumer=%v: nil server", consumer)
 		}
+	}
+}
+
+const serverGoalClaims = "- text: \"three articles\"\n  check: {adapter: tracker, label: article, since: 2026-07-01, min: 3}\n- text: \"date holds\"\n  check: {adapter: manual}\n- text: \"a commit\"\n  check: {adapter: forge, repo: a/b, since: -14d, min: 1}"
+
+func writeServerGoal(t *testing.T, st *store.Store, rel, id, sc string) {
+	t.Helper()
+	if _, err := st.Write(rel, store.Record{Name: strings.TrimSuffix(filepath.Base(rel), ".md"), Description: "a goal", Module: "telos", Kind: "goal", Scope: sc,
+		Fields: map[string]string{"id": id, "title": "Ship the guide", "ideal": "published", "by": "2026-12-01", "claims": serverGoalClaims}, Body: "b"}, "desk"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// §8.1: the claims tool shows each claim with its state, unchecked where
+// nothing is recorded, and a pass older than two intervals as stale — an
+// adapter's pass only, since the schedule never runs a manual claim. It
+// answers about the person's whole record, not one project's view (K14).
+func TestTheClaimsToolJoinsClaimsToResultsAndMarksAStalePass(t *testing.T) {
+	st := newServerStore(t)
+	set := testSet(t)
+	writeServerGoal(t, st, "telos/goal/g3.md", "G3", "project/other-project")
+	writeServerGoal(t, st, "telos/goal/away.md", "G9", "machine/other")
+	t0 := time.Date(2026, 9, 20, 4, 0, 0, 0, time.UTC)
+	if _, err := st.RecordClaimResults("telos/goal/g3.md", []store.ClaimResult{
+		{Index: 0, Text: "three articles", Adapter: "tracker", State: store.Pass, Detail: "3 found", Since: t0, Recorded: t0},
+		{Index: 1, Text: "date holds", Adapter: "manual", State: store.Pass, Since: t0, Recorded: t0},
+	}, "kernel"); err != nil {
+		t.Fatal(err)
+	}
+	now := t0.Add(96 * time.Hour)
+	last := now.Add(-72 * time.Hour)
+	d := Deps{Memory: st, Set: set, Now: func() time.Time { return now },
+		LastRun: func() (time.Time, bool) { return last, true }, ClaimInterval: 24 * time.Hour}
+	own := audienceFor(set, false)
+
+	out, err := claimsFor(d, "desk", own, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Claims) != 3 || out.LastRun != last.Format(time.RFC3339) || out.Interval != "24h0m0s" {
+		t.Fatalf("out = %+v", out)
+	}
+	c := out.Claims
+	if c[0].Goal != "telos/goal/g3.md" || c[0].ID != "G3" || c[0].Title != "Ship the guide" || c[0].Index != 0 || c[0].State != "pass" || c[0].Detail != "3 found" || !c[0].Stale {
+		t.Errorf("a tracker pass three days after the last run, on a daily interval, is stale: %+v", c[0])
+	}
+	if !c[1].Manual || c[1].State != "pass" || c[1].Stale {
+		t.Errorf("a manual pass is never stale by the schedule: %+v", c[1])
+	}
+	if c[2].State != "unchecked" || c[2].Adapter != "forge" || c[2].Since != "" || c[2].Index != 2 {
+		t.Errorf("a claim with no result is unchecked: %+v", c[2])
+	}
+
+	last = now.Add(-time.Hour)
+	if out, _ := claimsFor(d, "desk", own, "telos/goal/g3.md"); len(out.Claims) != 3 || out.Claims[0].Stale {
+		t.Errorf("a pass within two intervals of the last run is not stale: %+v", out)
+	}
+	if _, err := claimsFor(d, "desk", own, "telos/goal/away.md"); err == nil {
+		t.Error("a goal scoped to another machine must not be listed")
+	}
+	if out, _ := claimsFor(d, "desk", audienceFor(set, true), ""); len(out.Claims) != 0 {
+		t.Errorf("telos is audience self; a consumer sees none of its claims: %+v", out)
+	}
+
+	d.LastRun = nil
+	if out, _ := claimsFor(d, "desk", own, ""); out.LastRun != "unknown" || !out.Claims[0].Stale || out.Claims[1].Stale {
+		t.Errorf("with no runner wired, nothing vouches for an adapter's pass: %+v", out)
+	}
+	d.LastRun = func() (time.Time, bool) { return time.Time{}, false }
+	if out, _ := claimsFor(d, "desk", own, ""); out.LastRun != "never" || !out.Claims[0].Stale {
+		t.Errorf("never run: %+v", out)
+	}
+	d.LastRun, d.ClaimInterval = func() (time.Time, bool) { return now.Add(-time.Hour), true }, 0
+	if out, _ := claimsFor(d, "desk", own, ""); out.LastRun != "off" || out.Interval != "off" || out.Claims[0].Stale {
+		t.Errorf("an interval of 0 is off, and a recent run still vouches on the default daily interval: %+v", out)
+	}
+}
+
+// §8.1: a manual claim's answer is recorded with the claim-result operation,
+// not through review: the goal's file, its reviewed and updated stamps and
+// its history stay as they were, and a failed manual claim heads the agenda
+// like an adapter's.
+func TestClaimResultRecordsAManualAnswerWithoutAReview(t *testing.T) {
+	st := newServerStore(t)
+	set := testSet(t)
+	renderer, err := block.New(set)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeServerGoal(t, st, "telos/goal/g3.md", "G3", "global")
+	if _, err := st.Review("telos/goal/g3.md", store.ReviewInput{Question: "Is this the goal as you would put it?", Verdict: store.Confirmed, Answer: "yes"}, "desk"); err != nil {
+		t.Fatal(err)
+	}
+	goalFile := filepath.Join(st.Dir, "telos/goal/g3.md")
+	before, err := os.ReadFile(goalFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	history := gitRun(t, st.Dir, "log", "--format=%H", "--", "telos/goal/g3.md")
+	now := time.Now().UTC()
+	d := Deps{Memory: st, Set: set, Block: renderer, Now: func() time.Time { return now }}
+	own := audienceFor(set, false)
+
+	out, err := recordClaimResult(d, "desk", false, own, claimResultIn{Goal: "telos/goal/g3.md", Index: 1, State: "fail", Note: "the venue moved it to January"})
+	if err != nil || out.Commit == "" || out.Commit == "no change" || out.Goal != "telos/goal/g3.md" {
+		t.Fatalf("out=%+v err=%v", out, err)
+	}
+	if after, _ := os.ReadFile(goalFile); string(after) != string(before) {
+		t.Errorf("the goal file changed:\n%s", after)
+	}
+	if gitRun(t, st.Dir, "log", "--format=%H", "--", "telos/goal/g3.md") != history {
+		t.Error("the goal's history gained a commit")
+	}
+	if out, err := recordClaimResult(d, "desk", false, own, claimResultIn{Goal: "telos/goal/g3.md", Index: 1, State: "fail", Note: "the venue moved it to January"}); err != nil || out.Commit != "no change" {
+		t.Errorf("the same answer again: %+v %v", out, err)
+	}
+	if out, err := recordClaimResult(d, "desk", false, own, claimResultIn{Goal: "telos/goal/g3.md", Index: 1, State: "fail", Note: "January, confirmed in writing"}); err != nil || out.Commit == "no change" {
+		t.Fatalf("a new answer in the same state: %+v %v", out, err)
+	}
+	if subject := gitRun(t, st.Dir, "log", "-1", "--format=%s"); !strings.HasPrefix(subject, "claims telos/goal g3: 0 changed, 1 answered") {
+		t.Errorf("subject = %q", subject)
+	}
+	listed, _ := claimsFor(d, "desk", own, "telos/goal/g3.md")
+	if len(listed.Claims) != 3 || listed.Claims[1].State != "fail" || listed.Claims[1].Detail != "January, confirmed in writing" {
+		t.Errorf("claims = %+v", listed)
+	}
+	_, _, top, err := RenderContext(d, "desk", false)
+	if err != nil || top == nil || top.Reason != agenda.Fail || top.ClaimText != "date holds" || top.ClaimIndex == nil || *top.ClaimIndex != 1 {
+		t.Errorf("a failed manual claim heads the agenda: %+v %v", top, err)
+	}
+
+	for name, in := range map[string]claimResultIn{
+		"an index past the last claim":  {Goal: "telos/goal/g3.md", Index: 3, State: "pass"},
+		"a negative index":              {Goal: "telos/goal/g3.md", Index: -1, State: "pass"},
+		"unchecked, which is no answer": {Goal: "telos/goal/g3.md", Index: 1, State: "unchecked"},
+		"a state outside §8.1":          {Goal: "telos/goal/g3.md", Index: 1, State: "maybe"},
+		"a goal that is not there":      {Goal: "telos/goal/none.md", Index: 0, State: "pass"},
+	} {
+		if _, err := recordClaimResult(d, "desk", false, own, in); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if _, err := recordClaimResult(d, "desk", true, audienceFor(set, true), claimResultIn{Goal: "telos/goal/g3.md", Index: 1, State: "pass"}); err == nil {
+		t.Error("a consumer never records a result")
 	}
 }
