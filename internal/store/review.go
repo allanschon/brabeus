@@ -150,6 +150,9 @@ func (s *Store) Review(rel string, in ReviewInput, caller string) (string, error
 			if err := checkFields(govKind, r.Fields); err != nil {
 				return "", err
 			}
+			if err := s.checkClaims(gov, r.Fields); err != nil {
+				return "", err
+			}
 			fieldOrder = append(append([]string{}, govKind.Fields...), govKind.Optional...)
 		}
 		r.ID = r.Fields["id"]

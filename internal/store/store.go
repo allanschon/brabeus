@@ -77,6 +77,12 @@ type Store struct {
 	// modules is the loaded set every write is validated against. Nil means
 	// no validation, which only the read-only mirror uses.
 	modules *module.Set
+
+	// ValidateClaim checks one claim's arguments for its adapter at write
+	// time (spec §8.1). The kernel knows a claim's shape and whether its
+	// module declared the adapter; what the arguments mean is the adapter's.
+	// Nil means shape only.
+	ValidateClaim func(adapter string, args map[string]string) error
 }
 
 func (s *Store) SetModules(set *module.Set) { s.modules = set }
@@ -584,6 +590,9 @@ func MemoryPath(rel string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if strings.HasPrefix(strings.ToLower(clean), claimsDir+"/") {
+		return "", fmt.Errorf("%s/ holds the kernel's claim results, not records (spec §8.1)", claimsDir)
+	}
 	if !strings.HasSuffix(clean, ".md") {
 		return "", fmt.Errorf("memories are markdown: %q must end in .md", rel)
 	}
@@ -736,6 +745,9 @@ func (s *Store) Write(rel string, r Record, caller string) (string, error) {
 		r.Fields = map[string]string{}
 	}
 	if err := checkFields(kind, r.Fields); err != nil {
+		return "", err
+	}
+	if err := s.checkClaims(man, r.Fields); err != nil {
 		return "", err
 	}
 	// A thread naming a core module holds a pointer only (spec §7): the
