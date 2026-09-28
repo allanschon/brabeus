@@ -65,8 +65,8 @@ never changes the goal's content or its `updated` stamp (spec §8.1). A plain wr
 `updated`, and because the revision line compares `updated` against `reviewed`, every scheduled
 run would then mark its goal "revised since the last review". Keeping results off those two
 halves means the goal's content and history stay what the person said, and the revision line
-reports only what they changed. Whether results sit in a stamp-like section of the goal or in a
-file of their own is decided in M2.
+reports only what they changed. Results are a JSON file per goal under `claims/`, at the goal's
+own path, which is not a record and is never indexed or listed.
 
 ## Module set
 
