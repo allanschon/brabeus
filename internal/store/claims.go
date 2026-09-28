@@ -142,7 +142,11 @@ func ParseClaims(block string) ([]Claim, error) {
 			return nil, fmt.Errorf("claims: line %d is not key: value", n+1)
 		}
 		value = strings.TrimSpace(value)
-		switch strings.TrimSpace(key) {
+		key = strings.TrimSpace(key)
+		if (key == "text" && cur.Text != "") || (key == "check" && cur.Adapter != "") {
+			return nil, fmt.Errorf("claim %d has %s twice; an item has one text and one check", len(out), key)
+		}
+		switch key {
 		case "text":
 			cur.Text = retrieval.Unquote(value)
 		case "check":
@@ -163,7 +167,7 @@ func ParseClaims(block string) ([]Claim, error) {
 				}
 			}
 		default:
-			return nil, fmt.Errorf("claim %d has a key %q; an item has text and check only", len(out), strings.TrimSpace(key))
+			return nil, fmt.Errorf("claim %d has a key %q; an item has text and check only", len(out), key)
 		}
 	}
 	if err := finish(); err != nil {

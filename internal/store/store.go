@@ -298,14 +298,17 @@ type Match struct {
 	Score float64 `json:"score" jsonschema:"fused relevance across the keyword and meaning legs; higher is better, comparable only within one result set. Not a similarity or a percentage - reciprocal rank fusion scores positions, because a keyword score and a meaning distance are not comparable quantities"`
 }
 
-// walkMarkdown visits every tracked markdown file, skipping git's own storage.
+// walkMarkdown visits every tracked markdown file, skipping git's own storage
+// and the kernel's claim results: nothing under claims/ is a record, and
+// MemoryPath would refuse any tool route back to one listed from there.
 func (s *Store) walkMarkdown(fn func(rel, full string) error) error {
+	results := filepath.Join(s.Dir, claimsDir)
 	return filepath.Walk(s.Dir, func(p string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if info.IsDir() {
-			if info.Name() == ".git" {
+			if info.Name() == ".git" || strings.EqualFold(p, results) {
 				return filepath.SkipDir
 			}
 			return nil

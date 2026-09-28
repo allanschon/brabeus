@@ -39,6 +39,8 @@ func TestParseClaimsReadsTextAdapterAndArguments(t *testing.T) {
 		"unknown key":  "- text: \"x\"\n  check: {adapter: manual}\n  when: now",
 		"outside item": "text: x",
 		"no check":     "- text: \"x\"",
+		"two texts":    "- text: \"x\"\n  text: \"y\"\n  check: {adapter: manual}",
+		"two checks":   "- text: \"x\"\n  check: {adapter: manual}\n  check: {adapter: tracker}",
 	} {
 		if _, err := ParseClaims(bad); err == nil {
 			t.Errorf("%s: accepted %q", name, bad)
@@ -288,5 +290,34 @@ func TestJoinResultsMatchesByPositionAndTextAndOtherwiseIsUnchecked(t *testing.T
 	}
 	if joined[1].State != Pass || joined[1].Detail != "yes" || !joined[1].Since.Equal(now) {
 		t.Errorf("joined[1] = %+v", joined[1])
+	}
+}
+
+// claims/ is the kernel's: a markdown file placed there by hand is not a
+// record, since no tool could reach it to change or remove it.
+func TestAMarkdownFileUnderClaimsIsNeitherListedNorSearched(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	writeGoal(t, s, "telos/goal/g3.md", goalClaims)
+	stray := filepath.Join(s.Dir, "claims", "stray.md")
+	if err := os.MkdirAll(filepath.Dir(stray), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stray, []byte("---\nname: stray\ndescription: zebra marker\nscope: global\n---\n\nzebra\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	err := s.reindex()
+	s.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, _ := s.List("")
+	for _, e := range entries {
+		if strings.HasPrefix(e.Path, "claims/") {
+			t.Errorf("listed: %+v", e)
+		}
+	}
+	if hits, _, _ := s.Search("zebra", 10, SearchFilter{}); len(hits) != 0 {
+		t.Errorf("searched: %+v", hits)
 	}
 }
