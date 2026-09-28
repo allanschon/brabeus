@@ -76,15 +76,21 @@ the contexts disagree*.
 
 ### Ratification
 
-Ratification owns what is due and what counts as reviewed: the agenda and its ordering, freshness, drafts,
-reasons, native and crossing items, verdict semantics, the revision line and snoozes. It does not
-own the conversation that asks: spec §9 puts that outside the kernel, in the Interview.
+Ratification owns what is due and what counts as reviewed: the agenda and its ordering, freshness
+and due dates, drafts, reasons, verdict semantics, the revision line and snoozes. From M2 it also
+owns the reflection's facts, which the read-only `reflect` tool computes on demand like the agenda,
+because counts and dates are facts the kernel can get right and a model's summary can get wrong. It
+does not own the conversation that asks: spec §9 puts that outside the kernel, in the Interview.
 
 It lives in `internal/agenda`, which computes the agenda, and `internal/store/review.go`, which
 applies verdicts.
 
 The agenda is a read model: it is computed from the store and the module set on every request and
-never stored, so there is no second copy of the record's state to fall out of date.
+never stored, so there is no second copy of the record's state to fall out of date. Within each
+reason, preferences sort last, native and crossing alike: the person changes a preference about
+the assistant when it bothers them, so re-confirming one matters less than the rest of the record.
+That ordering is also what lets a preference the assistant wrote be due at once, as a draft,
+without crowding the person's own record.
 
 Relationships:
 
@@ -92,8 +98,8 @@ Relationships:
 - **Schema** (upstream). Conforms: freshness, prompts, onboarding and the governing module all
   come from the module set.
 - **Context block** (downstream). The top agenda item becomes the agenda line.
-- **Interview** (downstream). Reads the agenda, each item with its reason and question, and
-  returns answers through `review`.
+- **Interview** (downstream). Reads the agenda, each item with its reason and question, and the
+  facts `reflect` returns; returns answers through `review`.
 - **Intent** (upstream, M2). Failed claims will head the agenda.
 
 ### Retrieval
@@ -182,8 +188,10 @@ owns; and the agenda, not the conversation, decides what is due.
 
 Relationships:
 
-- **Ratification** (upstream). Conforms to the agenda, its reasons and its questions; returns
-  verdicts and the person's answer through `review`.
+- **Ratification** (upstream). Conforms to the agenda, its reasons and its questions, and takes
+  its way from the top item: getting to know you when that item is onboarding, a check-in
+  otherwise. It returns verdicts and the person's answer through `review`, and closes with the
+  facts `reflect` computes, phrased in the person's register.
 - **Schema** (upstream). Conforms to the module set, read through the `modules` tool.
 - **Record** (upstream). Writes and rewrites drafts and threads through the `write` tool, and
   deletes a thread once a module that covers it holds a draft from it (§7).
@@ -204,14 +212,17 @@ depends on it.
 Intent owns claims, adapters, claim states and the schedule that runs them. It is not built yet.
 
 It will live in `internal/claims`, beside `agenda` and `block`. Evidence sources sit behind
-adapters by design (§8.1), which gives each backend its own anti-corruption layer, and results
-reach the store through Record's write path, so the kernel remains the only writer.
+adapters by design (§8.1), which gives each backend its own anti-corruption layer. A new adapter
+is a kernel change, which a module then declares, because modules are data and carry no code.
+Results reach the store through a claim-result operation of Record's, so the kernel remains the
+only writer, and they never change a goal's content or its `updated` stamp, so a scheduled run
+never reads as a revision. Claims run on one interval per deployment, daily by default.
 
 ### Notebook
 
 The Notebook owns nothing the kernel writes. The notebook is the person's own notes repository — notes they
 write, notes the assistant writes there at their request, material they keep — which the kernel
-can list, read and search, as `repo: projects`, and never writes.
+can read and search, as `repo: projects`, and never writes.
 
 It lives in `cmd/brabeus`, as a second `store.Store` configured by `BRABEUS_MIRROR_*`, and in
 `server.pickRepo`. It has no modules and no scopes, and no embedder, so its search is lexical
@@ -270,6 +281,7 @@ flowchart LR
     plugin -- "ACL" --> cc
     ratification -- "agenda; review" --> interview
     schema -. "OHS: modules tool" .-> interview
+    ratification -. "OHS: reflect tool" .-> interview
     record -- "OHS: MCP write tools" --> interview
     interview -- "runs as a skill in" --> cc
 
