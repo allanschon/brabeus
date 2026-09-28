@@ -36,12 +36,34 @@ type Fault struct {
 	Error  string `json:"error,omitempty"`
 }
 
+// Rec is a record as a template sees it: the stored record plus the
+// unconfirmed marker, filled by the block rather than left to each template,
+// because a draft must never read as the person's word (§10) and a template
+// that forgets is a template that lies.
+type Rec struct {
+	store.Stored
+	Mark string
+}
+
+// Unconfirmed is what Mark carries for a record with no Reviewed stamp yet.
+const Unconfirmed = " (unconfirmed)"
+
+// mark returns Unconfirmed for a record that has never been reviewed, and ""
+// once it has (spec §10: a ratified record renders as the person's word only
+// after review).
+func mark(rec store.Stored) string {
+	if rec.Reviewed.IsZero() {
+		return Unconfirmed
+	}
+	return ""
+}
+
 // Data is what one module's template sees: its own records, already
 // scope-filtered and without retired ones, plus for the governing module of a
 // crossing kind the ratified crossing records (spec §7).
 type Data struct {
 	Module  module.Manifest
-	Records []store.Stored
+	Records []Rec
 	Now     time.Time
 }
 
@@ -49,8 +71,8 @@ type Data struct {
 // reviewed first), then unconfirmed by most recently updated. Templates
 // range over this and cap it with first, so a template never has to decide
 // what "confirmed" means.
-func (d Data) Kind(name string) []store.Stored {
-	var out []store.Stored
+func (d Data) Kind(name string) []Rec {
+	var out []Rec
 	for _, r := range d.Records {
 		if r.Kind == name {
 			out = append(out, r)
@@ -69,7 +91,7 @@ func (d Data) Kind(name string) []store.Stored {
 	return out
 }
 
-func first(n int, recs []store.Stored) []store.Stored {
+func first(n int, recs []Rec) []Rec {
 	if n < len(recs) {
 		return recs[:n]
 	}
@@ -137,7 +159,7 @@ func (r *Renderer) Render(items []agenda.Item, recs []store.Stored, now time.Tim
 			}
 			// Own records always; a crossing record only once ratified (§7).
 			if rec.Module == m.Name || !rec.Reviewed.IsZero() {
-				data.Records = append(data.Records, rec)
+				data.Records = append(data.Records, Rec{Stored: rec, Mark: mark(rec)})
 			}
 		}
 		var buf bytes.Buffer

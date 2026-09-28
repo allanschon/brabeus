@@ -1,16 +1,16 @@
 telos:
 {{- range first 1 (.Kind "mission")}}
-- mission: {{index .Fields "statement"}}
+- mission: {{index .Fields "statement"}}{{.Mark}}
 {{- end}}
 {{- range first 4 (.Kind "goal")}}
-- {{.ID}} {{index .Fields "title"}} by {{index .Fields "by"}}{{if .Reviewed.IsZero}} (unconfirmed){{else}} (reviewed {{date .Reviewed}}){{end}}
+- {{.ID}} {{index .Fields "title"}} by {{index .Fields "by"}}{{.Mark}}
 {{- end}}
 {{- range first 1 (.Kind "problem")}}
-- problem: {{index .Fields "statement"}}
+- problem: {{index .Fields "statement"}}{{.Mark}}
 {{- end}}
 {{- range first 1 (.Kind "strategy")}}
-- strategy: {{index .Fields "statement"}}
+- strategy: {{index .Fields "statement"}}{{.Mark}}
 {{- end}}
 {{- range first 1 (.Kind "decision")}}
-- decided: {{index .Fields "decided"}} (revisit {{index .Fields "revisit"}})
+- decided: {{index .Fields "decided"}} (revisit {{index .Fields "revisit"}}){{.Mark}}
 {{- end}}
