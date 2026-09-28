@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/allanschon/brabeus/internal/block"
 	"github.com/allanschon/brabeus/internal/module"
@@ -193,6 +196,56 @@ func TestWriteInCarriesModuleKindAndFieldsAndTheDeprecatedAlias(t *testing.T) {
 func TestReviewInCarriesTheAnswer(t *testing.T) {
 	if _, ok := reflect.TypeOf(reviewIn{}).FieldByName("Answer"); !ok {
 		t.Error("reviewIn lacks Answer")
+	}
+}
+
+// writeIn.Scope must carry omitempty, or the tool's inferred input schema
+// marks it required and the SDK refuses a scopeless call before the
+// handler — and the store's Write, which is the one place that ever
+// happens — is reached at all. So the default-to-global rule (spec §5, AP)
+// is unreachable over MCP without this, even though store.Write implements
+// it correctly. Round-trips through a real client so the schema the SDK
+// actually generates and validates against is exercised, not a stand-in.
+func TestWriteToolOmittingScopeLandsGlobal(t *testing.T) {
+	st := newServerStore(t)
+	srv := New(Deps{Memory: st, Set: testSet(t)}, "desk", false)
+
+	ctx := context.Background()
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	serverSession, err := srv.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serverSession.Close()
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "v0"}, nil)
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clientSession.Close()
+
+	res, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
+		Name: "write",
+		Arguments: map[string]any{
+			"path": "infra/noscope.md", "name": "n", "description": "d",
+			"module": "memory", "kind": "note", "body": "b",
+			// scope deliberately omitted
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.IsError {
+		t.Fatalf("a write omitting scope was refused by the tool's own input schema: %+v", res.Content)
+	}
+
+	content, err := st.Read("infra/noscope.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(content, "scope: global") {
+		t.Errorf("record did not land scoped global:\n%s", content)
 	}
 }
 
