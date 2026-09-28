@@ -12,15 +12,17 @@ module manifests. This skill asks them, one at a time, and records the answer.
 ## The loop
 
 1. Call `context` with no arguments. If `agenda` is absent, say "nothing due"
-   and stop. Look at `agenda.reason`: `stale` is a record to review (steps
-   2–4); `empty` is an onboarding question — nothing of that kind is on file
-   yet — and the answer becomes a new record (step 4b).
+   and stop. Look at `agenda.reason`: `stale` and `draft` are both records to
+   review (steps 2–4) — a `draft` was never reviewed, so it is confirmed or
+   corrected the same as a `stale` one; `onboarding` is a question — nothing
+   of that kind is on file yet — and the answer becomes a new record (step 4b).
 2. Ask the person `agenda.question` verbatim, naming the record
    (`agenda.module/agenda.kind`, its `id` or `name`) and, when present, the
    revision line and the snooze count ("you have put this off N times").
    Show the record if they ask: `read` with `agenda.path`.
-3. Wait for their answer. For a `stale` item, map it to a verdict:
-   - **confirmed** — it still holds. No body, no fields.
+3. Wait for their answer. For a `stale` or `draft` item, map it to a verdict:
+   - **confirmed** — it still holds (`stale`), or is right as written (`draft`).
+     No body, no fields.
    - **corrected** — it changed. Pass `body` (the new text) and, for a
      ratified-record kind, `fields` with the fields that changed (a goal's
      `by`, a value's `statement`). Only what changed; the rest is kept.
@@ -29,7 +31,7 @@ module manifests. This skill asks them, one at a time, and records the answer.
      agenda.
 4. Call `review` with `path` = `agenda.path`, `question` = `agenda.question`
    verbatim, the verdict, and the body and fields if corrected. Report the commit.
-4b. For an `empty` item, the person's answer is a new record. Call `write`
+4b. For an `onboarding` item, the person's answer is a new record. Call `write`
    with `path` = `<module>/<kind>/<slug>.md` (slug from the answer, lower-case,
    hyphens), `module` and `kind` from the item, `scope: global`, `fields` with
    the kind's required fields (identity kinds and a telos `mission` or

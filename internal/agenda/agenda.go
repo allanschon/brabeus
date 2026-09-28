@@ -16,9 +16,17 @@ import (
 type Reason string
 
 const (
-	Fail  Reason = "fail"
-	Stale Reason = "stale"
-	Empty Reason = "empty"
+	Fail       Reason = "fail"
+	Draft      Reason = "draft"
+	Stale      Reason = "stale"
+	Onboarding Reason = "onboarding"
+)
+
+// The questions a kind is asked when it declares none (spec §6): so a new or
+// third-party module never produces an empty first line.
+const (
+	DefaultInterview = "Is this still right?"
+	DefaultDraft     = "Is this right as written?"
 )
 
 type Item struct {
@@ -34,49 +42,29 @@ type Item struct {
 	Fields   map[string]string `json:"fields,omitempty"`
 }
 
-// Compute orders the agenda: claims in fail first (M2; empty here), then
-// records past their kind's freshness — native items (the record's own
-// module governs it) by module priority then age, ahead of every crossing
-// item (a working-memory record governed by a different, ratified module),
-// which sort among themselves by age alone (spec ruling) — then the
-// onboarding gaps — kinds a module wants on file and has none of.
+type candidate struct {
+	item     Item
+	priority int
+	age      time.Duration
+	pref     bool // preferences sort last within each reason (§9)
+}
+
+// Compute orders the agenda (spec §9): claims in fail first (M2; none yet
+// here), then drafts — records never reviewed — oldest first, then records
+// past their kind's freshness or due_field by module priority then age, then
+// the onboarding gaps — kinds a module wants on file and has none of. Within
+// the drafts and stale tiers, preferences sort last, native and crossing
+// alike.
 func Compute(set *module.Set, records []store.Stored, now time.Time) []Item {
-	var stale []struct {
-		item     Item
-		tier     int // 0 native (governed by its own module), 1 crossing
-		priority int
-		age      time.Duration
-	}
+	var drafts, stale []candidate
 	present := map[string]bool{} // module/kind with at least one live record
 
 	for _, r := range records {
 		if !r.Retired.IsZero() {
 			continue
 		}
-		// A kernel key that failed to parse (store.Meta.Malformed) means the
-		// stamp cannot be trusted: treating it as "never reviewed" would
-		// render {reviewed} as a lie, and every verdict Review is given would
-		// be refused by the same Malformed check, so the item could never
-		// clear. Surface it as a fix-by-hand item instead, same as a
-		// pre-module record.
-		if len(r.Malformed) > 0 {
-			stale = append(stale, struct {
-				item     Item
-				tier     int
-				priority int
-				age      time.Duration
-			}{Item{Path: r.Path, Name: r.Name, Module: r.Module, Kind: r.Kind, Reason: Stale, Fields: r.Fields,
-				Question: fmt.Sprintf("%s: %s malformed; fix the file by hand before it can be reviewed.", r.Path, strings.Join(r.Malformed, ", "))}, 0, -1, 0})
-			continue
-		}
-		if r.Module == "" {
-			stale = append(stale, struct {
-				item     Item
-				tier     int
-				priority int
-				age      time.Duration
-			}{Item{Path: r.Path, Name: r.Name, Reason: Stale, Fields: r.Fields,
-				Question: fmt.Sprintf("%s predates modules and cannot be reviewed until the migration has run.", r.Path)}, 0, -1, 0})
+		if len(r.Malformed) > 0 || r.Module == "" {
+			stale = append(stale, fixByHand(r))
 			continue
 		}
 		present[r.Module+"/"+r.Kind] = true
@@ -85,8 +73,7 @@ func Compute(set *module.Set, records []store.Stored, now time.Time) []Item {
 		if !ok {
 			continue
 		}
-		bundle, _ := man.Profile.Bundle()
-		if !bundle.Interviewed {
+		if bundle, _ := man.Profile.Bundle(); !bundle.Interviewed {
 			continue
 		}
 		// The governing module's kind is on file too: a memory/preference
@@ -94,42 +81,41 @@ func Compute(set *module.Set, records []store.Stored, now time.Time) []Item {
 		// asked "how do you want to be worked with" beside the record that
 		// already says so.
 		present[man.Name+"/"+r.Kind] = true
-		if kind.FreshnessDays <= 0 {
+
+		base := Item{Path: r.Path, Module: r.Module, Kind: r.Kind, ID: r.ID, Name: r.Name, Fields: copyFields(r.Fields), Revision: revision(r), Snoozes: r.Snoozes}
+		_, pref := module.Crossing[r.Kind]
+
+		if r.Reviewed.IsZero() {
+			base.Reason, base.Question = Draft, render(orDefault(kind.Draft, DefaultDraft), r)
+			drafts = append(drafts, candidate{base, man.Priority, now.Sub(r.Updated), pref})
 			continue
 		}
-		tier := 0
-		if man.Name != r.Module {
-			tier = 1
+		due := false
+		if kind.FreshnessDays > 0 && now.Sub(r.Reviewed) > time.Duration(kind.FreshnessDays)*24*time.Hour {
+			due = true
 		}
-		var age time.Duration
-		switch {
-		case r.Reviewed.IsZero() && tier == 0:
-			age = 1<<62 - 1 // never reviewed sorts before every native item that was
-		case r.Reviewed.IsZero():
-			// A crossing record the model just wrote must not be asked at
-			// once: its age is how long it has sat unreviewed, not the
-			// never-reviewed sentinel a native record gets.
-			age = now.Sub(r.Updated)
-			if age <= time.Duration(kind.FreshnessDays)*24*time.Hour {
-				continue
-			}
-		default:
-			age = now.Sub(r.Reviewed)
-			if age <= time.Duration(kind.FreshnessDays)*24*time.Hour {
-				continue
+		if kind.DueField != "" {
+			if d, err := time.Parse("2006-01-02", r.Fields[kind.DueField]); err == nil && d.Before(now) && r.Reviewed.Before(d) {
+				due = true
 			}
 		}
-		stale = append(stale, struct {
-			item     Item
-			tier     int
-			priority int
-			age      time.Duration
-		}{Item{Path: r.Path, Module: r.Module, Kind: r.Kind, ID: r.ID, Name: r.Name, Reason: Stale, Fields: r.Fields,
-			Question: render(kind.Interview, r), Revision: revision(r), Snoozes: r.Snoozes}, tier, man.Priority, age})
+		if !due {
+			continue
+		}
+		base.Reason, base.Question = Stale, render(orDefault(kind.Interview, DefaultInterview), r)
+		stale = append(stale, candidate{base, man.Priority, now.Sub(r.Reviewed), pref})
 	}
+
+	// Drafts: oldest first, preferences last. Stale: priority, then age, preferences last.
+	sort.SliceStable(drafts, func(i, j int) bool {
+		if drafts[i].pref != drafts[j].pref {
+			return !drafts[i].pref
+		}
+		return drafts[i].age > drafts[j].age
+	})
 	sort.SliceStable(stale, func(i, j int) bool {
-		if stale[i].tier != stale[j].tier {
-			return stale[i].tier < stale[j].tier
+		if stale[i].pref != stale[j].pref {
+			return !stale[i].pref
 		}
 		if stale[i].priority != stale[j].priority {
 			return stale[i].priority < stale[j].priority
@@ -138,25 +124,63 @@ func Compute(set *module.Set, records []store.Stored, now time.Time) []Item {
 	})
 
 	var out []Item
-	for _, s := range stale {
-		out = append(out, s.item)
+	for _, c := range drafts {
+		out = append(out, c.item)
+	}
+	for _, c := range stale {
+		out = append(out, c.item)
 	}
 	for _, man := range set.Modules {
 		for _, k := range man.Onboarding {
-			if present[man.Name+"/"+k] {
-				continue
+			if !present[man.Name+"/"+k] {
+				out = append(out, Item{Module: man.Name, Kind: k, Reason: Onboarding, Question: man.Kinds[k].First})
 			}
-			out = append(out, Item{Module: man.Name, Kind: k, Reason: Empty, Question: man.Kinds[k].First})
 		}
 	}
 	return out
 }
 
+// fixByHand surfaces a record the kernel cannot interview normally: its
+// kernel keys failed to parse, or it predates modules. Either way it is a
+// stale item asking to fix the file by hand, with priority -1 so it leads
+// its tier — unchanged from M1.
+//
+// A kernel key that failed to parse (store.Meta.Malformed) means the stamp
+// cannot be trusted: treating it as "never reviewed" would render {reviewed}
+// as a lie, and every verdict Review is given would be refused by the same
+// Malformed check, so the item could never clear.
+func fixByHand(r store.Stored) candidate {
+	q := fmt.Sprintf("%s predates modules and cannot be reviewed until the migration has run.", r.Path)
+	if len(r.Malformed) > 0 {
+		q = fmt.Sprintf("%s: %s malformed; fix the file by hand before it can be reviewed.", r.Path, strings.Join(r.Malformed, ", "))
+	}
+	item := Item{Path: r.Path, Name: r.Name, Module: r.Module, Kind: r.Kind, Reason: Stale, Fields: copyFields(r.Fields), Question: q}
+	return candidate{item, -1, 0, false}
+}
+
+// copyFields clones a record's field map so a caller editing an item's
+// Fields cannot edit the record it was computed from (the M1 ledger).
+func copyFields(m map[string]string) map[string]string {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
+// orDefault returns prompt, or def when the kind declared none.
+func orDefault(prompt, def string) string {
+	if strings.TrimSpace(prompt) == "" {
+		return def
+	}
+	return prompt
+}
+
 // render fills {reviewed} and any {field} in a kind's prompt.
 func render(prompt string, r store.Stored) string {
-	if strings.TrimSpace(prompt) == "" {
-		prompt = "Still right?"
-	}
 	reviewed := "never"
 	if !r.Reviewed.IsZero() {
 		reviewed = r.Reviewed.UTC().Format("2006-01-02")
