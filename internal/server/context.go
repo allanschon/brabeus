@@ -46,26 +46,16 @@ func RenderContext(d Deps, caller string, consumer bool) (string, []block.Fault,
 	return text, faults, nil, nil
 }
 
-// LogUnresolvedCaller logs the one line both /mcp and /context say when a
-// caller could not be resolved. Each entry point calls it itself rather than
-// sharing a single choke point, so a resolved caller is never logged at all —
-// this would be a line per request otherwise.
-func LogUnresolvedCaller(caller, remoteAddr string) {
-	if caller == "" {
-		log.Printf("unresolved caller from %s: treated as a consumer — machine-scoped memories and every self module are hidden", remoteAddr)
-	}
-}
-
 // ContextHandler serves the same block as text for the plugin's SessionStart
-// hook, under the same identity and auth as /mcp.
+// hook, under the same identity and auth as /mcp. RefuseUnidentified sits in
+// front of this handler (main.go), so caller here is always resolved.
 func ContextHandler(d Deps, id identity.Identity, consumers map[string]bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "GET only", http.StatusMethodNotAllowed)
 			return
 		}
-		caller, consumer := Caller(id, consumers, r)
-		LogUnresolvedCaller(caller, r.RemoteAddr)
+		caller, consumer, _ := Caller(id, consumers, r)
 		text, _, _, err := RenderContext(d, caller, consumer)
 		if err != nil {
 			log.Printf("context for %q: %v", caller, err)

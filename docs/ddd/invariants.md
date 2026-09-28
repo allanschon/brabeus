@@ -95,12 +95,12 @@ Where the spec gives the reason for a rule, the row cites it. Terms are the
 | A consumer reads only modules whose audience is `any`, on every read path                | enforced                                     | `server.audienceFor`; `TestAudienceForAConsumerHidesSelfModulesAndUntagged`, `TestSearchAndVocabularyRespectVisibility`, `TestFilterEntriesAppliesScopeAndVisibility`                                                                     |
 | A consumer never writes, deletes or reviews                                              | code only                                    | the `write`, `delete` and `review` tools refuse a consumer. A write influenced by an untrusted reader would be injection into the next session (spec §11)                                                                                 |
 | A consumer is refused the notebook                                                       | enforced                                     | `server.pickRepo`; `TestPickRepoRefusesTheMirrorToAConsumer`; spec §5, §11                                                                                                                                                                |
-| The `modules` tool lists only the modules the caller may read                            | documented (M2)                              | spec §4.1, §11; the tool is not built                                                                                                                                                                                                     |
+| The `modules` tool lists only the modules the caller may read                            | enforced                                     | `server.modulesFor`; `TestTheModulesToolWithholdsWhatTheCallerMayNotRead`; spec §4.1, §11                                                                                                                                                 |
 | A thread whose `belongs_to` names a core module with `audience: self` has no body        | enforced                                     | spec §7. `store.Write`; `TestAThreadNamingACoreModuleIsRefusedABody`. The kernel knows the core modules whether or not they are enabled, so the check needs only the thread's `belongs_to` field. What the name and description carry is the interviewer's to keep to the topic |
 | A record scoped to another machine is not returned unless asked for                      | enforced                                     | `scope.Visible`; `TestVisible`, `TestFilterEntriesHidesOtherMachines`, `TestGate`                                                                                                                                                         |
 | Audience is checked before scope, so a refusal never names another machine to a consumer | enforced                                     | `server.gate`; `TestGate`                                                                                                                                                                                                                 |
 | Caller resolution fails closed                                                           | enforced                                     | `internal/identity`; `TestTailscaleIdentityFailsClosed`, `TestTokenIdentityFailsClosed`                                                                                                                                                   |
-| An unidentified caller is refused                                                        | **not enforced**; the fix is documented (M2) | see *Where the rules do not hold*                                                                                                                                                                                                         |
+| An unidentified caller is refused                                                        | enforced                                     | `server.RefuseUnidentified`; `TestAnUnidentifiedCallerIsRefusedBeforeAnyTool`; spec §11                                                                                                                                                   |
 
 ## Interview
 
@@ -147,10 +147,3 @@ anywhere. Every shipped template does, and `TestEveryShippedTemplateMarksAnUnrev
 covers them, but a person-added `ratified-record` module whose `summary.md.tmpl` drops `{{.Mark}}`
 from a line would render an unreviewed record as the person's confirmed word, with no test or
 code path to catch it.
-
-**An unidentified caller sees what a consumer sees, not nothing.** Spec §11 says an unidentified
-caller is refused. `server.Caller` treats an unresolved caller as a consumer, which reads every
-module whose audience is `any`, in global scope. Every shipped module is `self`, so today the
-result is the same; a module declared `any` would be readable by a caller the kernel could not
-identify. M2 refuses such a caller before any tool runs, so an own session whose lookup fails gets
-a clear error instead of a quietly reduced view.

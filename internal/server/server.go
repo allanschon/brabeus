@@ -12,7 +12,7 @@ import (
 	"github.com/allanschon/brabeus/internal/store"
 )
 
-const Version = "0.3.0"
+const Version = "0.4.0-dev"
 
 // pickRepo resolves the repo argument. An absent projects mirror is an error
 // rather than a fallback: silently reading the wrong repository is worse than

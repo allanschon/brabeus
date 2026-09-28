@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -29,12 +30,30 @@ func ParseConsumers(spec string) map[string]bool {
 	return out
 }
 
-// Caller resolves who is calling and whether they are a consumer. A caller
-// identity cannot name is a consumer: it already sees only global scope, and
-// unnamed is not a class the person's record should trust.
-func Caller(id identity.Identity, consumers map[string]bool, r *http.Request) (string, bool) {
+// Caller resolves who is calling and whether they are a consumer. ok is false
+// when the identity could not name a caller at all — spec §11 refuses that
+// caller before any tool runs, rather than folding it into the consumer
+// class as M1 did.
+func Caller(id identity.Identity, consumers map[string]bool, r *http.Request) (string, bool, bool) {
 	caller := scope.NormaliseHost(id.Machine(r))
-	return caller, caller == "" || consumers[caller]
+	if caller == "" {
+		return "", true, false
+	}
+	return caller, consumers[caller], true
+}
+
+// RefuseUnidentified answers for a caller identity cannot name, before any
+// tool or the block is built (spec §11). The log line keeps the M1 wording so
+// an operator reading "unresolved caller" knows what would have resolved.
+func RefuseUnidentified(next http.Handler, id identity.Identity, consumers map[string]bool) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, _, ok := Caller(id, consumers, r); !ok {
+			log.Printf("unresolved caller from %s: refused (spec §11)", r.RemoteAddr)
+			http.Error(w, "caller not identified; this kernel serves only callers it can name (spec §11)", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // audienceFor is the hide-set spec §11 requires: for a consumer, every module
