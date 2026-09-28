@@ -40,6 +40,27 @@ type Item struct {
 	Revision string            `json:"revision,omitempty"`
 	Snoozes  int               `json:"snoozes,omitempty"`
 	Fields   map[string]string `json:"fields,omitempty"`
+	// ClaimText and ClaimIndex name the failed claim on a fail item. The
+	// index is 0-based, as the claims tool lists it, so it is a pointer:
+	// the first claim is 0 and must still be on the wire.
+	ClaimText  string `json:"claim,omitempty"`
+	ClaimIndex *int   `json:"claim_index,omitempty"`
+}
+
+// byField is the goal's date (spec §9 orders failed claims by it). A field
+// name in the kernel is product semantics, and §9 names this one.
+const byField = "by"
+
+type failCandidate struct {
+	item  Item
+	by    time.Time
+	byOK  bool
+	since time.Time
+}
+
+func parseDay(s string) (time.Time, bool) {
+	t, err := time.Parse("2006-01-02", strings.TrimSpace(s))
+	return t, err == nil
 }
 
 type candidate struct {
@@ -49,14 +70,21 @@ type candidate struct {
 	pref     bool // preferences sort last within each reason (§9)
 }
 
-// Compute orders the agenda (spec §9): claims in fail first (M2; none yet
-// here), then drafts — records never reviewed — oldest first, then records
-// past their kind's freshness or due_field by module priority then age, then
-// the onboarding gaps — kinds a module wants on file and has none of. Within
-// the drafts and stale tiers, preferences sort last, native and crossing
-// alike.
-func Compute(set *module.Set, records []store.Stored, now time.Time) []Item {
+// Compute orders the agenda (spec §9): claims in fail first, by the goal's
+// by date then by how long each has failed, then drafts — records never
+// reviewed — oldest first, then records past their kind's freshness or
+// due_field by module priority then age, then the onboarding gaps — kinds a
+// module wants on file and has none of. Within the drafts and stale tiers,
+// preferences sort last, native and crossing alike. results are the claim
+// results keyed by goal path (store.ClaimResults); nil means none.
+//
+// A record with a failed claim is still eligible for the draft and stale
+// tiers: the same goal can appear twice, once per reason, the fail first.
+// no-evidence never reaches the agenda (§8.1): it is a fault, not the
+// person being behind.
+func Compute(set *module.Set, records []store.Stored, results map[string][]store.ClaimResult, now time.Time) []Item {
 	var drafts, stale []candidate
+	var fails []failCandidate
 	present := map[string]bool{} // module/kind with at least one live record
 
 	for _, r := range records {
@@ -85,6 +113,26 @@ func Compute(set *module.Set, records []store.Stored, now time.Time) []Item {
 		base := Item{Path: r.Path, Module: r.Module, Kind: r.Kind, ID: r.ID, Name: r.Name, Fields: copyFields(r.Fields), Revision: revision(r), Snoozes: r.Snoozes}
 		_, pref := module.Crossing[r.Kind]
 
+		// Before the draft check, which ends this record's turn: a draft
+		// goal's failed claim is still a fail.
+		if block := r.Fields[store.ClaimsField]; block != "" {
+			if claims, err := store.ParseClaims(block); err == nil {
+				for _, res := range store.JoinResults(claims, results[r.Path]) {
+					if res.State != store.Fail {
+						continue
+					}
+					item := base
+					item.Fields = copyFields(r.Fields) // its own copy, as the draft or stale item has
+					index := res.Index
+					item.Reason, item.ClaimText, item.ClaimIndex = Fail, res.Text, &index
+					item.Question = fmt.Sprintf("the claim %q failed on %s%s. %s", res.Text, res.Since.UTC().Format("2006-01-02"),
+						store.Parenthetical(res.Detail), render(orDefault(kind.Interview, DefaultInterview), r))
+					by, byOK := parseDay(r.Fields[byField])
+					fails = append(fails, failCandidate{item, by, byOK, res.Since})
+				}
+			}
+		}
+
 		if r.Reviewed.IsZero() {
 			base.Reason, base.Question = Draft, render(orDefault(kind.Draft, DefaultDraft), r)
 			drafts = append(drafts, candidate{base, man.Priority, now.Sub(r.Updated), pref})
@@ -106,6 +154,17 @@ func Compute(set *module.Set, records []store.Stored, now time.Time) []Item {
 		stale = append(stale, candidate{base, man.Priority, now.Sub(r.Reviewed), pref})
 	}
 
+	// Fails: nearest by first; a by that does not parse sorts after every one
+	// that does rather than breaking the order; then longest failing first.
+	sort.SliceStable(fails, func(i, j int) bool {
+		if fails[i].byOK != fails[j].byOK {
+			return fails[i].byOK
+		}
+		if fails[i].byOK && !fails[i].by.Equal(fails[j].by) {
+			return fails[i].by.Before(fails[j].by)
+		}
+		return fails[i].since.Before(fails[j].since)
+	})
 	// Drafts: oldest first, preferences last. Stale: priority, then age, preferences last.
 	sort.SliceStable(drafts, func(i, j int) bool {
 		if drafts[i].pref != drafts[j].pref {
@@ -124,6 +183,9 @@ func Compute(set *module.Set, records []store.Stored, now time.Time) []Item {
 	})
 
 	var out []Item
+	for _, c := range fails {
+		out = append(out, c.item)
+	}
 	for _, c := range drafts {
 		out = append(out, c.item)
 	}
