@@ -188,6 +188,14 @@ func TestWriteInCarriesModuleKindAndFieldsAndTheDeprecatedAlias(t *testing.T) {
 	}
 }
 
+// The person's answer is a first-class part of the review tool's input, not
+// an afterthought folded into another field.
+func TestReviewInCarriesTheAnswer(t *testing.T) {
+	if _, ok := reflect.TypeOf(reviewIn{}).FieldByName("Answer"); !ok {
+		t.Error("reviewIn lacks Answer")
+	}
+}
+
 func testSet(t *testing.T) *module.Set {
 	t.Helper()
 	set, err := module.Load(filepath.Join("..", "..", "modules"), []string{"memory", "identity", "telos", "health"})
@@ -435,7 +443,7 @@ func TestRenderContextEndToEnd(t *testing.T) {
 		Fields: map[string]string{"statement": "family first"}, Body: "family first"}, "desk"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.Review("identity/value/family.md", "Still one of the things you weigh decisions against?", store.Answer{Verdict: store.Confirmed}, "desk"); err != nil {
+	if _, err := st.Review("identity/value/family.md", store.ReviewInput{Question: "Still one of the things you weigh decisions against?", Verdict: store.Confirmed, Answer: "yes"}, "desk"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := st.Write("infra/laptop.md", store.Record{Name: "laptop", Description: "the other machine", Module: "memory", Kind: "note", Scope: "machine/other", Body: "laptop notes"}, "desk"); err != nil {

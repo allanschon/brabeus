@@ -93,7 +93,7 @@ was built for, not what everyone has.
 | unconfirmed marker | the `(unconfirmed)` a draft carries in the block, whatever its kind                                                                                                                                                                       | hasn't been confirmed                          | —                                                  |
 | verdict            | the class of the person's answer: `confirmed`, `corrected`, `retired` or `later`                                                                                                                                                          | confirm, correct, retire, later                | `store.Verdict`                                    |
 | answer             | the person's reply to a review's question, in their own words, carried into the review commit (M2)                                                                                                                                        | you answered                                   | —                                                  |
-| review input       | everything a review is given: the question asked, the verdict, the person's answer, and for a correction the new content                                                                                                                  | —                                              | `store.Answer`, with the question passed beside it |
+| review input       | everything a review is given: the question asked, the verdict, the person's answer, and for a correction the new content                                                                                                                  | —                                              | `store.ReviewInput`                                |
 | confirm            | the `confirmed` verdict: the record still holds as written                                                                                                                                                                                | confirm                                        | —                                                  |
 | snooze             | a `later` verdict, counted on the record so a deferral stays visible                                                                                                                                                                      | later; putting it off                          | —                                                  |
 | retired            | a record the person said no longer applies; kept in history, never rendered or asked about                                                                                                                                                | retire                                         | —                                                  |
@@ -109,8 +109,8 @@ was built for, not what everyone has.
 moves on `confirmed`, `corrected` and `retired`, and not on `later`: a deferral says nothing about
 whether the record holds, so the record stays on the agenda with its snooze count (spec §9).
 
-A *verdict* classifies the person's answer, and the *answer* is what they said. `store.Answer` in
-the code is the review input, not the answer. A verdict always comes from the person; a *claim
+A *verdict* classifies the person's answer, and the *answer* is what they said. `store.ReviewInput`
+in the code is the review input, not the answer; its `Answer` field is. A verdict always comes from the person; a *claim
 state* comes from an adapter.
 
 *Draft* has three senses: a never-reviewed ratified record, the agenda reason that names one, and
