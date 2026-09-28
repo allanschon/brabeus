@@ -20,6 +20,7 @@ type Gitea struct {
 	Owner      string // what a bare repository name resolves against
 	Client     *http.Client
 	perPage    int // tests lower it to exercise paging
+	maxPages   int // tests lower it to exercise the cap
 }
 
 func (g *Gitea) Name() string { return "forge" }
@@ -53,7 +54,7 @@ func (g *Gitea) Check(ctx context.Context, args map[string]string, now time.Time
 		return g.merged(ctx, repo, since, min)
 	}
 	perPage, count := g.pageSize(), 0
-	for page := 1; page <= pageCap; page++ {
+	for page, limit := 1, pageLimit(g.maxPages); page <= limit; page++ {
 		var commits []struct {
 			Commit struct {
 				Committer struct {
@@ -71,9 +72,9 @@ func (g *Gitea) Check(ctx context.Context, args map[string]string, now time.Time
 			return counted(count, min), nil
 		}
 		for _, c := range commits {
-			when, err := time.Parse(time.RFC3339, c.Commit.Committer.Date)
-			if err != nil {
-				return Outcome{}, fmt.Errorf("commit date %q: %w", c.Commit.Committer.Date, err)
+			when, o := parseStamp("commit date", c.Commit.Committer.Date)
+			if o != nil {
+				return *o, nil
 			}
 			if when.Before(since) {
 				return counted(count, min), nil
@@ -84,13 +85,13 @@ func (g *Gitea) Check(ctx context.Context, args map[string]string, now time.Time
 			}
 		}
 	}
-	return exhausted(count, min, pageCap), nil
+	return exhausted(count, min, pageLimit(g.maxPages)), nil
 }
 
 // merged counts closed pull requests whose merged_at is on or after since.
 func (g *Gitea) merged(ctx context.Context, repo string, since time.Time, min int) (Outcome, error) {
 	perPage, count := g.pageSize(), 0
-	for page := 1; page <= pageCap; page++ {
+	for page, limit := 1, pageLimit(g.maxPages); page <= limit; page++ {
 		var pulls []struct {
 			MergedAt *string `json:"merged_at"`
 		}
@@ -107,10 +108,14 @@ func (g *Gitea) merged(ctx context.Context, repo string, since time.Time, min in
 			if p.MergedAt == nil {
 				continue
 			}
-			if when, err := time.Parse(time.RFC3339, *p.MergedAt); err == nil && !when.Before(since) {
+			when, o := parseStamp("merged_at", *p.MergedAt)
+			if o != nil {
+				return *o, nil
+			}
+			if !when.Before(since) {
 				count++
 			}
 		}
 	}
-	return exhausted(count, min, pageCap), nil
+	return exhausted(count, min, pageLimit(g.maxPages)), nil
 }

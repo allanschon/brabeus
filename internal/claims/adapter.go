@@ -4,6 +4,7 @@
 package claims
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -90,28 +91,28 @@ func Validate(adapter string, args map[string]string) error {
 	}
 	if v, ok := args["since"]; ok {
 		if _, err := resolveDate(v, time.Now()); err != nil {
-			return fmt.Errorf("since: %w", err)
+			return fmt.Errorf("since: %w (spec §8.1)", err)
 		}
 	}
 	if v, ok := args["min"]; ok {
 		if n, err := strconv.Atoi(v); err != nil || n < 1 {
-			return fmt.Errorf("min: %q is not an integer of at least 1", v)
+			return fmt.Errorf("min: %q is not an integer of at least 1 (spec §8.1)", v)
 		}
 	}
 	for _, k := range []string{"done", "merged"} {
 		if v, ok := args[k]; ok && v != "true" && v != "false" {
-			return fmt.Errorf("%s: %q is not true or false", k, v)
+			return fmt.Errorf("%s: %q is not true or false (spec §8.1)", k, v)
 		}
 	}
 	if v, ok := args["repo"]; ok {
 		parts := strings.Split(v, "/")
 		for _, p := range parts {
-			if strings.TrimSpace(p) == "" {
+			if p == "" || strings.ContainsAny(p, " \t") {
 				parts = nil
 			}
 		}
 		if len(parts) != 1 && len(parts) != 2 {
-			return fmt.Errorf("repo: %q is not name or owner/name", v)
+			return fmt.Errorf("repo: %q is not name or owner/name (spec §8.1)", v)
 		}
 	}
 	if adapter == "date" {
@@ -130,16 +131,16 @@ func validateDates(args map[string]string) error {
 	var err error
 	if hasBefore {
 		if b, err = time.Parse("2006-01-02", before); err != nil {
-			return fmt.Errorf("before: %q is not YYYY-MM-DD", before)
+			return fmt.Errorf("before: %q is not YYYY-MM-DD (spec §8.1)", before)
 		}
 	}
 	if hasAfter {
 		if a, err = time.Parse("2006-01-02", after); err != nil {
-			return fmt.Errorf("after: %q is not YYYY-MM-DD", after)
+			return fmt.Errorf("after: %q is not YYYY-MM-DD (spec §8.1)", after)
 		}
 	}
 	if hasBefore && hasAfter && !a.Before(b) {
-		return fmt.Errorf("after must be earlier than before")
+		return fmt.Errorf("after must be earlier than before (spec §8.1)")
 	}
 	return nil
 }
@@ -179,7 +180,7 @@ func New(cfg Config, client *http.Client) (map[string]Adapter, error) {
 	case "":
 	case "vikunja":
 		if cfg.TrackerURL == "" {
-			return nil, fmt.Errorf("BRABEUS_TRACKER=vikunja needs BRABEUS_TRACKER_URL")
+			return nil, fmt.Errorf("BRABEUS_TRACKER=vikunja needs BRABEUS_TRACKER_URL (spec §8.1)")
 		}
 		out["tracker"] = &Vikunja{URL: cfg.TrackerURL, Token: cfg.TrackerToken, Client: client}
 	default:
@@ -189,7 +190,7 @@ func New(cfg Config, client *http.Client) (map[string]Adapter, error) {
 	case "":
 	case "gitea":
 		if cfg.ForgeURL == "" {
-			return nil, fmt.Errorf("BRABEUS_FORGE=gitea needs BRABEUS_FORGE_URL")
+			return nil, fmt.Errorf("BRABEUS_FORGE=gitea needs BRABEUS_FORGE_URL (spec §8.1)")
 		}
 		out["forge"] = &Gitea{URL: cfg.ForgeURL, Token: cfg.ForgeToken, Owner: cfg.ForgeOwner, Client: client}
 	case "github":
@@ -204,12 +205,14 @@ func New(cfg Config, client *http.Client) (map[string]Adapter, error) {
 	return out, nil
 }
 
-// get performs one authenticated GET and classifies the answer: a credential
-// refusal or a missing resource is no-evidence (a fault in the deployment,
-// never the person falling behind). Any other non-200, an unreachable host or
-// a body that is not the expected JSON is an error, which the runner records
-// as no-evidence with the error as detail. No token is ever put in the URL,
-// because an error's text becomes a stored detail.
+// get performs one authenticated GET of a JSON list and classifies the
+// answer. A credential refusal, a missing resource or a body that is not a
+// list is no-evidence (a fault in the deployment, never the person falling
+// behind). A null body is caught here because it decodes to an empty slice
+// without complaint, which would count as zero. Any other non-200 or an
+// unreachable host is an error, which the runner records as no-evidence with
+// the error as detail. No token is ever put in the URL, because an error's
+// text becomes a stored detail.
 func get(ctx context.Context, client *http.Client, endpoint string, headers map[string]string, into any) (*Outcome, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -232,8 +235,18 @@ func get(ctx context.Context, client *http.Client, endpoint string, headers map[
 	default:
 		return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, req.URL.Host)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(into); err != nil {
-		return nil, fmt.Errorf("unreadable answer from %s: %w", req.URL.Host, err)
+	unreadable := func(why string) (*Outcome, error) {
+		return &Outcome{State: store.NoEvidence, Detail: fmt.Sprintf("unreadable answer from %s: %s", req.URL.Host, why)}, nil
+	}
+	var raw json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return unreadable(err.Error())
+	}
+	if trimmed := bytes.TrimSpace(raw); len(trimmed) == 0 || trimmed[0] != '[' {
+		return unreadable("not a JSON list")
+	}
+	if err := json.Unmarshal(raw, into); err != nil {
+		return unreadable(err.Error())
 	}
 	return nil, nil
 }
@@ -245,6 +258,15 @@ func counted(count, min int) Outcome {
 	return Outcome{State: store.Fail, Detail: fmt.Sprintf("%d found", count)}
 }
 
+// pageLimit bounds every backend's paging, so a runaway source cannot hold a
+// run for ever; 0 means the default of 200 pages.
+func pageLimit(n int) int {
+	if n == 0 {
+		return 200
+	}
+	return n
+}
+
 // exhausted is the answer when paging hit its cap before the source ran out:
 // the count is only a lower bound, so falling short of min proves nothing.
 func exhausted(count, min, pages int) Outcome {
@@ -252,6 +274,17 @@ func exhausted(count, min, pages int) Outcome {
 		return counted(count, min)
 	}
 	return Outcome{State: store.NoEvidence, Detail: fmt.Sprintf("%d found in the first %d pages; stopped before the end", count, pages)}
+}
+
+// parseStamp reads one RFC 3339 timestamp from an answer. One that will not
+// parse is an answer the adapter cannot count, so it is no-evidence naming the
+// field; skipping it would undercount into a fail.
+func parseStamp(field, value string) (time.Time, *Outcome) {
+	t, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return time.Time{}, &Outcome{State: store.NoEvidence, Detail: fmt.Sprintf("unreadable %s %q in the answer", field, value)}
+	}
+	return t, nil
 }
 
 // resolveRepo splits a forge claim's repo into owner and name. A bare name

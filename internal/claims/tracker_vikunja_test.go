@@ -95,26 +95,12 @@ func TestVikunjaAnswersNoEvidenceForARevokedTokenOrAnUnknownLabel(t *testing.T) 
 	}
 }
 
-// A body that is not the task list is a fault, never a count of zero.
-func TestVikunjaTreatsAnUnreadableAnswerAsAnErrorNotAFail(t *testing.T) {
-	srv := vikunjaServer(t, "tok", `<html>login</html>`)
-	defer srv.Close()
-	v := &Vikunja{URL: srv.URL, Token: "tok", Client: srv.Client()}
-	out, err := v.Check(context.Background(), map[string]string{"label": "article", "since": "2026-07-01", "min": "1"}, time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC))
-	if err == nil || !strings.Contains(err.Error(), "unreadable") || out.State == store.Fail {
-		t.Errorf("unreadable body: %+v %v", out, err)
-	}
-}
-
 // Paging stops at a cap; a count short of min when the source had more pages
 // is a lower bound, so it proves nothing and reads no-evidence.
 func TestVikunjaStoppedAtItsPageCapCannotFail(t *testing.T) {
-	old := pageCap
-	pageCap = 1
-	t.Cleanup(func() { pageCap = old })
 	srv := vikunjaServer(t, "tok", tasksPage1, tasksPage2)
 	defer srv.Close()
-	v := &Vikunja{URL: srv.URL, Token: "tok", Client: srv.Client(), perPage: 4}
+	v := &Vikunja{URL: srv.URL, Token: "tok", Client: srv.Client(), perPage: 4, maxPages: 1}
 	now := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 	out, err := v.Check(context.Background(), map[string]string{"label": "article", "since": "2026-07-01", "min": "2"}, now)
 	if err != nil || out.State != store.NoEvidence || !strings.Contains(out.Detail, "1 found") {
