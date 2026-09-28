@@ -12,6 +12,9 @@ import (
 	"github.com/allanschon/brabeus/internal/store"
 )
 
+// manualAdapter names the claims the person answers at interview (§8.1).
+const manualAdapter = "manual"
+
 // defaultClaimInterval is spec §8.1's "daily by default": the interval a
 // pass is judged against when the deployment's is off.
 const defaultClaimInterval = 24 * time.Hour
@@ -135,7 +138,7 @@ func claimsFor(d Deps, caller string, audience store.Visibility, goal string) (c
 		found = true
 		for _, res := range store.JoinResults(claims, results[r.Path]) {
 			c := claimOut{Goal: r.Path, ID: r.ID, Title: r.Fields["title"], Index: res.Index, Text: res.Text,
-				Adapter: res.Adapter, Manual: res.Adapter == "manual", State: string(res.State), Detail: res.Detail}
+				Adapter: res.Adapter, Manual: res.Adapter == manualAdapter, State: string(res.State), Detail: res.Detail}
 			if !res.Since.IsZero() {
 				c.Since = res.Since.UTC().Format(time.RFC3339)
 			}
@@ -188,6 +191,12 @@ func recordClaimResult(d Deps, caller string, consumer bool, audience store.Visi
 		return claimResultOut{}, fmt.Errorf("state %q: use pass, fail or no-evidence (spec §8.1)", in.State)
 	}
 	c, stamp := claims[in.Index], nowFor(d).UTC()
+	// An adapter's pass or fail is the kernel's evidence, written only by
+	// the scheduled run (§8.1, AT): a session that could set it could clear
+	// the one contradiction claims exist to surface.
+	if c.Adapter != manualAdapter {
+		return claimResultOut{}, fmt.Errorf("claim %d on %s is checked by the %s adapter; its result comes from the scheduled run, and only a manual claim's answer is recorded here (spec §8.1)", in.Index, rel, c.Adapter)
+	}
 	commit, err := d.Memory.UpdateClaimResults(rel, func(prev []store.ClaimResult) []store.ClaimResult {
 		out := make([]store.ClaimResult, 0, len(prev)+1)
 		for _, p := range prev {
@@ -221,9 +230,10 @@ func registerClaimTools(s *mcp.Server, d Deps, caller string, consumer bool, aud
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "claim_result",
-		Description: "Record what the person said about a claim's evidence — pass, fail or no-evidence — without " +
-			"reviewing the goal (spec §8.1). Use it for manual claims at interview; a review of the goal happens " +
-			"only if the person also confirmed or corrected the goal itself.",
+		Description: "Record what the person said about a manual claim's evidence — pass, fail or no-evidence — " +
+			"without reviewing the goal (spec §8.1). Only manual claims: an adapter's result comes from the " +
+			"scheduled run and is refused here. A review of the goal happens only if the person also confirmed " +
+			"or corrected the goal itself.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in claimResultIn) (*mcp.CallToolResult, claimResultOut, error) {
 		out, err := recordClaimResult(d, caller, consumer, audience, in)
 		if err != nil {

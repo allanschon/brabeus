@@ -733,3 +733,31 @@ func TestClaimResultRecordsAManualAnswerWithoutAReview(t *testing.T) {
 		t.Error("a consumer never records a result")
 	}
 }
+
+// §8.1, AT: an adapter's pass or fail is the kernel's evidence, so a session
+// cannot overwrite it — not even to clear a fail the person disputes. Only a
+// manual claim's answer enters through claim_result.
+func TestASessionCannotOverwriteAnAdapterClaimsResult(t *testing.T) {
+	st := newServerStore(t)
+	set := testSet(t)
+	writeServerGoal(t, st, "telos/goal/g3.md", "G3", "global")
+	t0 := time.Date(2026, 9, 20, 4, 0, 0, 0, time.UTC)
+	if _, err := st.RecordClaimResults("telos/goal/g3.md", []store.ClaimResult{
+		{Index: 0, Text: "three articles", Adapter: "tracker", State: store.Fail, Detail: "2 found", Since: t0, Recorded: t0},
+	}, "kernel"); err != nil {
+		t.Fatal(err)
+	}
+	head := gitRun(t, st.Dir, "rev-parse", "HEAD")
+	d := Deps{Memory: st, Set: set, Now: func() time.Time { return t0.Add(time.Hour) }}
+	_, err := recordClaimResult(d, "desk", false, audienceFor(set, false), claimResultIn{Goal: "telos/goal/g3.md", Index: 0, State: "pass", Note: "I did publish three"})
+	if err == nil || !strings.Contains(err.Error(), "tracker") || !strings.Contains(err.Error(), "§8.1") {
+		t.Errorf("an adapter claim's result must be refused, naming the adapter and §8.1: %v", err)
+	}
+	if gitRun(t, st.Dir, "rev-parse", "HEAD") != head {
+		t.Error("the refused answer reached git")
+	}
+	all, _ := st.ClaimResults()
+	if r := all["telos/goal/g3.md"]; len(r) != 1 || r[0].State != store.Fail || !r[0].Since.Equal(t0) {
+		t.Errorf("the tracker's fail must stand: %+v", r)
+	}
+}
