@@ -80,6 +80,65 @@ func TestAStaleRecordIsTheFirstLine(t *testing.T) {
 	}
 }
 
+// AA, §10: a record governed by a ratified-record module renders marked
+// unconfirmed until reviewed, whatever its kind. The block hands the marker to
+// every template as a field, and this test renders every shipped ratified
+// template with one unreviewed record per kind and fails on any line without it.
+func TestEveryShippedTemplateMarksAnUnreviewedRecordOfEveryKind(t *testing.T) {
+	now := at("2026-10-01T00:00:00Z")
+	for _, name := range []string{"identity", "telos", "health", "finance"} {
+		set := shippedSet(t, name)
+		r, err := New(set)
+		if err != nil {
+			t.Fatal(err)
+		}
+		man, _ := set.Module(name)
+		for kind, k := range man.Kinds {
+			fields := map[string]string{}
+			for _, f := range k.Fields {
+				fields[f] = "probe-" + f
+			}
+			if _, ok := fields["revisit"]; ok {
+				fields["revisit"] = "2027-01-01"
+			}
+			rec := rec(fmt.Sprintf("%s/%s/x.md", name, kind), name, kind, fields, "2026-09-20T00:00:00Z", "")
+			text, faults := r.Render(nil, []store.Stored{rec}, now, store.Visibility{})
+			if len(faults) != 0 {
+				t.Errorf("%s/%s: faults %+v", name, kind, faults)
+			}
+			_, section, _ := strings.Cut(text, "\n")
+			if strings.TrimSpace(section) == name+":" {
+				continue // a kind the template does not render at all is not a marker failure
+			}
+			if !strings.Contains(section, "(unconfirmed)") {
+				t.Errorf("%s/%s renders unreviewed without the marker:\n%s", name, kind, section)
+			}
+		}
+	}
+}
+
+// A sibling of TestAStaleRecordIsTheFirstLine: identity's register kind (task
+// 4 added it to the block) renders like any other kind, first in the module's
+// section.
+func TestARegisterRecordRendersAsRegister(t *testing.T) {
+	set := shippedSet(t, "identity")
+	r, err := New(set)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := at("2026-10-01T00:00:00Z")
+	recs := []store.Stored{
+		rec("identity/register/x.md", "identity", "register", map[string]string{"statement": "dry, no fluff"}, "2026-09-20T00:00:00Z", "2026-09-20T00:00:00Z"),
+	}
+	text, faults := r.Render(nil, recs, now, store.Visibility{})
+	if len(faults) != 0 {
+		t.Fatalf("faults: %+v", faults)
+	}
+	if !strings.Contains(text, "- register: dry, no fluff") {
+		t.Errorf("register line missing:\n%s", text)
+	}
+}
+
 func TestModulesRenderInPriorityOrderAndOnlyRatifiedOnes(t *testing.T) {
 	set := shippedSet(t, "memory", "identity", "telos")
 	r, _ := New(set)
@@ -131,55 +190,65 @@ func TestAnOverBudgetModuleRendersOneLineAndAFault(t *testing.T) {
 	}
 }
 
-// TestEveryShippedTemplateFitsItsBudgetWhenFullyPopulated is the plan's own
-// guard: the "first n" caps in the shipped templates must not overflow the
-// manifest's budget_bytes at realistic field lengths, because the budgets
-// cannot rise (they already sum to 1700 of the 1792 bytes available under
-// the cap and the reservation). If this fails, the caps go down further; the
-// budgets never go up.
+// TestEveryShippedTemplateFitsItsBudgetWhenFullyPopulated guards the "first n"
+// caps in the shipped templates: they must not overflow the manifest's
+// budget_bytes at realistic field lengths, because the budgets already sum to
+// 1750 of the 1792 bytes available under the cap and the reservation, and
+// only the register line's addition moved that sum at all. It runs once with
+// every record reviewed, as before, and once with none of them reviewed, so
+// the caps hold with every line carrying the " (unconfirmed)" marker too. The
+// only state-dependent content left in any shipped line is the marker itself
+// — the reviewed date that used to follow a telos goal was dropped along with
+// it, since the view (spec §10), not the block, is where a goal's revision
+// line belongs — so the unreviewed pass is provably each template's worst
+// case; a future template that adds another state-dependent suffix needs a
+// pass of its own. If this fails, the caps go down further; the budgets
+// never go up.
 func TestEveryShippedTemplateFitsItsBudgetWhenFullyPopulated(t *testing.T) {
 	now := at("2026-10-01T00:00:00Z")
 	long := strings.Repeat("x", 40) // a plausible 40-byte field value
-	for _, name := range []string{"identity", "telos", "health", "finance"} {
-		set := shippedSet(t, name)
-		r, err := New(set)
-		if err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		man, ok := set.Module(name)
-		if !ok {
-			t.Fatalf("%s: not in its own set", name)
-		}
-		var recs []store.Stored
-		for kind, k := range man.Kinds {
-			for i := 0; i < 10; i++ { // more than any shipped cap
-				fields := map[string]string{}
-				for _, f := range k.Fields {
-					switch f {
-					case "id":
-						fields[f] = fmt.Sprintf("G%d", i)
-					case "by", "due", "revisit", "measured":
-						fields[f] = "2027-01-01"
-					case "value":
-						fields[f] = "80 kg"
-					default:
-						fields[f] = long
-					}
-				}
-				path := fmt.Sprintf("%s/%s/%d.md", name, kind, i)
-				recs = append(recs, rec(path, name, kind, fields, "2026-09-20T00:00:00Z", "2026-09-20T00:00:00Z"))
+	for _, reviewed := range []string{"2026-09-20T00:00:00Z", ""} {
+		for _, name := range []string{"identity", "telos", "health", "finance"} {
+			set := shippedSet(t, name)
+			r, err := New(set)
+			if err != nil {
+				t.Fatalf("%s: %v", name, err)
 			}
-		}
-		text, faults := r.Render(nil, recs, now, store.Visibility{})
-		if len(faults) != 0 {
-			t.Errorf("%s: faults = %+v", name, faults)
-		}
-		_, section, ok := strings.Cut(text, "\n")
-		if !ok {
-			t.Fatalf("%s: no module section:\n%s", name, text)
-		}
-		if len(section) > man.BudgetBytes {
-			t.Errorf("%s: section is %d bytes, budget is %d:\n%s", name, len(section), man.BudgetBytes, section)
+			man, ok := set.Module(name)
+			if !ok {
+				t.Fatalf("%s: not in its own set", name)
+			}
+			var recs []store.Stored
+			for kind, k := range man.Kinds {
+				for i := 0; i < 10; i++ { // more than any shipped cap
+					fields := map[string]string{}
+					for _, f := range k.Fields {
+						switch f {
+						case "id":
+							fields[f] = fmt.Sprintf("G%d", i)
+						case "by", "due", "revisit", "measured":
+							fields[f] = "2027-01-01"
+						case "value":
+							fields[f] = "80 kg"
+						default:
+							fields[f] = long
+						}
+					}
+					path := fmt.Sprintf("%s/%s/%d.md", name, kind, i)
+					recs = append(recs, rec(path, name, kind, fields, "2026-09-20T00:00:00Z", reviewed))
+				}
+			}
+			text, faults := r.Render(nil, recs, now, store.Visibility{})
+			if len(faults) != 0 {
+				t.Errorf("%s reviewed=%q: faults = %+v", name, reviewed, faults)
+			}
+			_, section, ok := strings.Cut(text, "\n")
+			if !ok {
+				t.Fatalf("%s: no module section:\n%s", name, text)
+			}
+			if len(section) > man.BudgetBytes {
+				t.Errorf("%s reviewed=%q: section is %d bytes, budget is %d:\n%s", name, reviewed, len(section), man.BudgetBytes, section)
+			}
 		}
 	}
 }
@@ -228,11 +297,11 @@ func TestTheAgendaLineOverflowRule(t *testing.T) {
 }
 
 func TestKindOrdersReviewedFirstAndFirstCaps(t *testing.T) {
-	d := Data{Records: []store.Stored{
-		rec("a.md", "telos", "goal", map[string]string{"id": "A"}, "2026-09-25T00:00:00Z", ""),
-		rec("b.md", "telos", "goal", map[string]string{"id": "B"}, "2026-09-01T00:00:00Z", "2026-09-10T00:00:00Z"),
-		rec("c.md", "telos", "goal", map[string]string{"id": "C"}, "2026-09-01T00:00:00Z", "2026-09-20T00:00:00Z"),
-		rec("d.md", "telos", "problem", nil, "2026-09-01T00:00:00Z", ""),
+	d := Data{Records: []Rec{
+		{Stored: rec("a.md", "telos", "goal", map[string]string{"id": "A"}, "2026-09-25T00:00:00Z", "")},
+		{Stored: rec("b.md", "telos", "goal", map[string]string{"id": "B"}, "2026-09-01T00:00:00Z", "2026-09-10T00:00:00Z")},
+		{Stored: rec("c.md", "telos", "goal", map[string]string{"id": "C"}, "2026-09-01T00:00:00Z", "2026-09-20T00:00:00Z")},
+		{Stored: rec("d.md", "telos", "problem", nil, "2026-09-01T00:00:00Z", "")},
 	}}
 	got := d.Kind("goal")
 	if len(got) != 3 || got[0].ID != "C" || got[1].ID != "B" || got[2].ID != "A" {

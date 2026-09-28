@@ -3,7 +3,7 @@
   "version": 1,
   "profile": "ratified-record",
   "priority": 5,
-  "budget_bytes": 400,
+  "budget_bytes": 450,
   "audience": "self",
   "intro": "who you are: what you hold true, what you weigh decisions against, and how you want to be worked with",
   "onboarding": ["register", "value", "preference", "fact", "belief"],

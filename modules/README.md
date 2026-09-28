@@ -56,3 +56,8 @@ deliberately no others; `text/template`'s own built-in functions, such as `index
 only format the records it is given: a function that could read the environment or a file would
 let a module template print a deployment's secrets into the context block. A new function is a
 kernel change, reviewed like one.
+
+Every record a template ranges over is a `block.Rec`, the stored record plus `.Mark`:
+`" (unconfirmed)"` until the record is reviewed, and `""` after (spec §10). A shipped template
+writes `{{.Mark}}` at the end of every line that names a record, so a draft can never render as
+the person's confirmed word.
