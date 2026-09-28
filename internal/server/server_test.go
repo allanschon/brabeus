@@ -761,3 +761,53 @@ func TestASessionCannotOverwriteAnAdapterClaimsResult(t *testing.T) {
 		t.Errorf("the tracker's fail must stand: %+v", r)
 	}
 }
+
+// §9, §11: reflect answers about the person's whole record and is refused to
+// a consumer outright — a consumer is asked nothing, and the values are the
+// person's own — the same gate the other ratified-record tools apply.
+func TestReflectIsRefusedToAConsumerAndServedToTheOwner(t *testing.T) {
+	st := newServerStore(t)
+	set := testSet(t)
+	if _, err := st.Write("identity/value/family-time.md", store.Record{
+		Name: "family-time", Description: "a value", Module: "identity", Kind: "value", Scope: "global",
+		Fields: map[string]string{"statement": "family time matters most"}, Body: "b",
+	}, "desk"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Review("identity/value/family-time.md", store.ReviewInput{Question: "Still one of the things you weigh decisions against?", Verdict: store.Confirmed, Answer: "yes"}, "desk"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Write("telos/goal/g1.md", store.Record{
+		Name: "g1", Description: "a goal", Module: "telos", Kind: "goal", Scope: "global",
+		Fields: map[string]string{"id": "G1", "title": "Ship the guide", "ideal": "published", "by": "2026-12-01", "serves": "family-time"}, Body: "b",
+	}, "desk"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Write("telos/goal/away.md", store.Record{
+		Name: "away", Description: "a goal", Module: "telos", Kind: "goal", Scope: "machine/other",
+		Fields: map[string]string{"id": "G9", "title": "Elsewhere", "ideal": "elsewhere", "by": "2026-12-01"}, Body: "b",
+	}, "desk"); err != nil {
+		t.Fatal(err)
+	}
+	d := Deps{Memory: st, Set: set, Now: func() time.Time { return time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC) }}
+
+	out, err := reflectFor(d, "desk", false, audienceFor(set, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Values) != 1 || out.Values[0].Name != "family-time" || !out.Values[0].Confirmed {
+		t.Fatalf("values = %+v", out.Values)
+	}
+	if len(out.Values[0].Goals) != 1 || out.Values[0].Goals[0].ID != "G1" {
+		t.Errorf("family-time goals = %+v", out.Values[0].Goals)
+	}
+	for _, g := range append(out.Values[0].Goals, out.Unserved...) {
+		if g.ID == "G9" {
+			t.Error("a goal scoped to another machine must not be listed")
+		}
+	}
+
+	if _, err := reflectFor(d, "desk", true, audienceFor(set, true)); err == nil {
+		t.Error("a consumer must be refused")
+	}
+}
