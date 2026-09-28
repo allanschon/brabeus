@@ -14,6 +14,7 @@ type GitHub struct {
 	URL, Token string // URL is the API root, https://api.github.com by default
 	Owner      string // what a bare repository name resolves against
 	Client     *http.Client
+	maxPages   int // tests lower it to exercise the cap
 }
 
 func (g *GitHub) Name() string { return "forge" }
@@ -46,7 +47,7 @@ func (g *GitHub) Check(ctx context.Context, args map[string]string, now time.Tim
 	// GitHub filters by since itself, so every commit returned counts. Paging
 	// runs to an empty page: a short page is not a promise of the end.
 	count := 0
-	for page := 1; page <= pageCap; page++ {
+	for page, limit := 1, pageLimit(g.maxPages); page <= limit; page++ {
 		var commits []struct {
 			SHA string `json:"sha"`
 		}
@@ -64,7 +65,7 @@ func (g *GitHub) Check(ctx context.Context, args map[string]string, now time.Tim
 		}
 		count += len(commits)
 	}
-	return exhausted(count, min, pageCap), nil
+	return exhausted(count, min, pageLimit(g.maxPages)), nil
 }
 
 // merged lists closed pulls most recently updated first and stops at the
@@ -72,7 +73,7 @@ func (g *GitHub) Check(ctx context.Context, args map[string]string, now time.Tim
 // merged since can follow it.
 func (g *GitHub) merged(ctx context.Context, repo string, since time.Time, min int) (Outcome, error) {
 	count := 0
-	for page := 1; page <= pageCap; page++ {
+	for page, limit := 1, pageLimit(g.maxPages); page <= limit; page++ {
 		var pulls []struct {
 			UpdatedAt string  `json:"updated_at"`
 			MergedAt  *string `json:"merged_at"`
@@ -92,16 +93,24 @@ func (g *GitHub) merged(ctx context.Context, repo string, since time.Time, min i
 			return counted(count, min), nil
 		}
 		for _, p := range pulls {
-			if updated, err := time.Parse(time.RFC3339, p.UpdatedAt); err == nil && updated.Before(since) {
+			updated, o := parseStamp("updated_at", p.UpdatedAt)
+			if o != nil {
+				return *o, nil
+			}
+			if updated.Before(since) {
 				return counted(count, min), nil
 			}
 			if p.MergedAt == nil {
 				continue
 			}
-			if when, err := time.Parse(time.RFC3339, *p.MergedAt); err == nil && !when.Before(since) {
+			when, o := parseStamp("merged_at", *p.MergedAt)
+			if o != nil {
+				return *o, nil
+			}
+			if !when.Before(since) {
 				count++
 			}
 		}
 	}
-	return exhausted(count, min, pageCap), nil
+	return exhausted(count, min, pageLimit(g.maxPages)), nil
 }

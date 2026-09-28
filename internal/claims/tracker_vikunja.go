@@ -11,11 +11,6 @@ import (
 	"github.com/allanschon/brabeus/internal/store"
 )
 
-// pageCap bounds every backend's paging, so a runaway source cannot hold a
-// run for ever. A count short of min when the cap stopped paging is only a
-// lower bound, and reads no-evidence rather than fail.
-var pageCap = 200
-
 // Vikunja counts tasks by label and date. It pages /tasks/all and filters
 // itself: measured 2026-09-28, Vikunja 2.5.0 answered 400 to every filter=
 // form tried, and a personal tracker is a few hundred tasks.
@@ -23,6 +18,7 @@ type Vikunja struct {
 	URL, Token string
 	Client     *http.Client
 	perPage    int // tests lower it to exercise paging
+	maxPages   int // tests lower it to exercise the cap
 }
 
 func (v *Vikunja) Name() string { return "tracker" }
@@ -55,11 +51,8 @@ func (v *Vikunja) Check(ctx context.Context, args map[string]string, now time.Ti
 	if perPage == 0 {
 		perPage = 50
 	}
-	count, seenLabel := 0, false
-	for page := 1; ; page++ {
-		if page > pageCap {
-			return exhausted(count, min, pageCap), nil
-		}
+	count, seenLabel, limit := 0, false, pageLimit(v.maxPages)
+	for page := 1; page <= limit; page++ {
 		var tasks []vikunjaTask
 		endpoint := fmt.Sprintf("%s/api/v1/tasks/all?per_page=%d&page=%d", v.URL, perPage, page)
 		if o, err := get(ctx, v.Client, endpoint, map[string]string{"Authorization": "Bearer " + v.Token}, &tasks); err != nil {
@@ -79,22 +72,26 @@ func (v *Vikunja) Check(ctx context.Context, args map[string]string, now time.Ti
 			if task.Done != wantDone {
 				continue
 			}
-			stamp := task.Created
+			field, stamp := "created", task.Created
 			if wantDone {
-				stamp = task.DoneAt
+				field, stamp = "done_at", task.DoneAt
 			}
-			if when, err := time.Parse(time.RFC3339, stamp); err == nil && !when.Before(since) {
+			when, o := parseStamp(field, stamp)
+			if o != nil {
+				return *o, nil
+			}
+			if !when.Before(since) {
 				count++
 			}
 		}
 		// Only an empty page is the end: a server whose page size is below
 		// ours answers short pages, and stopping there would undercount.
 		if len(tasks) == 0 {
-			break
+			if !seenLabel {
+				return Outcome{State: store.NoEvidence, Detail: fmt.Sprintf("label %q unknown to the tracker", args["label"])}, nil
+			}
+			return counted(count, min), nil
 		}
 	}
-	if !seenLabel {
-		return Outcome{State: store.NoEvidence, Detail: fmt.Sprintf("label %q unknown to the tracker", args["label"])}, nil
-	}
-	return counted(count, min), nil
+	return exhausted(count, min, limit), nil
 }

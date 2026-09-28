@@ -46,6 +46,7 @@ func TestValidateEnforcesEachAdaptersArguments(t *testing.T) {
 		{"tracker", map[string]string{"label": "x", "since": "2026-07-01", "min": "1", "done": "yes"}, "done"},
 		{"forge", map[string]string{"repo": "me/side/project", "since": "-14d", "min": "1"}, "owner/name"},
 		{"forge", map[string]string{"repo": "/side-project", "since": "-14d", "min": "1"}, "owner/name"},
+		{"forge", map[string]string{"repo": " me / side ", "since": "-14d", "min": "1"}, "owner/name"},
 		{"forge", map[string]string{"repo": "me/side", "since": "-14d", "min": "1", "merged": "1"}, "merged"},
 		{"date", map[string]string{}, "before"},
 		{"date", map[string]string{"before": "31/12/2026"}, "before"},
@@ -54,8 +55,11 @@ func TestValidateEnforcesEachAdaptersArguments(t *testing.T) {
 		{"wearable", map[string]string{}, "wearable"},
 	}
 	for _, b := range bad {
-		if err := Validate(b.adapter, b.args); err == nil || !strings.Contains(err.Error(), b.want) {
+		err := Validate(b.adapter, b.args)
+		if err == nil || !strings.Contains(err.Error(), b.want) {
 			t.Errorf("%s %v: err=%v, want it to mention %q", b.adapter, b.args, err, b.want)
+		} else if !strings.Contains(err.Error(), "spec §8.1") {
+			t.Errorf("%s %v: refusal %q does not name spec §8.1", b.adapter, b.args, err)
 		}
 	}
 }
@@ -107,10 +111,10 @@ func TestNewBuildsOnlyWhatIsConfiguredAndRefusesAnUnknownBackend(t *testing.T) {
 	if _, err := New(Config{Forge: "sourcehut"}, nil); err == nil || !strings.Contains(err.Error(), "sourcehut") {
 		t.Errorf("an unknown backend must be refused at startup: %v", err)
 	}
-	if _, err := New(Config{Tracker: "vikunja"}, nil); err == nil || !strings.Contains(err.Error(), "BRABEUS_TRACKER_URL") {
+	if _, err := New(Config{Tracker: "vikunja"}, nil); err == nil || !strings.Contains(err.Error(), "BRABEUS_TRACKER_URL") || !strings.Contains(err.Error(), "spec §8.1") {
 		t.Errorf("a backend without its URL must be refused naming the variable: %v", err)
 	}
-	if _, err := New(Config{Forge: "gitea"}, nil); err == nil || !strings.Contains(err.Error(), "BRABEUS_FORGE_URL") {
+	if _, err := New(Config{Forge: "gitea"}, nil); err == nil || !strings.Contains(err.Error(), "BRABEUS_FORGE_URL") || !strings.Contains(err.Error(), "spec §8.1") {
 		t.Errorf("gitea without its URL must be refused naming the variable: %v", err)
 	}
 }
