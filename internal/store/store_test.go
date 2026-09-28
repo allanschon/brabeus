@@ -588,6 +588,26 @@ func TestWriteWithNoCallerCommitsAsUnknown(t *testing.T) {
 
 // Delete is a machine talking to the server too; leaving it unstamped would
 // make the history lie by omission.
+// The delete commit's subject has the review commit's shape, so the history
+// can be read back as an event log with one shape per kind of change.
+func TestDeleteCommitNamesTheModuleKindAndRecord(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	if _, err := s.Write("infra/ups.md", Record{
+		Name: "ups", Description: "the UPS", Module: "memory", Kind: "note", Scope: "global", Body: "48 minutes."}, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Delete("infra/ups.md", "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := s.git(s.Dir, "log", "-1", "--format=%s%n%b")
+	if !strings.HasPrefix(out, "delete memory/note ups\n") {
+		t.Errorf("subject = %q, want it to start %q", out, "delete memory/note ups")
+	}
+	if !strings.Contains(out, "Deleted through the kernel at ") || strings.Contains(out, "MCP server") {
+		t.Errorf("body = %q, want the kernel named and not the old server name", out)
+	}
+}
+
 func TestDeleteStampsCallerAsAuthor(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
 	if _, err := s.Write("personal/z.md", Record{

@@ -811,7 +811,8 @@ func (s *Store) Delete(rel string, caller string) (string, error) {
 	}
 	// Checked AFTER the sync, so a memory another clone just pushed is
 	// found rather than reported absent.
-	if _, err := os.Stat(full); err != nil {
+	old, err := os.ReadFile(full)
+	if err != nil {
 		return "", fmt.Errorf("no memory at %q — nothing was deleted", rel)
 	}
 	if err := os.Remove(full); err != nil {
@@ -827,9 +828,24 @@ func (s *Store) Delete(rel string, caller string) (string, error) {
 		return "", err
 	}
 
-	msg := fmt.Sprintf("memory: remove %s\n\nDeleted via the memory MCP server at %s.",
-		rel, time.Now().UTC().Format(time.RFC3339))
+	msg := fmt.Sprintf("%s\n\nDeleted through the kernel at %s.", deleteSubject(rel, old), time.Now().UTC().Format(time.RFC3339))
 	return s.commitAndPush(msg, caller)
+}
+
+// deleteSubject names what was deleted in the same shape as a review commit,
+// `delete <module>/<kind> <name>`, because the commit history is read back as
+// the record's event log and one shape per kind of change keeps it parseable.
+// A file that predates modules, or has no name, falls back to its path.
+func deleteSubject(rel string, content []byte) string {
+	r, _ := ParseRecord(string(content))
+	if r.Module == "" || r.Kind == "" {
+		return "delete " + rel
+	}
+	name := r.Name
+	if name == "" {
+		name = rel
+	}
+	return fmt.Sprintf("delete %s/%s %s", r.Module, r.Kind, name)
 }
 
 // defaultDuplicateThreshold is where the warning starts.
