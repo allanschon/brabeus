@@ -80,14 +80,14 @@ the kernel's contexts check a module's mode directly instead of reading it (see
 
 ## Not aggregates
 
-| looks like one                         | is                                   | why                                                                                                                                                               |
-| -------------------------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| agenda item (`agenda.Item`)            | a value in a read model              | computed from records and the module set on every request by `agenda.Compute`; never stored, so there is nothing to keep consistent                               |
-| context block                          | a value produced by a domain service | rendered by `block.Renderer.Render` from records, the agenda and the module set; its rules (the cap, budgets, faults) are rules of rendering, not of stored state |
-| review command (`store.Answer`)        | a value object carried by a command  | the verdict, and for `corrected` the new body and fields; from M2 also the person's answer in their own words; it exists for the length of one review             |
-| caller                                 | a value object                       | a machine name and whether it is a consumer, resolved once per request                                                                                            |
-| forbidden modules (`store.Visibility`) | a value object                       | derived per session from the caller and the module set                                                                                                            |
-| fault (`block.Fault`)                  | a value object                       | reported with the block it describes and not kept                                                                                                                 |
+| looks like one                         | is                                   | why                                                                                                                                                                                                               |
+| -------------------------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| agenda item (`agenda.Item`)            | a value in a read model              | computed from records and the module set on every request by `agenda.Compute`; never stored, so there is nothing to keep consistent                                                                               |
+| context block                          | a value produced by a domain service | rendered by `block.Renderer.Render` from records, the agenda and the module set; its rules (the cap, budgets, faults) are rules of rendering, not of stored state                                                 |
+| review input (`store.Answer`)          | a value object carried by a command  | the question asked, the verdict, and for `corrected` the new body and fields; from M2 also the person's answer in their own words. Today the question is passed beside it. It exists for the length of one review |
+| caller                                 | a value object                       | a machine name and whether it is a consumer, resolved once per request                                                                                                                                            |
+| forbidden modules (`store.Visibility`) | a value object                       | derived per session from the caller and the module set                                                                                                                                                            |
+| fault (`block.Fault`)                  | a value object                       | reported with the block it describes and not kept                                                                                                                                                                 |
 
 ## Domain services
 
