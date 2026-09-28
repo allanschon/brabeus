@@ -67,7 +67,7 @@ auth=()
 block=""
 kernel_note=""
 if [ -n "${BRABEUS_URL:-}" ] && health=$(curl -sf --max-time 5 ${auth[@]+"${auth[@]}"} "$BRABEUS_URL/healthz" 2>/dev/null); then
-  # "ok <ver> identity=<mode> modules=<a,b> profiles=<p,q>" → one profile per line.
+  # "ok <ver> identity=<mode> modules=<a,b> profiles=<p,q> claims=<when>" → one profile per line.
   write_profiles "$(printf '%s\n' "$health" | sed -n 's/.*profiles=\([^ ]*\).*/\1/p' | tr ',' '\n' | sed '/^$/d')"
   if ! block=$(curl -sf --max-time 5 ${auth[@]+"${auth[@]}"} "$BRABEUS_URL/context" 2>/dev/null); then
     block=""

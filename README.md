@@ -140,6 +140,13 @@ Each deployment configures its backends with these variables:
 
 An unknown backend name, or a named backend without its URL, stops the kernel at startup.
 
+The kernel runs every non-manual claim when it starts and then every `BRABEUS_CLAIM_INTERVAL`
+(`24h` by default; `0` turns the schedule off). A run commits only when a claim's state changes,
+and never touches the goal itself, so a goal's `updated` stamp and history stay what the person
+made them. `/healthz` ends with `claims=`: `off`, `never`, or the time of the last run, which
+survives a restart. A `pass` older than two intervals is shown as stale, so one missed run changes
+nothing and a stopped schedule shows within two intervals.
+
 ## Upgrading a record from before modules
 
 A record written before modules existed carries `type` instead of `module` and `kind`. Setting

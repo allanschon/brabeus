@@ -17,7 +17,7 @@ class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
     def do_GET(self):
         if self.path == "/healthz":
-            body = b"ok 0.3.0 identity=fake modules=memory,identity profiles=working-memory,ratified-record\n"
+            body = b"ok 0.3.0 identity=fake modules=memory,identity profiles=working-memory,ratified-record claims=2026-09-20T04:00:00Z\n"
         elif self.path == "/context":
             if self.headers.get("Authorization") != "Bearer " + "t" * 12:
                 self.send_response(401); self.end_headers(); return
@@ -39,7 +39,7 @@ ctx=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')
 check "emits valid SessionStart JSON"         '[ "$(printf "%s" "$out" | jq -r .hookSpecificOutput.hookEventName)" = SessionStart ]'
 check "the block is the first context"       '[ "$(printf "%s" "$ctx" | head -1)" = "agenda: [identity/value family] Still one of the things you weigh decisions against?" ]'
 check "the routing reminder follows"         'printf "%s" "$ctx" | grep -q "brabeus.*write"'
-check "profiles file written from healthz"   '[ "$(cat "$PROFILES")" = "$(printf "working-memory\nratified-record")" ]'
+check "profiles read up to claims= after them" '[ "$(cat "$PROFILES")" = "$(printf "working-memory\nratified-record")" ]'
 check "per-session profiles file written"    '[ "$(cat "$PROFILES-s1")" = "$(cat "$PROFILES")" ]'
 
 # ── reachable kernel, wrong token: /healthz answers, /context 401s ─────────────────────────────
