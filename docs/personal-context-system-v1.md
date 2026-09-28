@@ -565,9 +565,8 @@ without adapters are not second-class.
 Results are written by the kernel's claim-result operation; they never change a goal's content
 or its `updated` stamp. What the person said about a goal is theirs, and whether the evidence
 agrees is the kernel's, so a result must not make a goal look revised (§9's revision line) or fill
-its history with results. Where results are stored is decided in M2. Whether the kernel or a
-sibling process runs the schedule is open (§15); either way results reach the record through the
-kernel, so there is still one writer.
+its history with results. Where results are stored is decided in M2. The kernel runs the schedule
+itself (§15), and results reach the record only through the kernel, so there is still one writer.
 
 The claim carries no code: the adapter is named, the arguments are data, and the kernel
 refuses an adapter the module did not declare.
@@ -839,8 +838,10 @@ record is written under the new rules. It is still one milestone: nothing in it 
 
 ## 15. Open
 
-- Whether the kernel runs claims itself or a sibling scheduler does; the kernel is stateless
-  today and a scheduler is state. Settled either way: results go through the kernel (§8.1).
+- **Who runs the claims: decided in M2.** The kernel runs them on `BRABEUS_CLAIM_INTERVAL`, and
+  setting it to `0` turns the kernel's schedule off. A sibling scheduler is not designed: the
+  claim-result operation accepts only a manual claim's answer, and a pass is judged stale against
+  the kernel's own last run, so a sibling would need a kernel change to write results (§8.1).
 - Whether the outbox (writes queued while the kernel is unreachable) needs schema validation at
   drain time or only at write time. A rejection at drain is one of the four faults `/health`
   reports (§4.2).
@@ -997,6 +998,7 @@ behaviour it left undefined, and rules it stated without a reason.
 | AS | `identity` and `telos` stay two modules, closing §15's question, because budgets, priority and onboarding are per module; §14 gains a status column and loses the removed M5 row, which §16's I now explains; M6 is ongoing since M0, as its acceptance says; the M2 row names v1.7's M2 changes | §7, §14, §15, §16 |
 | AT | a `manual` claim's answer is recorded with the claim-result operation, not through `review`, so whether the evidence is in stays separate from whether the goal is still right | §8.1 |
 | AU | once reviewed, a record governed by a `ratified-record` module is refused `write` and `delete`: its content changes only through a `corrected` review and it leaves only through `retired`, because otherwise the assistant could reword what the person confirmed and it would still render as confirmed; a draft may still be rewritten or deleted, and a confirmed crossing preference is frozen like the rest | §5, §9 |
+| AV | the kernel runs the claim schedule itself on `BRABEUS_CLAIM_INTERVAL`, and `0` turns it off, closing §15's question; a sibling scheduler would need a kernel change, because the claim-result operation accepts only manual answers and freshness is judged against the kernel's own last run | §8.1, §15 |
 
 ## Sources
 
