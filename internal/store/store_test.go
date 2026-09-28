@@ -106,7 +106,8 @@ func testModulesWith(t *testing.T, enabled ...string) *module.Set {
 	  "kinds":{"note":{"fields":[]},"trap":{"fields":[]},"preference":{"fields":[]},"project":{"fields":[]},
 	           "thread":{"fields":["belongs_to"],"timeless":true}}}`)
 	write("telos", `{"name":"telos","version":1,"profile":"ratified-record","priority":10,"budget_bytes":600,
-	  "kinds":{"goal":{"fields":["id","title","ideal","by"],"optional":["serves"],"freshness_days":90}},
+	  "kinds":{"goal":{"fields":["id","title","ideal","by"],"optional":["claims","serves"],"freshness_days":90}},
+	  "adapters":["tracker","forge","date","manual"],
 	  "summary":"summary.md.tmpl"}`)
 	write("identity", `{"name":"identity","version":1,"profile":"ratified-record","priority":5,"budget_bytes":400,
 	  "kinds":{"value":{"fields":["statement"],"freshness_days":365,"interview":"Still one of the things you weigh decisions against?","first":"What do you weigh decisions against?"},

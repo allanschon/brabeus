@@ -80,6 +80,23 @@ func yamlValue(s string) string {
 	return s
 }
 
+// writeField writes one field. The claims field is a block (spec §8.1): the
+// key alone, then each line indented two spaces, which is exactly what
+// ParseFrontmatter strips back off. Every other field stays one line, as it
+// always was: the summary templates, the agenda's prompts and the revision
+// line all put a field's value on a single line, and a newline there would
+// read as a second entry.
+func writeField(b *strings.Builder, k, v string) {
+	if k != ClaimsField || !strings.Contains(v, "\n") {
+		fmt.Fprintf(b, "%s: %s\n", k, yamlValue(v))
+		return
+	}
+	fmt.Fprintf(b, "%s:\n", k)
+	for _, line := range strings.Split(strings.TrimRight(v, "\n"), "\n") {
+		fmt.Fprintf(b, "  %s\n", line)
+	}
+}
+
 // compose renders the file. fieldOrder is the kind's declared order; fields
 // not in it (there are none after validation) are appended sorted so the
 // output is still deterministic.
@@ -97,7 +114,7 @@ func compose(r Record, meta Meta, fieldOrder []string) string {
 	written := map[string]bool{"id": true}
 	for _, k := range fieldOrder {
 		if v, ok := r.Fields[k]; ok && !written[k] {
-			fmt.Fprintf(&b, "%s: %s\n", k, yamlValue(v))
+			writeField(&b, k, v)
 			written[k] = true
 		}
 	}
@@ -109,7 +126,7 @@ func compose(r Record, meta Meta, fieldOrder []string) string {
 	}
 	sort.Strings(rest)
 	for _, k := range rest {
-		fmt.Fprintf(&b, "%s: %s\n", k, yamlValue(r.Fields[k]))
+		writeField(&b, k, r.Fields[k])
 	}
 	// A full RFC3339 stamp in UTC, not a bare date: this field is read by a
 	// model, so it has to be unambiguous on its own.
@@ -211,7 +228,7 @@ func staleStamp(content string) bool {
 func sansUpdated(content string) string {
 	lines := strings.Split(content, "\n")
 	for i, l := range lines {
-		if i > 0 && strings.TrimSpace(l) == "---" {
+		if i > 0 && retrieval.IsDivider(l) {
 			break // past the frontmatter; the body is markdown and may say anything
 		}
 		if strings.HasPrefix(l, "updated:") {

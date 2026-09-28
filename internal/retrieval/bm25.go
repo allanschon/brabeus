@@ -86,9 +86,10 @@ func bodyOf(content string) string {
 	return content
 }
 
-// unquote strips one layer of double quotes, as written by yamlValue in the
-// store package. Kept alongside ParseFrontmatter, its only caller.
-func unquote(s string) string {
+// Unquote strips one layer of double quotes, as written by yamlValue in the
+// store package. Exported so store.ParseClaims reads a claim's quoted text by
+// the same rule the frontmatter does, rather than keeping a second copy.
+func Unquote(s string) string {
 	if len(s) >= 2 && strings.HasPrefix(s, `"`) && strings.HasSuffix(s, `"`) {
 		return strings.ReplaceAll(s[1:len(s)-1], `\"`, `"`)
 	}
@@ -98,6 +99,11 @@ func unquote(s string) string {
 // ParseFrontmatter reads the leading --- block and nothing else. A file whose
 // first line is not a divider has no frontmatter, however many dividers appear
 // later: the body is markdown and markdown uses them as rules.
+//
+// A key with an empty value followed by indented lines is a block value (spec
+// §8.1's claims): those lines, with the first one's indent removed from each,
+// are its value, and none of them is read as a key. Only a divider at column
+// zero closes the frontmatter, so a block line reading "---" stays in the block.
 //
 // Exported because both retrieval (IndexDoc) and store (staleStamp and its
 // scope/`updated` reads) need it; store's own parseFrontmatter delegates here
@@ -109,10 +115,18 @@ func ParseFrontmatter(content string) map[string]string {
 	if !sc.Scan() || strings.TrimSpace(sc.Text()) != "---" {
 		return out
 	}
+	var lines []string
 	for sc.Scan() {
 		line := sc.Text()
-		if strings.TrimSpace(line) == "---" {
+		if IsDivider(line) {
 			break
+		}
+		lines = append(lines, line)
+	}
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		if line == "" || line[0] == ' ' || line[0] == '\t' {
+			continue // an indented line outside a block belongs to nothing
 		}
 		key, value, ok := strings.Cut(line, ":")
 		if !ok {
@@ -122,9 +136,36 @@ func ParseFrontmatter(content string) map[string]string {
 		if key == "" || strings.HasPrefix(key, "-") || strings.HasPrefix(key, "#") {
 			continue
 		}
-		out[key] = unquote(strings.TrimSpace(value))
+		value = strings.TrimSpace(value)
+		if value != "" {
+			out[key] = Unquote(value)
+			continue
+		}
+		// A block value: the indented lines that follow, with the first
+		// line's indent removed from each, blank lines kept.
+		var block []string
+		indent := ""
+		for i+1 < len(lines) {
+			next := lines[i+1]
+			trimmed := strings.TrimLeft(next, " \t")
+			if trimmed != "" && len(trimmed) == len(next) {
+				break // back at column zero: the block has ended
+			}
+			i++
+			if indent == "" && trimmed != "" {
+				indent = next[:len(next)-len(trimmed)]
+			}
+			block = append(block, strings.TrimPrefix(next, indent))
+		}
+		out[key] = strings.TrimRight(strings.Join(block, "\n"), "\n")
 	}
 	return out
+}
+
+// IsDivider reports whether a line closes the frontmatter: "---" at column
+// zero. An indented "---" is a line of a block value, not a divider.
+func IsDivider(line string) bool {
+	return strings.TrimRight(line, " \t\r") == "---"
 }
 
 // indexDoc applies the field weights measured in the lexical calibration: a
@@ -239,7 +280,7 @@ func DescriptionLine(content string) (int, string) {
 		return 1, ""
 	}
 	for i, line := range lines[1:] {
-		if strings.TrimSpace(line) == "---" {
+		if IsDivider(line) {
 			break
 		}
 		key, _, ok := strings.Cut(line, ":")

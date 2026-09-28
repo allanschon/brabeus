@@ -37,7 +37,13 @@ func RenderContext(d Deps, caller string, consumer bool) (string, []block.Fault,
 	// consumer may not see.
 	var items []agenda.Item
 	if !consumer {
-		items = agenda.Compute(d.Set, recs, now)
+		// A results file that does not parse loses only its own goal's
+		// fails: the agenda still has every other reason to ask something.
+		results, err := d.Memory.ClaimResults()
+		if err != nil {
+			log.Printf("claim results: %v", err)
+		}
+		items = agenda.Compute(d.Set, recs, results, now)
 	}
 	text, faults := d.Block.Render(items, recs, now, audience)
 	if top, ok := agenda.Top(items); ok {
