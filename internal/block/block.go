@@ -78,16 +78,7 @@ func (d Data) Kind(name string) []Rec {
 			out = append(out, r)
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool {
-		ri, rj := out[i].Reviewed.IsZero(), out[j].Reviewed.IsZero()
-		if ri != rj {
-			return !ri
-		}
-		if !ri {
-			return out[i].Reviewed.After(out[j].Reviewed)
-		}
-		return out[i].Updated.After(out[j].Updated)
-	})
+	sort.SliceStable(out, func(i, j int) bool { return store.LessByReview(out[i].Stored, out[j].Stored) })
 	return out
 }
 

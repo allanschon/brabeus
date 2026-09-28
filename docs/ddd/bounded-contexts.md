@@ -77,10 +77,10 @@ the contexts disagree*.
 ### Ratification
 
 Ratification owns what is due and what counts as reviewed: the agenda and its ordering, freshness
-and due dates, drafts, reasons, verdict semantics, the revision line and snoozes. From M2 it also
-owns the reflection's facts, which the read-only `reflect` tool computes on demand like the agenda,
-because counts and dates are facts the kernel can get right and a model's summary can get wrong. It
-does not own the conversation that asks: spec §9 puts that outside the kernel, in the Interview.
+and due dates, drafts, reasons, verdict semantics, the revision line and snoozes. It also owns the
+reflection's facts, which the read-only `reflect` tool computes on demand like the agenda, because
+counts and dates are facts the kernel can get right and a model's summary can get wrong. It does
+not own the conversation that asks: spec §9 puts that outside the kernel, in the Interview.
 
 It lives in `internal/agenda`, which computes the agenda, and `internal/store/review.go`, which
 applies verdicts.
