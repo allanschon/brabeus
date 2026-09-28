@@ -1,7 +1,9 @@
 package store
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -121,5 +123,170 @@ func TestACorrectedReviewValidatesTheClaimsBlockToo(t *testing.T) {
 		Fields: map[string]string{"claims": goalClaims + "\n- text: \"a commit\"\n  check: {adapter: forge, repo: a/b, since: -14d}"}}, "m")
 	if err == nil || !strings.Contains(err.Error(), "claim 3") || !strings.Contains(err.Error(), "needs min") {
 		t.Errorf("a corrected review must validate the claims block: %v", err)
+	}
+}
+
+// §8.1, AN: a result never changes the goal's content, its updated stamp or
+// its history; it lives under claims/ and is committed only when a state changes.
+func TestAClaimResultNeverTouchesTheGoalAndCommitsOnlyOnAChange(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	writeGoal(t, s, "telos/goal/g3.md", goalClaims)
+	goalBefore := mustRead(t, filepath.Join(s.Dir, "telos/goal/g3.md"))
+	logBefore := run(t, s.Dir, "log", "--format=%s", "--", "telos/goal/g3.md")
+	now := at("2026-09-20T04:00:00Z")
+	results := []ClaimResult{
+		{Index: 0, Text: "At least three articles published since the quarter began", Adapter: "tracker", State: Fail, Detail: "2 found", Since: now, Recorded: now},
+		{Index: 1, Text: "The target date still holds", Adapter: "manual", State: Unchecked},
+	}
+	commit, err := s.RecordClaimResults("telos/goal/g3.md", results, "kernel")
+	if err != nil || commit == "" || commit == "no change" {
+		t.Fatalf("commit=%q err=%v", commit, err)
+	}
+	if mustRead(t, filepath.Join(s.Dir, "telos/goal/g3.md")) != goalBefore {
+		t.Error("the goal file changed")
+	}
+	if run(t, s.Dir, "log", "--format=%s", "--", "telos/goal/g3.md") != logBefore {
+		t.Error("the goal's history gained a commit")
+	}
+	subject := run(t, s.Dir, "log", "-1", "--format=%s")
+	if !strings.HasPrefix(subject, "claims telos/goal g3: 1 changed") {
+		t.Errorf("subject = %q", subject)
+	}
+	var file struct {
+		Goal   string        `json:"goal"`
+		Claims []ClaimResult `json:"claims"`
+	}
+	b, err := os.ReadFile(filepath.Join(s.Dir, "claims/telos/goal/g3.json"))
+	if err != nil || json.Unmarshal(b, &file) != nil || file.Goal != "telos/goal/g3.md" || len(file.Claims) != 2 || file.Claims[0].State != Fail {
+		t.Fatalf("results file: %v %s", err, b)
+	}
+	if commit, err := s.RecordClaimResults("telos/goal/g3.md", results, "kernel"); err != nil || commit != "no change" {
+		t.Errorf("the same results again must not commit: %q %v", commit, err)
+	}
+	all, err := s.ClaimResults()
+	if err != nil || len(all["telos/goal/g3.md"]) != 2 || all["telos/goal/g3.md"][0].Detail != "2 found" {
+		t.Errorf("ClaimResults = %+v %v", all, err)
+	}
+	if _, err := s.Write("claims/telos/goal/x.md", Record{Name: "x", Description: "d", Module: "memory", Kind: "note", Scope: "global", Body: "b"}, "m"); err == nil {
+		t.Error("claims/ is the kernel's; a record may not be written there")
+	}
+	entries, _ := s.List("")
+	for _, e := range entries {
+		if strings.HasPrefix(e.Path, "claims/") {
+			t.Errorf("a results file is not a record: %+v", e)
+		}
+	}
+}
+
+// K10: the rule is "committed only when something the person or the adapter
+// said changed", judged on State and Detail, not on the file's bytes. A run
+// that only restamps Recorded commits nothing; a new manual answer in the
+// same state is recorded (§8.1) and says so.
+func TestAResultCommitsOnAStateOrANewAnswerAndNeverOnARestamp(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	writeGoal(t, s, "telos/goal/g3.md", goalClaims)
+	first, later := at("2026-09-20T04:00:00Z"), at("2026-09-21T04:00:00Z")
+	manual := func(detail string, when time.Time) []ClaimResult {
+		return []ClaimResult{{Index: 1, Text: "The target date still holds", Adapter: "manual", State: Pass, Detail: detail, Since: when, Recorded: when}}
+	}
+	if c, err := s.RecordClaimResults("telos/goal/g3.md", manual("holds, said the person", first), "desk"); err != nil || c == "no change" {
+		t.Fatalf("first answer: %q %v", c, err)
+	}
+	if c, err := s.RecordClaimResults("telos/goal/g3.md", manual("holds, said the person", later), "desk"); err != nil || c != "no change" {
+		t.Errorf("a restamp alone must not commit: %q %v", c, err)
+	}
+	if c, err := s.RecordClaimResults("telos/goal/g3.md", manual("still holds, the venue confirmed", later), "desk"); err != nil || c == "no change" {
+		t.Fatalf("a new answer must commit: %q %v", c, err)
+	}
+	if subject := run(t, s.Dir, "log", "-1", "--format=%s"); !strings.HasPrefix(subject, "claims telos/goal g3: 0 changed, 1 answered") {
+		t.Errorf("subject = %q", subject)
+	}
+	got, _ := s.ClaimResults()
+	if r := got["telos/goal/g3.md"]; len(r) != 1 || !r[0].Since.Equal(first) || r[0].Detail != "still holds, the venue confirmed" {
+		t.Errorf("Since is when the state was entered and survives a new answer: %+v", r)
+	}
+}
+
+// C7: two writers of one goal's results — the scheduled run and a manual
+// answer — merge under the store's lock, so neither loses the other's entry,
+// and the caller's slice is not reordered behind its back.
+func TestUpdateClaimResultsMergesWithWhatIsAlreadyRecorded(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	writeGoal(t, s, "telos/goal/g3.md", goalClaims)
+	now := at("2026-09-20T04:00:00Z")
+	mine := []ClaimResult{
+		{Index: 1, Text: "The target date still holds", Adapter: "manual", State: Pass, Since: now, Recorded: now},
+		{Index: 0, Text: "At least three articles published since the quarter began", Adapter: "tracker", State: Fail, Detail: "2 found", Since: now, Recorded: now},
+	}
+	if _, err := s.RecordClaimResults("telos/goal/g3.md", mine, "kernel"); err != nil {
+		t.Fatal(err)
+	}
+	if mine[0].Index != 1 {
+		t.Error("RecordClaimResults sorted the caller's slice")
+	}
+	_, err := s.UpdateClaimResults("telos/goal/g3.md", func(prev []ClaimResult) []ClaimResult {
+		if len(prev) != 2 {
+			t.Errorf("prev = %+v", prev)
+		}
+		out := append([]ClaimResult{}, prev...)
+		for i := range out {
+			if out[i].Index == 0 {
+				out[i].State, out[i].Detail, out[i].Since = Pass, "3 found", now.Add(time.Hour)
+			}
+		}
+		return out
+	}, "kernel")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.ClaimResults()
+	r := got["telos/goal/g3.md"]
+	if len(r) != 2 || r[0].Index != 0 || r[0].State != Pass || r[1].State != Pass || r[1].Adapter != "manual" {
+		t.Errorf("merged results = %+v", r)
+	}
+}
+
+// A result's detail enters git, so it meets the same rules as any text that
+// does: one line, and no credential (§11). A state outside §8.1's is refused.
+func TestAResultIsRefusedAnUnknownStateOrACredentialInItsDetail(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	writeGoal(t, s, "telos/goal/g3.md", goalClaims)
+	one := func(state ClaimState, detail string) []ClaimResult {
+		return []ClaimResult{{Index: 1, Text: "The target date still holds", Adapter: "manual", State: state, Detail: detail}}
+	}
+	if _, err := s.RecordClaimResults("telos/goal/g3.md", one("maybe", ""), "m"); err == nil || !strings.Contains(err.Error(), "maybe") {
+		t.Errorf("an unknown state: %v", err)
+	}
+	if _, err := s.RecordClaimResults("telos/goal/g3.md", one(Pass, "token="+strings.Repeat("x", 24)), "m"); err == nil || !strings.Contains(err.Error(), "§11") {
+		t.Errorf("a credential in a detail: %v", err)
+	}
+	if _, err := s.RecordClaimResults("telos/goal/g3.md", one(Pass, "held\nand then\n  some"), "m"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.ClaimResults()
+	if d := got["telos/goal/g3.md"][0].Detail; d != "held and then some" {
+		t.Errorf("detail = %q", d)
+	}
+	if _, err := s.RecordClaimResults("telos/goal/none.md", one(Pass, ""), "m"); err == nil {
+		t.Error("results for a goal that is not there")
+	}
+}
+
+// One join, used by the agenda, the claims tool and the runner: a result
+// belongs to a claim when both its position and its text match, so a result
+// left from a reworded claim reads as unchecked rather than as the new one's.
+func TestJoinResultsMatchesByPositionAndTextAndOtherwiseIsUnchecked(t *testing.T) {
+	claims, _ := ParseClaims(goalClaims)
+	now := at("2026-09-20T04:00:00Z")
+	joined := JoinResults(claims, []ClaimResult{
+		{Index: 0, Text: "Two articles", Adapter: "tracker", State: Fail, Since: now},
+		{Index: 1, Text: "The target date still holds", Adapter: "manual", State: Pass, Detail: "yes", Since: now},
+		{Index: 5, Text: "gone", State: Fail},
+	})
+	if len(joined) != 2 || joined[0].State != Unchecked || joined[0].Text != claims[0].Text || joined[0].Adapter != "tracker" || joined[0].Index != 0 {
+		t.Errorf("joined[0] = %+v", joined)
+	}
+	if joined[1].State != Pass || joined[1].Detail != "yes" || !joined[1].Since.Equal(now) {
+		t.Errorf("joined[1] = %+v", joined[1])
 	}
 }
