@@ -167,9 +167,10 @@ func AgendaLine(items []agenda.Item) (string, *Fault) {
 	if !ok {
 		return "agenda: nothing due", nil
 	}
-	// An untagged item (a pre-module record, or one whose kernel keys failed
-	// to parse) has no module or kind to name; its path is the only thing
-	// that identifies it.
+	// An untagged item — a pre-module record, the one case where Module is
+	// empty — has no module or kind to name; its path is the only thing
+	// that identifies it. A malformed record still carries its module and
+	// kind (agenda.fixByHand keeps them) and renders tagged as usual.
 	who := top.Path
 	if top.Module != "" {
 		who = top.Module + "/" + top.Kind
