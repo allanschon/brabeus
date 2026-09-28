@@ -25,6 +25,22 @@ moves `reviewed`, `retired` or the snooze count, and on `corrected` replaces con
 other path changes a record except `Delete`, which removes it, and the one-time migration, which
 retags it.
 
+A record in a ratified-record module has a lifecycle, and its stamps are the state:
+
+| state    | stamps                      | entered by                           | rendered             |
+| -------- | --------------------------- | ------------------------------------ | -------------------- |
+| draft    | `reviewed` zero             | a write                              | marked unconfirmed   |
+| ratified | `reviewed` set, not retired | a review, `confirmed` or `corrected` | as the person's word |
+| retired  | `retired` set               | a review, `retired`                  | never                |
+
+A `later` verdict leaves the state as it was and counts a snooze. A write to a draft keeps it a
+draft; the interview rewrites drafts freely until the person confirms one (spec §9). A write to a
+ratified record also keeps its state, which is the gap described in [`invariants.md`](invariants.md).
+
+A `memory/thread` is a record like any other, and names its target module by name, not by
+reference: the module need not be enabled, and nothing checks the name. It ends by deletion once
+the module it names holds a draft developed from it (spec §7).
+
 **The consistency boundary is the store, not the record.** Every change takes the store's single
 lock, pulls, rewrites the record and the index line in `MEMORY.md`, commits and pushes. The index
 is a projection of every record, and keeping it exact inside the same commit is what makes the
@@ -44,13 +60,13 @@ their own, or the revision line has to look at content rather than stamps.
 
 ## Module set
 
-|          |                                                                                                            |
-| -------- | ---------------------------------------------------------------------------------------------------------- |
-| root     | the module set (`module.Set`)                                                                              |
-| identity | the deployment: one set per kernel instance, loaded at start                                               |
-| inside   | manifests (`module.Manifest`), each with its kinds (`module.Kind`) and its mode's bundle (`module.Bundle`) |
-| factory  | `module.Load`, which validates every manifest and then the set as a whole                                  |
-| context  | Schema                                                                                                     |
+|          |                                                                                                                                                                               |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| root     | the module set (`module.Set`)                                                                                                                                                 |
+| identity | the deployment: one set per kernel instance, loaded at start                                                                                                                  |
+| inside   | manifests (`module.Manifest`), each with its kinds (`module.Kind`), its mode's bundle (`module.Bundle`) and, from M2, its `intro` and each kind's `lenses` and draft question |
+| factory  | `module.Load`, which validates every manifest and then the set as a whole                                                                                                     |
+| context  | Schema                                                                                                                                                                        |
 
 The module set is created once, validated whole, and never changed while the kernel runs. That
 makes it closer to an immutable value than to an entity: a different set means a restart. Its
@@ -67,7 +83,7 @@ the kernel's contexts check a module's mode directly instead of reading it (see
 | -------------------------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | agenda item (`agenda.Item`)            | a value in a read model              | computed from records and the module set on every request by `agenda.Compute`; never stored, so there is nothing to keep consistent                               |
 | context block                          | a value produced by a domain service | rendered by `block.Renderer.Render` from records, the agenda and the module set; its rules (the cap, budgets, faults) are rules of rendering, not of stored state |
-| answer (`store.Answer`)                | a value object carried by a command  | the verdict, and for `corrected` the new body and fields; it exists for the length of one review                                                                  |
+| review command (`store.Answer`)        | a value object carried by a command  | the verdict, and for `corrected` the new body and fields; from M2 also the person's answer in their own words; it exists for the length of one review             |
 | caller                                 | a value object                       | a machine name and whether it is a consumer, resolved once per request                                                                                            |
 | forbidden modules (`store.Visibility`) | a value object                       | derived per session from the caller and the module set                                                                                                            |
 | fault (`block.Fault`)                  | a value object                       | reported with the block it describes and not kept                                                                                                                 |
@@ -76,9 +92,9 @@ the kernel's contexts check a module's mode directly instead of reading it (see
 
 Operations that belong to no single aggregate, each a function of its inputs:
 
-| service                 | does                                                                                   |
-| ----------------------- | -------------------------------------------------------------------------------------- |
-| `agenda.Compute`        | orders what the interview should ask, from records and the module set                  |
-| `block.Renderer.Render` | renders the context block within the cap and the budgets                               |
-| `module.Set.RuleFor`    | names the governing module and kind for a record, which is how the crossing kind works |
-| `server.RenderContext`  | the one path to the block for a caller: forbidden modules, scope, agenda, render       |
+| service                 | does                                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------------------- |
+| `agenda.Compute`        | orders what is due, from records and the module set, each item with its reason and question |
+| `block.Renderer.Render` | renders the context block within the cap and the budgets                                    |
+| `module.Set.RuleFor`    | names the governing module and kind for a record, which is how the crossing kind works      |
+| `server.RenderContext`  | the one path to the block for a caller: forbidden modules, scope, agenda, render            |

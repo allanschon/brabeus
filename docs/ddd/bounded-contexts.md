@@ -9,11 +9,11 @@ the places where they do are noted.
 
 ## Subdomains
 
-| class      | contexts                                                      | why                                                                                                                                                                  |
-| ---------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| core       | Ratification, Schema, Context block, Intent                   | what spec §2.4 names as distinctive: authorship enforced by the server, modes a manifest cannot edit, the 2 KB cap as a constraint, claims verified against evidence |
-| supporting | Record, Callers and audience, Assistant integration, Notebook | built for Brabeus because nothing off the shelf fits, but not what makes it Brabeus                                                                                  |
-| generic    | Retrieval, Deployment                                         | BM25, embeddings, container wiring: well-solved problems                                                                                                             |
+| class      | contexts                                                      | why                                                                                                                                                                                                                                                              |
+| ---------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| core       | Ratification, Schema, Context block, Intent, Interview        | what spec §2.4 names as distinctive: authorship enforced by the server, modes a manifest cannot edit, the 2 KB cap as a constraint, claims verified against evidence; and the conversation that writes the record, without which there is nothing to ratify (§9) |
+| supporting | Record, Callers and audience, Assistant integration, Notebook | built for Brabeus because nothing off the shelf fits, but not what makes it Brabeus                                                                                                                                                                              |
+| generic    | Retrieval, Deployment                                         | BM25, embeddings, container wiring: well-solved problems                                                                                                                                                                                                         |
 
 ## The contexts
 
@@ -56,6 +56,9 @@ Relationships:
   `module.Set`.
 - **Module authors**. `module.json` is a published language: a closed set of keys, refused on
   anything unknown.
+- **Interview** (downstream, M2). The read-only `modules` tool is an open host service for the
+  module set. Its `lenses`, `draft` and `intro` keys are validated by the kernel and read only by
+  the Interview; how to ask belongs to the module (§6).
 
 A mode's rules are published as a `Bundle`, but the downstream contexts do not read it; each
 compares a module's mode against a constant and applies the rule itself. See *Where the code and
@@ -63,11 +66,11 @@ the contexts disagree*.
 
 ### Ratification
 
-Owns the agenda and its ordering, freshness, reasons, native and crossing items, verdict
-semantics, the revision line, snoozes, and the interview loop.
+Owns what is due and what counts as reviewed: the agenda and its ordering, freshness, drafts,
+reasons, native and crossing items, verdict semantics, the revision line and snoozes. It does not
+own the conversation that asks; spec §9 puts that outside the kernel, in the Interview.
 
-Lives in `internal/agenda` (the agenda), `internal/store/review.go` (verdicts applied), and the
-plugin's `interview` skill (the loop).
+Lives in `internal/agenda` (the agenda) and `internal/store/review.go` (verdicts applied).
 
 The agenda is a read model: computed from the store and the module set on every request, never
 stored.
@@ -78,6 +81,8 @@ Relationships:
 - **Schema** (upstream). Conforms: freshness, prompts, onboarding and the governing module all
   come from the module set.
 - **Context block** (downstream). The top agenda item becomes the agenda line.
+- **Interview** (downstream). Reads the agenda, each item with its reason and question, and
+  returns answers through `review`.
 - **Intent** (upstream, M2). Failed claims will head the agenda.
 
 ### Retrieval
@@ -132,8 +137,9 @@ Relationships:
 
 ### Assistant integration
 
-Owns what happens on the person's machine: injecting the block at session start, the write
-guard, the outbox and its drain, the `health` and `interview` skills, and the MCP registration.
+Owns what happens on the person's machine around the session: injecting the block at session
+start, the write guard, the outbox and its drain, the `health` skill, and the MCP registration.
+The `interview` skill ships in the same plugin but belongs to the Interview.
 
 Lives in `plugins/brabeus`.
 
@@ -145,6 +151,31 @@ Relationships:
 - **The kernel** (upstream). Conforms to the MCP tools and to the text of `/context` and
   `/healthz`. The write guard decides from the `profiles=` field of the `/healthz` line, which is
   unversioned text rather than a published contract.
+
+### Interview
+
+Owns the conversation that writes and keeps the record: its two ways — getting to know you and
+the check-in — lenses, intros, drafts in the making, threads, the person's register, labelled
+inferences, challenges, and reflection by value.
+
+Lives in the plugin's `interview` skill. As built (M1) the skill reads the agenda's question aloud
+and files one answer per record; the conversation is M2 (§14).
+
+Its rules are the model's to follow, not the kernel's to enforce: a cue addressed to the model is
+advisory (§3.3). What it may change is limited by the contexts it calls. It writes drafts through
+Record, which validates them against Schema; it confirms only through `review`, which Ratification
+owns; and the agenda, not the conversation, decides what is due.
+
+Relationships:
+
+- **Ratification** (upstream). Conforms to the agenda, its reasons and its questions; returns
+  verdicts and the person's answer through `review`.
+- **Schema** (upstream). Conforms to the module set, read through the `modules` tool.
+- **Record** (upstream). Writes and rewrites drafts and threads through the `write` tool, and
+  deletes a thread once its module holds a draft from it (§7).
+- **Context block** (upstream). The person's register renders in the block like any ratified
+  record, which is how it reaches every session, not just the interview.
+- **Claude Code** (external). Runs as a skill in the person's session.
 
 ### Deployment
 
@@ -170,12 +201,13 @@ can list, read and search, as `repo: projects`, and never writes.
 
 Lives in `cmd/brabeus` (a second `store.Store`, configured by `BRABEUS_MIRROR_*`) and
 `server.pickRepo`. It has no modules and no scopes, and no embedder, so its search is lexical
-only. It bypasses Schema and Callers and audience entirely, and consumers are refused it outright
-for that reason.
+only; whether it gains the dense leg is decided in M2. It bypasses Schema and Callers and audience
+entirely, and consumers are refused it outright for that reason (§11).
 
 The notebook is upstream: it has its own writers and its own conventions, and the kernel conforms
-to whatever it finds, reusing Record's reading code and none of Record's rules. No section of the
-spec describes it, and it sits against §5: "One repository per kernel instance, in this version."
+to whatever it finds, reusing Record's reading code and none of Record's rules. Spec §5 makes it
+the one exception to one repository per kernel instance, and keeps the one-writer rule by never
+writing it.
 
 ## The context map
 
@@ -198,6 +230,7 @@ flowchart LR
     plugin["<b>Assistant integration</b><br/><i>supporting</i>"]
     intent["<b>Intent</b><br/><i>core, M2</i>"]
     notebook["<b>Notebook</b><br/><i>supporting</i>"]
+    interview["<b>Interview</b><br/><i>core</i>"]
 
     githost -- "conformist" --> record
     embed -- "ACL: Embedder" --> retrieval
@@ -219,17 +252,22 @@ flowchart LR
     intent -. "failed claims" .-> ratification
     blockctx -- "OHS: /context, context tool" --> plugin
     plugin -- "ACL" --> cc
+    ratification -- "agenda; review" --> interview
+    schema -. "OHS: modules tool" .-> interview
+    record -- "OHS: MCP write tools" --> interview
+    interview -- "runs as a skill in" --> cc
 
     classDef system fill:#1168bd,stroke:#0b4884,color:#fff
     classDef container fill:#438dd5,stroke:#2e6295,color:#fff
     classDef ext fill:#999,stroke:#6b6b6b,color:#fff,stroke-dasharray:5 5
-    class schema,ratification,blockctx,intent system
+    class schema,ratification,blockctx,intent,interview system
     class record,retrieval,callers,plugin,notebook container
     class githost,embed,net,cc,evidence ext
 ```
 
 Core contexts are dark, supporting and generic ones lighter, externals grey and dashed. Dashed
-arrows are M2.
+arrows are M2; the Interview is drawn solid because the M1 skill already reads the agenda and
+calls `review`, though its conversation is M2.
 
 ## Where the code and the contexts disagree
 
@@ -249,7 +287,5 @@ ownership, not direction.
   rules, but `ModelWrites`, `Rendered`, `SearchedDefault` and `ReviewRequired` are read nowhere
   outside tests. `block`, `server` and `store` each compare against `module.RatifiedRecord` or
   `module.WorkingMemory` instead, so a mode's meaning lives in four packages rather than one.
-- **The notebook is a second repository in one kernel.** §5 and §3.8 put one repository behind each
-  kernel instance and a second trust domain behind a second instance. The notebook is read-only, so
-  it does not break the one-writer rule, but it is a second corpus with no schema and no audience
-  of its own inside the same kernel.
+- **The Interview ships inside Assistant integration.** One plugin carries both contexts, so the
+  hooks and the conversation are released together. The boundary is between skills, not packages.

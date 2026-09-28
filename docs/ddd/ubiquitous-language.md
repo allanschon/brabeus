@@ -9,38 +9,38 @@ glossary has settled on another.
 
 ## People and parts
 
-| term       | meaning                                                                                                             | plain wording  | also called                       |
-| ---------- | ------------------------------------------------------------------------------------------------------------------- | -------------- | --------------------------------- |
-| person     | the human whose record this is                                                                                      | you            | the owner                         |
-| operator   | the human who runs a deployment; in a one-person deployment, the person                                             | —              | —                                 |
-| assistant  | the AI agent in a session, reading the context block and calling the tools                                          | your assistant | the model, when seen as an author |
-| session    | one conversation between the person and the assistant, on one machine                                               | a conversation | —                                 |
-| machine    | a host a session runs on; what machine scope names and what caller resolution returns                               | a computer     | host                              |
-| deployment | one running kernel with its enabled modules, its store and its configuration                                        | your setup     | instance                          |
-| kernel     | the server: sole writer of the store, schema enforcement, retrieval, the agenda and the context block               | a small server | the server                        |
-| plugin     | the assistant-side client: two hooks and a few skills                                                               | a plugin       | —                                 |
-| module     | a directory with a manifest declaring kinds, interview prompts, a summary template and a budget, run under one mode | a module       | —                                 |
+| term       | meaning                                                                                                                        | plain wording  | also called                       |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------- | --------------------------------- |
+| person     | the human whose record this is                                                                                                 | you            | the owner                         |
+| operator   | the human who runs a deployment; in a one-person deployment, the person                                                        | —              | —                                 |
+| assistant  | the AI agent in a session, reading the context block and calling the tools                                                     | your assistant | the model, when seen as an author |
+| session    | one conversation between the person and the assistant, on one machine                                                          | a conversation | —                                 |
+| machine    | a host a session runs on; what machine scope names and what caller resolution returns                                          | a computer     | host                              |
+| deployment | one running kernel with its enabled modules, its store and its configuration                                                   | your setup     | instance                          |
+| kernel     | the server: sole writer of the store, schema enforcement, retrieval, the agenda and the context block                          | a small server | the server                        |
+| plugin     | the assistant-side client: two hooks and a few skills                                                                          | a plugin       | —                                 |
+| module     | a directory with a manifest declaring kinds, interview prompts and lenses, a summary template and a budget, run under one mode | a module       | —                                 |
 
 *Kernel* is not an operating-system kernel, and *module* is not a Go module, although this
 repository is one.
 
 ## The store
 
-| term        | meaning                                                                                                                                                                                                              | plain wording                    | also called                                       |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- | ------------------------------------------------- |
-| record      | one fact, stored as one markdown file with frontmatter the kernel composes                                                                                                                                           | a record                         | a memory; `store.Stored`                          |
-| the store   | the private git repository that holds every record                                                                                                                                                                   | your record                      | the record; the record repository; `repo: memory` |
-| content     | what a caller may say about a record: name, description, module, kind, id, scope, fields and body                                                                                                                    | —                                | `store.Record`                                    |
-| stamps      | what only the kernel writes about a record: `updated`, `reviewed`, `retired` and the snooze count                                                                                                                    | —                                | `store.Meta`                                      |
-| kind        | a module-defined type of record, such as `goal`, `value` or `trap`                                                                                                                                                   | —                                | type, before modules                              |
-| field       | a value a kind declares, required or optional, set by the caller                                                                                                                                                     | —                                | —                                                 |
-| kernel key  | a frontmatter key a caller may not set: `name`, `description`, `module`, `kind`, `id`, `scope`, `updated`, `reviewed`, `retired`, `snoozes`                                                                          | —                                | reserved field                                    |
-| scope       | where a record applies: `global`, `project/<slug>` or `machine/<host>`                                                                                                                                               | —                                | —                                                 |
-| index       | `MEMORY.md`, the one-line-per-record list every write maintains                                                                                                                                                      | —                                | —                                                 |
-| one writer  | the rule that only the kernel commits to the store                                                                                                                                                                   | only your system can write to it | single writer                                     |
-| migration   | the one-time retagging of pre-module records from `type` to `module` and `kind`                                                                                                                                      | —                                | retag                                             |
-| legacy type | a record's pre-module `type`, mapped to a kind through `legacy_types`                                                                                                                                                | —                                | the `type` alias                                  |
-| notebook    | the person's own notes repository, which they and the assistant write outside the kernel; the kernel lists, reads and searches it (lexically only) as `repo: projects`, never writes it, and refuses it to consumers | your notes                       | the mirror; the projects mirror                   |
+| term        | meaning                                                                                                                                                                                                                                                                       | plain wording                    | also called                                       |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- | ------------------------------------------------- |
+| record      | one fact, stored as one markdown file with frontmatter the kernel composes                                                                                                                                                                                                    | a record                         | a memory; `store.Stored`                          |
+| the store   | the private git repository that holds every record                                                                                                                                                                                                                            | your record                      | the record; the record repository; `repo: memory` |
+| content     | what a caller may say about a record: name, description, module, kind, id, scope, fields and body                                                                                                                                                                             | —                                | `store.Record`                                    |
+| stamps      | what only the kernel writes about a record: `updated`, `reviewed`, `retired` and the snooze count                                                                                                                                                                             | —                                | `store.Meta`                                      |
+| kind        | a module-defined type of record, such as `goal`, `value` or `trap`                                                                                                                                                                                                            | —                                | type, before modules                              |
+| field       | a value a kind declares, required or optional, set by the caller                                                                                                                                                                                                              | —                                | —                                                 |
+| kernel key  | a frontmatter key a caller may not set: `name`, `description`, `module`, `kind`, `id`, `scope`, `updated`, `reviewed`, `retired`, `snoozes`                                                                                                                                   | —                                | reserved field                                    |
+| scope       | where a record applies: `global`, `project/<slug>` or `machine/<host>`                                                                                                                                                                                                        | —                                | —                                                 |
+| index       | `MEMORY.md`, the one-line-per-record list every write maintains                                                                                                                                                                                                               | —                                | —                                                 |
+| one writer  | the rule that only the kernel commits to the store                                                                                                                                                                                                                            | only your system can write to it | single writer                                     |
+| migration   | the one-time retagging of pre-module records from `type` to `module` and `kind`                                                                                                                                                                                               | —                                | retag                                             |
+| legacy type | a record's pre-module `type`, mapped to a kind through `legacy_types`                                                                                                                                                                                                         | —                                | the `type` alias                                  |
+| notebook    | the person's own notes repository, which they and the assistant write outside the kernel; the kernel lists, reads and searches it (lexically only) as `repo: projects`, never writes it, and refuses it to consumers; the one exception to one repository per kernel instance | your notes                       | the mirror; the projects mirror                   |
 
 *Record* means one file. The whole repository is *the store*; the spec, and the name of the
 `ratified-record` mode, also call it "the record".
@@ -53,50 +53,81 @@ The tools also use it for any record, and `MEMORY.md` is the index.
 
 ## Schema
 
-| term             | meaning                                                                                                                                     | plain wording                 | also called                               |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ----------------------------------------- |
-| mode             | one of the kernel's two closed rule sets — author, read path, freshness, audience default, review — that a module runs under                | two kinds of record           | profile; `module.Profile`                 |
-| working-memory   | the mode for the assistant's own notes: model-written, searched, never in the context block                                                 | the assistant's notes         | —                                         |
-| ratified-record  | the mode for the person's record: created by the assistant or the person, confirmed only by the person, rendered in the block, interviewed  | your record                   | the personal record                       |
-| bundle           | the fixed rules a mode stands for                                                                                                           | —                             | `module.Bundle`                           |
-| manifest         | `module.json`, a module's declaration                                                                                                       | —                             | —                                         |
-| core module      | a module whose audience is pinned to `self`: `identity`, `telos`, `health`, `finance`                                                       | the four modules everyone has | —                                         |
-| priority         | a module's order in the block and on the agenda; lower comes first                                                                          | —                             | —                                         |
-| budget           | a ratified-record module's share of the block, in bytes                                                                                     | a budget within the block     | `budget_bytes`                            |
-| layout           | whether a working-memory module's paths follow `<module>/<kind>/<slug>.md` (`kind`) or the store's own tree (`free`)                        | —                             | —                                         |
-| crossing kind    | the one kind that exists in both modes, `preference`: written under `memory`, ratified under `identity`, one file                           | —                             | the preference overlap; `module.Crossing` |
-| governing module | the module whose rules decide how a record is interviewed and rendered: its own, or for a crossing record the ratified module it crosses to | —                             | `Set.RuleFor`                             |
-| onboarding       | a ratified-record module's ordered list of kinds to ask for when none is on file                                                            | —                             | —                                         |
-| first question   | a kind's question for when nothing of that kind is on file                                                                                  | —                             | `first`                                   |
-| freshness        | how long a ratified record may go unreviewed before it is due, per kind                                                                     | shelf life                    | `freshness_days`                          |
-| timeless         | a working-memory kind exempt from the freshness lint                                                                                        | —                             | —                                         |
+| term               | meaning                                                                                                                                         | plain wording                 | also called                               |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ----------------------------------------- |
+| mode               | one of the kernel's two closed rule sets — author, read path, freshness, audience default, review — that a module runs under                    | two kinds of record           | profile; `module.Profile`                 |
+| working-memory     | the mode for the assistant's own notes: model-written, searched, never in the context block                                                     | the assistant's notes         | —                                         |
+| ratified-record    | the mode for the person's record: created by the assistant or the person, confirmed only by the person, rendered in the block, interviewed      | your record                   | the personal record                       |
+| bundle             | the fixed rules a mode stands for                                                                                                               | —                             | `module.Bundle`                           |
+| manifest           | `module.json`, a module's declaration                                                                                                           | —                             | —                                         |
+| core module        | a module whose audience is pinned to `self`: `identity`, `telos`, `health`, `finance`                                                           | the four modules everyone has | —                                         |
+| priority           | a module's order in the block and on the agenda; lower comes first                                                                              | —                             | —                                         |
+| budget             | a ratified-record module's share of the block, in bytes                                                                                         | a budget within the block     | `budget_bytes`                            |
+| layout             | whether a working-memory module's paths follow `<module>/<kind>/<slug>.md` (`kind`) or the store's own tree (`free`)                            | —                             | —                                         |
+| crossing kind      | the one kind that exists in both modes, `preference`: written under `memory`, ratified under `identity`, one file                               | —                             | the preference overlap; `module.Crossing` |
+| governing module   | the module whose rules decide how a record is interviewed and rendered: its own, or for a crossing record the ratified module it crosses to     | —                             | `Set.RuleFor`                             |
+| onboarding         | a ratified-record module's ordered list of kinds to ask for when none is on file                                                                | —                             | —                                         |
+| first question     | a kind's question for when nothing of that kind is on file                                                                                      | —                             | `first`                                   |
+| interview question | a kind's question for a record past its freshness                                                                                               | —                             | `interview`                               |
+| draft question     | a ratified kind's question for a draft; "Is this right as written?" when the kind declares none                                                 | —                             | `draft`                                   |
+| lens               | one of two to four ways into a ratified kind for a conversation, lowering the bar where the first question asks directly                        | ways that make answering easy | `lenses`                                  |
+| intro              | a module's one line, used when the interview turns to it                                                                                        | —                             | `intro`                                   |
+| module set tool    | the read-only tool that serves the enabled modules, their kinds, fields, lenses and intros, withholding any module the caller may not read (M2) | —                             | the `modules` tool                        |
+| freshness          | how long a ratified record may go unreviewed before it is due, per kind                                                                         | shelf life                    | `freshness_days`                          |
+| timeless           | a working-memory kind exempt from the freshness lint                                                                                            | —                             | —                                         |
 
 §7 calls `memory` a core module "in a different sense" from the four above: it is what the kernel
 was built for, not what everyone has.
 
 ## Ratification
 
-| term          | meaning                                                                                                                               | plain wording                                  | also called                       |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | --------------------------------- |
-| review        | the kernel operation that records the person's answer to one agenda question; the only path that moves `reviewed`                     | answering                                      | `Store.Review`; the `review` tool |
-| ratified      | having a `reviewed` stamp and not retired                                                                                             | confirmed                                      | reviewed                          |
-| verdict       | the class of the person's answer: `confirmed`, `corrected`, `retired` or `later`                                                      | confirm, correct, retire, later                | answer                            |
-| confirm       | the `confirmed` verdict: the record still holds as written                                                                            | confirm                                        | —                                 |
-| snooze        | a `later` verdict, counted on the record so a deferral stays visible                                                                  | later; putting it off                          | —                                 |
-| retired       | a record the person said no longer applies; kept in history, never rendered or asked about                                            | retire                                         | —                                 |
-| agenda        | the ordered list of what the interview should ask, computed from the store and never stored                                           | —                                              | —                                 |
-| agenda item   | one entry on the agenda, with its question, revision line and snooze count                                                            | the one thing the system most wants to ask you | `agenda.Item`                     |
-| agenda line   | the top agenda item, rendered as the first line of the block                                                                          | the first line                                 | the first line of every session   |
-| reason        | why an item is on the agenda: `fail` (a claim failed), `stale` (past freshness) or `onboarding` (nothing of a wanted kind is on file) | —                                              | `empty`, for `onboarding`         |
-| native item   | an agenda item governed by its own module; native items sort before crossing items                                                    | —                                              | tier 0                            |
-| crossing item | an agenda item for a crossing record, governed by another module                                                                      | —                                              | tier 1                            |
-| revision line | a note that a record changed since it was last reviewed                                                                               | whether a goal has been quietly lowered        | —                                 |
-| interview     | the loop that asks agenda items one at a time and records each answer through review                                                  | the interview                                  | `/interview`                      |
-| reflection    | the interview's closing summary of the gap, grouped by value (M2)                                                                     | reflects back                                  | —                                 |
+| term               | meaning                                                                                                                                                             | plain wording                                  | also called                       |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | --------------------------------- |
+| review             | the kernel operation that records the person's answer to one agenda question; the only path that moves `reviewed`                                                   | answering                                      | `Store.Review`; the `review` tool |
+| ratified           | having a `reviewed` stamp and not retired                                                                                                                           | confirmed                                      | reviewed                          |
+| draft              | a record in a ratified-record module that has never been reviewed; it may be rewritten until confirmed, and renders marked unconfirmed                              | a draft                                        | —                                 |
+| unconfirmed marker | the `(unconfirmed)` a draft carries in the block, whatever its kind                                                                                                 | hasn't been confirmed                          | —                                 |
+| verdict            | the class of the person's answer: `confirmed`, `corrected`, `retired` or `later`                                                                                    | confirm, correct, retire, later                | `store.Verdict`                   |
+| answer             | the person's reply to a review's question, in their own words, carried into the review commit (M2)                                                                  | you answered                                   | —                                 |
+| confirm            | the `confirmed` verdict: the record still holds as written                                                                                                          | confirm                                        | —                                 |
+| snooze             | a `later` verdict, counted on the record so a deferral stays visible                                                                                                | later; putting it off                          | —                                 |
+| retired            | a record the person said no longer applies; kept in history, never rendered or asked about                                                                          | retire                                         | —                                 |
+| agenda             | the ordered list of what the interview should ask, computed from the store and never stored                                                                         | —                                              | —                                 |
+| agenda item        | one entry on the agenda, with its question, revision line and snooze count                                                                                          | the one thing the system most wants to ask you | `agenda.Item`                     |
+| agenda line        | the top agenda item, rendered as the first line of the block                                                                                                        | the first line                                 | the first line of every session   |
+| reason             | why an item is on the agenda: `fail` (a claim failed), `draft` (never reviewed, M2), `stale` (past freshness) or `onboarding` (nothing of a wanted kind is on file) | —                                              | `empty`, for `onboarding`         |
+| native item        | an agenda item governed by its own module; native items sort before crossing items                                                                                  | —                                              | tier 0                            |
+| crossing item      | an agenda item for a crossing record, governed by another module                                                                                                    | —                                              | tier 1                            |
+| revision line      | a note that a record changed since it was last reviewed                                                                                                             | whether a goal has been quietly lowered        | —                                 |
 
 *Review* is not code review or an inspection; it is the person answering a question. `reviewed`
-moves on `confirmed`, `corrected` and `retired`, and not on `later`. A *verdict* is the person's
-answer; a *claim state* is an adapter's.
+moves on `confirmed`, `corrected` and `retired`, and not on `later`. A *verdict* classifies the
+person's answer; the *answer* is what they said. `store.Answer` in the code is the verdict with a
+correction's new content, not the answer. A *verdict* is the person's; a *claim state* is an
+adapter's.
+
+*Draft* has three senses: a never-reviewed ratified record, the agenda reason that names one, and
+the manifest key holding the question asked of one. This glossary uses *draft* for the record and
+*draft question* for the key. A crossing `memory/preference` the assistant wrote is not a draft;
+it is asked once it passes its freshness.
+
+## Interview
+
+| term                | meaning                                                                                                                                                                              | plain wording                                   | also called  |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------- | ------------ |
+| interview           | the conversation that writes the record and keeps it true, built on the agenda and confirming only through review                                                                    | the interview                                   | `/interview` |
+| getting to know you | the interview's way while any enabled ratified-record module has an onboarding item: it walks modules and their onboarding kinds, opening each with lenses (M2)                      | it gets to know you                             | —            |
+| check-in            | the interview's way once onboarding is done: it opens with the top agenda item and follows the conversation (M2)                                                                     | a check-in                                      | —            |
+| register            | an `identity` kind: how the person wants to be spoken to, rendered in the block so every session uses it; first in identity's onboarding (M2)                                        | how you like to be spoken to                    | —            |
+| thread              | a `memory` kind: a topic the person raised that no enabled module holds, naming the module it belongs in; developed into that module's records once it is enabled, then deleted (M2) | notes it so a later conversation can pick it up | —            |
+| pointer-only thread | a thread whose module is a core module with `audience: self`: it names the topic and holds none of the substance                                                                     | —                                               | —            |
+| labelled inference  | anything the interviewer adds beyond the person's words — an inference, a suggested date, a strategy — marked as its own                                                             | its own suggestions                             | —            |
+| challenge           | the interviewer's pushback: an entry in the wrong kind, a goal nobody could measure, a contradiction with the record, a statement implying more than it says                         | push back                                       | —            |
+| reflection          | the interview's closing summary of the gap, grouped by value (M2)                                                                                                                    | reflects back                                   | —            |
+
+*Getting to know you* and *check-in* are the interview's two ways, not modes: a *mode* is one of
+the kernel's two rule sets. A *register* is not a persona: it gives the assistant no name and no
+character (spec §2.3).
 
 ## Retrieval
 
@@ -155,12 +186,14 @@ checked. They are different failures in different parts of the system.
 
 ## Origins
 
-| term                         | from                               | what changed                                                                     |
-| ---------------------------- | ---------------------------------- | -------------------------------------------------------------------------------- |
-| `telos`                      | LifeOS TELOS                       | its sections became kinds; narratives and fixed dimensions were dropped          |
-| `current`, `ideal`           | LifeOS current and ideal state     | the dimensions are the person's own                                              |
-| claim                        | LifeOS Ideal State Criteria        | evidence is named by adapter, not by a probe command                             |
-| interview                    | LifeOS Interview skill             | the kernel chooses the question                                                  |
-| `decision`                   | seandavi/lifeos-template `/decide` | unchanged                                                                        |
-| timeless, dated or a pointer | obsidian-second-brain              | became the working-memory freshness lint                                         |
-| module                       | LifeOS                             | a unit of schema enabled per deployment, not a capability installed for everyone |
+| term                         | from                               | what changed                                                                            |
+| ---------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------- |
+| `telos`                      | LifeOS TELOS                       | its sections became kinds; narratives and fixed dimensions were dropped                 |
+| `current`, `ideal`           | LifeOS current and ideal state     | the dimensions are the person's own                                                     |
+| claim                        | LifeOS Ideal State Criteria        | evidence is named by adapter, not by a probe command                                    |
+| interview                    | LifeOS Interview skill             | the kernel decides what is due and what counts as reviewed; the conversation is kept    |
+| lens                         | LifeOS Interview skill             | its "three ways in" became a manifest key per kind                                      |
+| register                     | LifeOS assistant persona           | the voice was kept as the person's own ratified record; the name and character were not |
+| `decision`                   | seandavi/lifeos-template `/decide` | unchanged                                                                               |
+| timeless, dated or a pointer | obsidian-second-brain              | became the working-memory freshness lint                                                |
+| module                       | LifeOS                             | a unit of schema enabled per deployment, not a capability installed for everyone        |
