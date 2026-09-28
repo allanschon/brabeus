@@ -1,14 +1,14 @@
-# A personal AI context system — v1.5 specification
+# A personal AI context system — v1.6 specification
 
 **Working name: Brabeus.** See §16.
 
-**Status: v1.5. M0 shipped this repository's first commits — the kernel and the plugin; see §14.**
+**Status: v1.6. M0 and M1 are built; see §14.**
 It describes a system built on the kernel this repository already contains
 — a private store with hybrid retrieval, a Claude Code plugin and a deploy agent. The kernel
 has no opinions about content; everything it stores belongs to a module, and every module runs
 under one of a small set of profiles the kernel defines (§1.1).
 
-C4 diagrams of the system at v1.5 — context, containers, kernel components, and the interview
+C4 diagrams of the system at v1.6 — context, containers, kernel components, and the interview
 as a sequence — are in [`personal-context-system-c4.md`](personal-context-system-c4.md). A
 plain-language description for someone who might use it rather than build it is
 [`personal-context-system-plain.md`](personal-context-system-plain.md).
@@ -150,10 +150,10 @@ Measured on v7.40.4, installed 2026-09-24:
 
 | takes | leaves |
 |---|---|
-| TELOS as typed, sectioned intent | the assistant persona, traits and voice; narratives (the pitch-line form of mission, useful for publishing, not for direction) |
+| TELOS as typed, sectioned intent | a persona or a name for the assistant — the register it speaks in is the person's own (§7); narratives (the pitch-line form of mission, useful for publishing, not for direction) |
 | current state → ideal state, gap as signal | seven fixed dimensions and a coverage percentage |
 | claims with named falsifiers | the seventeen-section artifact and the phase machine |
-| the interview rule | the 60 hooks that surround it |
+| the interview rule, and the conversation around it (§9) | the 60 hooks that surround it |
 | modules as the unit of capability | shipping every module to everyone |
 | a small private record the assistant reads first | a 25 KB constitution |
 
@@ -242,14 +242,14 @@ rows; the rest is added by this specification. None of it knows what a `goal` or
 | responsibility | does |
 |---|---|
 | store | one markdown file per record, frontmatter composed by the server, committed and pushed to one private git repository; writes validated against the record's module schema |
-| retrieval | hybrid lexical + dense search, scope-filtered on read; `working-memory` records are searched by default, `ratified-record` ones only when asked |
+| retrieval | hybrid lexical + dense search, scope-filtered on read; `working-memory` records are searched by default, `ratified-record` ones only when asked, and the notebook (§5) when named |
 | identity | who is calling, from the network layer or a token |
 | **profiles** | the closed set in §1.1; each module's manifest names one and the kernel enforces its bundle — who may write, whether records are rendered or searched, whether `review` is required, the audience default |
-| **modules** | loads module manifests; exposes each module's kinds, interview targets and summary template; refuses a manifest that does not validate |
+| **modules** | loads module manifests; exposes each module's kinds, interview prompts and summary template, and serves the module set to the plugin through a read-only `modules` tool, which lists to a caller only the modules it may read (§11); refuses a manifest that does not validate |
 | **context** | renders a size-capped session block from the enabled `ratified-record` modules' templates |
 | **claims** | evidence adapters run on a schedule; results are three-state — pass, fail, no evidence — each with its own timestamp; whatever runs them writes results through the kernel (§8.1) |
-| **agenda** | computes what the interview should ask first and renders that one item, with its question, as the first line of the context block (§9) |
-| **review** | a distinct operation carrying a question and the person's answer; the only path that moves `reviewed` (§9) |
+| **agenda** | computes what is due — failed claims, drafts, stale records, onboarding — and renders the top item, with its question, as the first line of the context block (§9) |
+| **review** | a distinct operation carrying the question asked, a verdict and the person's answer in their own words; the only path that moves `reviewed` (§9) |
 | **budgets** | validates each enabled module's byte budget against the cap on load; refuses overflow rather than truncating (§10) |
 | **audience** | enforces per-module readability per consumer, so a read-only consumer cannot read a module the person has kept to their own sessions (§11) |
 | **view** | a read-only HTML rendering of context, freshness, claim state, revision lines and snooze counts |
@@ -266,7 +266,7 @@ The assistant-side client. It has at most two hooks and a small set of skills.
 
 | skill | does |
 |---|---|
-| `/interview` | asks the kernel's top agenda item, records the answer through `review`, repeats until the person stops (§9) |
+| `/interview` | holds the interview: a conversation, in the person's register, that turns what they say into drafts and confirms them through `review` (§9) |
 | `/done` | §8.2 |
 | `/health` | reports whether the guard is active, the outbox is empty and the server is reachable — the four silent failures: a module over its byte budget, an outbox write rejected at drain, the claim scheduler not having run, an adapter erroring — and the `working-memory` freshness lint: records that are neither timeless, dated nor pointers (§1.1) |
 
@@ -306,6 +306,16 @@ therefore a different kernel instance; the assistant's client may register more 
 which is how a shared memory would sit beside a personal one without either holding the other's
 records (§15). A kernel serving several roots is a kernel change, not a configuration.
 
+**The notebook is the one exception, and it is read-only.** A deployment may point the kernel at
+a second repository: the person's own notes, written by the person, by the assistant at their
+request through its own tools, and by whatever editor they use. The kernel lists, reads and
+searches it, named by the tools' `repo` argument (`projects` in this version), and never writes to
+it. It has no modules, no scopes and no audience of its own, and its files keep whatever
+conventions the person uses; nothing in it is a record in §5's sense. It is not a profile, because
+profiles govern records the kernel writes (§1.1). Because it is never written, it leaves the
+one-writer rule intact; because it has no audience, it is refused to consumers outright (§11).
+Whether its search includes the dense leg is decided in M2 (§14).
+
 **Existing records are migrated by the kernel, once.** A record with the pre-module `type` field
 and no `module` is rewritten by the server — the only writer — to `module: memory` and the
 matching `kind`, in one commit, with search verified before and after. Nothing is left untagged.
@@ -331,13 +341,17 @@ library and refuses any key it does not know (v1.5):
   "priority": 10,
   "budget_bytes": 600,
   "audience": "self",
+  "intro": "direction: what you are here to do, and what you are working toward",
   "kinds": {
     "goal": {
       "fields": ["id", "title", "ideal", "by"],
       "optional": ["claims", "serves", "notes"],
       "freshness_days": 90,
       "interview": "Still right? Progress since {reviewed}?",
-      "first": "What are you working toward, and by when?"
+      "first": "What are you working toward, and by when?",
+      "lenses": ["What would you be proud to have done by this time next year?",
+                 "What keeps coming back to you as something you mean to get to?"],
+      "draft": "Is this the goal as you would put it?"
     },
     "belief": {"fields": ["statement"], "freshness_days": 365, "interview": "Do you still hold this?"}
   },
@@ -362,7 +376,7 @@ consumers says so; a core module may not.
 | the module declares | the profile fixes |
 |---|---|
 | kinds, their fields, ids and freshness thresholds | who may write, and whether `review` is required |
-| interview prompts and summary template | whether records are rendered or searched |
+| interview prompts, lenses and summary template | whether records are rendered or searched |
 | adapters, budget, priority, layout keys | the audience default, and for core modules the audience itself |
 | which profile it runs under | what the profile means |
 
@@ -376,6 +390,13 @@ rule is the store's own tree) or `kind` (`<module>/<kind>/<slug>.md`, the defaul
 `onboarding` lists the kinds to ask for, in order, when none of that kind is on file; each named
 kind must carry `first`. `id` is the one reserved record field a kind may also declare.
 
+The interview's scaffolding is declared here too (v1.6). Per `ratified-record` kind, `lenses` lists
+two to four ways into the kind for a conversation — questions that lower the bar where `first` asks
+directly — and `draft` is the question asked of a record of that kind that has never been
+confirmed ("Is this right as written?" when a kind declares none). Per module, `intro` is one line the interview uses when it turns to the module. The
+kernel validates these keys and attaches no meaning to them: how to ask belongs to the module,
+what is due belongs to the kernel (§3.9, §9).
+
 A module never carries credentials. If a module's adapter needs a token, the token is the
 deployment's configuration and the adapter reads it from the environment.
 
@@ -383,8 +404,8 @@ deployment's configuration and the adapter reads it from the environment.
 
 | module | profile | kinds | what it holds |
 |---|---|---|---|
-| `memory` | `working-memory` | `note`, `trap`, `preference`, `project` by default; a deployment renames or extends them | the assistant's working notes — what it learned, what bit it, how a project is laid out. This is the existing server's content, and it is the only module with scope keys |
-| `identity` | `ratified-record` | `fact`, `belief`, `value`, `preference` | who the person is, what they hold true, how they want to be worked with |
+| `memory` | `working-memory` | `note`, `trap`, `preference`, `project`, `thread` by default; a deployment renames or extends them | the assistant's working notes — what it learned, what bit it, how a project is laid out. This is the existing server's content, and it is the only module with scope keys |
+| `identity` | `ratified-record` | `register`, `fact`, `belief`, `value`, `preference` | who the person is, what they hold true, how they want to be worked with and spoken to |
 | `telos` | `ratified-record` | `mission`, `goal`, `problem`, `challenge`, `strategy`, `current`, `ideal`, `decision` | direction: what they are here to do, what they are working toward, what gets in the way, where they are and where they want to be — and the decisions they made on the way |
 | `health` | `ratified-record` | `baseline`, `condition`, `routine`, `metric` | the honest current state of the body, and what is being done about it |
 | `finance` | `ratified-record` | `account`, `obligation`, `target`, `metric` | what there is, what is owed, what is aimed at |
@@ -420,6 +441,25 @@ exact. A record of how the person wants to be worked with — terse answers, rep
 it. The interview reviews `memory/preference` records like any `identity` kind; a `review` sets
 `reviewed` on the same file, and from then on it renders in the block as `identity/preference`.
 Model proposes, person ratifies, one file. No other kind crosses.
+
+`register` is how the person wants to be spoken to — dry or warm, formal or loose, how much colour
+— as a ratified statement that renders in the block, so every session uses it. It is not a persona:
+it names no character and gives the assistant no name (§2.3). It is first in `identity`'s
+onboarding, so getting to know the person starts by agreeing how to talk.
+
+`thread` is the note the interview leaves when the person raises something no enabled module can
+hold (§9): the topic, the date, and in its `belongs_to` field the module the interviewer judges it
+belongs in. That is a guess: the module need not exist yet, and may never exist under that name.
+So a thread is picked up by meaning, not by name. When a module is enabled, the interview looks
+for threads whose topic the module covers, whatever they name, and develops each into records of
+that module; once the module holds at least a draft from it, the thread is deleted. Nothing else
+ends a thread, so one that no enabled module covers stays on file.
+
+A thread whose `belongs_to` names a core module with `audience: self` holds a pointer only, and the
+kernel refuses it a body; the substance waits for its ratified home. The kernel knows the core
+modules whether or not they are enabled, so the check needs nothing else. A thread naming any
+other module, known or not, keeps what the person said as a summary. The check cannot see what
+the name and description carry; keeping those to the topic is the interviewer's part.
 
 Health and finance ship with `manual` as their only adapter in v1. Wearable, bank and calendar
 adapters are modules that someone writes later.
@@ -487,38 +527,76 @@ evidence is that gates get performed rather than obeyed.
 
 ## 9. The interview
 
-The interview is the mechanism that keeps the record true. In v1.1 the kernel makes its two
-decisions — what to ask first, and what counts as reviewed — and the model's part is to ask
-and to listen. This is §3.3 and §3.4 applied to the loop that matters most: a cue addressed to
-the model is advisory, and the field the freshness signal runs on must not be movable by a
-write the kernel cannot attribute.
+The interview is the mechanism that keeps the record true, and the way it is first written. The
+kernel makes two decisions — what is due, and what counts as reviewed — and the interview is a
+conversation built on them. This is §3.3 and §3.4 applied to the loop that matters most: a cue
+addressed to the model is advisory, and the field the freshness signal runs on must not be movable
+by a write the kernel cannot attribute. What the conversation does with those two decisions is not
+the kernel's business, and v1.6 stops treating it as though it were: an interview that reads the
+kernel's question aloud and files one answer per record reads as a form, and a person abandons a
+form. What the prior art got right (§2.1) was the interview rule and also the conversation around
+it — an advisor getting to know the person, who asks after what they mean as well as what they
+said.
 
 **The agenda.** The kernel computes it from fields the record already has, so it is stateless:
 
 1. claims in `fail` — adapter and manual alike — ordered by the goal's priority;
-2. records past their kind's `freshness_days`, ordered by module priority and then by age;
-3. nothing, if neither exists.
+2. drafts: records in a `ratified-record` module that have never been reviewed, oldest first —
+   approvals left over from an earlier conversation. A crossing `memory/preference` the model
+   wrote on its own is not a draft; it is asked, like a stale record, once it has been on file
+   past its kind's freshness;
+3. records past their kind's `freshness_days`, ordered by module priority and then by age;
+4. onboarding: kinds a module lists in `onboarding` of which nothing is on file, in module
+   priority and then `onboarding` order;
+5. nothing, if none of these exists.
 
-`no-evidence` claims are not on the agenda; they are faults (§8.1). A record the person has
-snoozed stays on the agenda with its snooze count, so a "later" is visible rather than silent.
+Each item carries its reason — `fail`, `draft`, `stale` or `onboarding` — and the question for
+it: the kind's `draft`, `interview` or `first` prompt (§6). `no-evidence` claims are not on the
+agenda; they are faults (§8.1). A record the person has snoozed stays on the agenda with its snooze
+count, so a "later" is visible rather than silent.
 
-**The first line of every session** is the top agenda item, rendered by the kernel with the
-kind's interview prompt — *"G3, 'ship the guide by October': the claim 'three articles this
-quarter' failed on 2026-09-20 (2 found). Still right?"* — and, when the record has been revised
-since it was last reviewed, its revision line from git: *"target lowered from 3 to 2 on
-2026-09-04."* One item, never a list. It is reserved space outside the modules' budgets (§10).
-That line is what bounds staleness to "the next session" without anyone remembering anything;
-there is no daemon, no chip, no notification, and the spec keeps refusing them.
+**The first line of every session** is the top agenda item, rendered by the kernel with its
+question — *"G3, 'ship the guide by October': the claim 'three articles this quarter' failed on
+2026-09-20 (2 found). Still right?"* — and, when the record has been revised since it was last
+reviewed, its revision line from git: *"target lowered from 3 to 2 on 2026-09-04."* One item,
+never a list. It is reserved space outside the modules' budgets (§10). That line is what bounds
+staleness to "the next session" without anyone remembering anything; there is no daemon, no chip,
+no notification, and the spec keeps refusing them.
 
-**The `review` operation** takes a record id, the question that was asked, and the person's
-answer — confirmed, corrected (with the new content), retired, or later. It writes the answer
-into the commit, and it is the only path that moves `reviewed`. A plain `write` never does.
-So a `reviewed` date in history is, by construction, a question that was asked and answered.
+**The `review` operation** takes a record id, the question that was asked, a verdict — confirmed,
+corrected (with the new content), retired, or later — and the person's answer in their own words.
+It writes the question, the verdict and the answer into the commit, and it is the only path that
+moves `reviewed`. A plain `write` never does. So a `reviewed` date in history is, by construction,
+a question that was asked and answered, and the answer can be read back.
 
-**`/interview`** is therefore short: ask the top item; call `review` with the answer; ask the
-next; stop when the person says "enough", "stop" or "later", which end cleanly because state is
-in the record, not the conversation. Never ask a question whose answer is on file. Nothing is
-written that the person did not ratify.
+**The conversation.** `/interview` runs in one of two ways, chosen from the agenda: *getting to
+know you* while any enabled `ratified-record` module still has an onboarding item, and a
+*check-in* otherwise.
+
+- *Getting to know you* walks topics: modules in priority order, each introduced by its `intro`,
+  and within each module the kinds in `onboarding` order, opened with the kind's `lenses` rather
+  than a field prompt. Before it opens a module it looks for threads whose topic the module
+  covers (§7), and starts from those.
+- A *check-in* opens with the top agenda item and follows the conversation from there, returning
+  to the agenda when a topic runs out.
+
+Either way, an answer is sorted into as many drafts as it contains, across kinds and modules,
+and each draft is written at once as an unconfirmed record, in the person's words; a draft may be
+rewritten until it is confirmed. What the person volunteers is handled the same way, whether or
+not anything asked for it. What no enabled module can hold becomes a `memory/thread` naming the
+module it seems to belong in (§7). The interviewer labels what it contributes — an inference, a suggested
+date, a strategy of its own — and challenges where it should: an entry that belongs to another
+kind, a goal nobody could measure, a contradiction with something on file, a statement that
+implies more than it says. Drafts are offered for approval one at a time or together, and each
+approval is a `review` carrying the question that was asked and the person's answer. Nothing is
+confirmed without one.
+
+**Manner.** The interview speaks in the person's register (`identity/register`, §7), or in a plain
+default — warm, direct, short turns — until one is on file. It asks one question at a time and
+never asks one whose answer is on file. It is exempt from any preference that asks for terse
+answers in working sessions: probing and follow-up are its purpose. "Enough", "stop" and "later"
+end it at once, and nothing is lost: every draft is already in the record, and the next session's
+agenda opens on it.
 
 **Reflect back.** When the person stops, or asks for it, the interview closes with the gap
 grouped by value: for each `identity/value`, the goals that `serve` it and their claims'
@@ -526,9 +604,9 @@ state, then the goals that serve no named value. *"You said family time matters 
 two goals that serve it have not been confirmed in 94 days, and the three that serve
 'craft' are all on track."* The gap is the message, delivered without judgement.
 
-**On an empty record**, the agenda is "nothing on file", and the same mechanism asks the core
-modules' first questions in priority order — identity, then telos — until the person stops. The
-first interview populates the record; there is no template to fill in.
+**On an empty record** the agenda holds only onboarding items, so the interview is getting to know
+the person from its first question — identity first, where the first kind is how they want to be
+spoken to, then telos. The first interview populates the record; there is no template to fill in.
 
 ## 10. Session context and the view
 
@@ -538,6 +616,9 @@ scope-filtered. `working-memory` modules are never in the block; they are search
 is a design constraint, not a default: a context block that grows is the constitution problem of
 §2.2 arriving by another door. A module that cannot say what matters in its share of 2 KB has
 not decided what matters.
+
+A record governed by a `ratified-record` module renders marked as unconfirmed until it has been
+reviewed, whatever its kind, so a draft never reads as the person's word (v1.6).
 
 **The cap has an allocation rule, because a shared cap without one is silently truncated.**
 Each module declares `budget_bytes` (§6). On load the kernel checks that the reservation plus
@@ -565,7 +646,8 @@ already runs.
   the write tool. A write influenced by an untrusted reader is injection into the next session.
 - **Audience, enforced.** Scope says where a record applies; it does not say who may read it.
   A read-only consumer is identified like any caller and sees only modules whose `audience` is
-  `any`. `health` and `finance` are `self` and cannot be made otherwise by configuration (§7).
+  `any`, on every path that names a module: records, search, the block and the `modules` tool.
+  `health` and `finance` are `self` and cannot be made otherwise by configuration (§7).
   An unidentified caller sees nothing. This exists because the fail-closed default for an
   unidentified caller today is `global`, and `global` is where health and finance will live.
 - **The repository is the boundary beneath the kernel** (§3.8). Audience is a read-time filter;
@@ -577,6 +659,8 @@ already runs.
   by writing it.
 - **Nothing executes from the record.** Claims name adapters; templates format; the view renders.
   No path exists by which record content becomes a command.
+- **The notebook is refused to consumers.** It has no modules, so no per-module audience can
+  stand in for it; a read-only consumer cannot list, read or search it at all (§5).
 - **The view is not a control plane.** It has no POST routes. Anything that changes state goes
   through the assistant, through the kernel's validated write.
 
@@ -588,7 +672,7 @@ real record and no deployment configuration.
 
 Everything that is one person's lives in three places outside the repository: the private record
 repository; the deployment's environment (hosts, tokens, adapter endpoints); and the operator's
-own notes. A contributor can run the whole system against the synthetic corpus without knowing
+own notes, which a deployment may also serve read-only as the notebook (§5). A contributor can run the whole system against the synthetic corpus without knowing
 anything about any real deployment.
 
 The onboarding target: a person with an assistant, a git host and one machine runs the kernel in
@@ -613,6 +697,12 @@ The system is accepted when one real deployment passes these, described in the s
   by scope, within 2 KB.
 - **Claims run.** A goal with `tracker` and `forge` claims shows true results against the
   deployment's task tracker and git forge without the operator running anything.
+- **The interview is a conversation.** On an empty record, one answer that touches several things
+  becomes drafts in more than one kind and module, each confirmed through `review` with the
+  person's own words in the commit; the person's register is agreed first.
+- **A topic with no module is kept, not lost.** Something the person volunteers that no enabled
+  module holds becomes a `memory/thread`; when a module that covers it is enabled, the next
+  interview opens with it, whatever module the thread named.
 - **The interview opens with evidence.** On a record where a goal's claim has gone false, the
   first line of the next session's context is that contradiction, before `/interview` is
   invoked.
@@ -639,7 +729,7 @@ The system is accepted when one real deployment passes these, described in the s
 |---|---|---|
 | M0 | the public repository seeded; §12's contents present; §13's last clause enforced on every push by CI | delivered 2026-09-27 |
 | M1 | the two profiles; module contract with `profile`, `budget_bytes` and `audience`; the `memory` module and the one-time migration; `telos` and `identity`; `context` tool with the agenda line; `review`; `SessionStart` injection; the guard made conditional | the existing store migrates and still answers; the 2 KB block renders from real records on all machines; a stale record surfaces as the first line; `reviewed` moves only on `review` |
-| M2 | three-state claims and the `tracker`, `forge`, `date`, `manual` adapters; results written through the kernel; `/interview`; reflection by value | the first line names a measured contradiction; a revoked credential produces `no-evidence`, not an accusation |
+| M2 | three-state claims and the `tracker`, `forge`, `date`, `manual` adapters; results written through the kernel; the conversational `/interview` (§9) with lenses, drafts, threads and the register; the `modules` tool; `review` carrying the answer; whether the notebook's search includes the dense leg (§5); reflection by value | the first line names a measured contradiction; a revoked credential produces `no-evidence`, not an accusation; a first interview turns the person's own answers into confirmed values and goals, and leaves a thread for anything no module holds |
 | M3 | the view | read-only, fronted by the deployment's identity layer; shows revision lines, snooze counts and the manual fraction |
 | M4 | `health` and `finance`, `audience: self` | both populated by interview, `manual` claims asked and recorded; absent from a read-only consumer's results |
 | M5 | *removed in v1.2* — the general memory's prefixes are not modules and are not migrated | — |
@@ -770,6 +860,24 @@ Decided 2026-09-27, while planning M1, because the kernel's loader forced each o
 | W | `first` and `timeless` per kind, `onboarding` per ratified-record module; `interview` and `freshness_days` optional | §6, §9 |
 | X | `legacy_types` on the `working-memory` module that adopts pre-module records; the migration reads it | §5, §6 |
 | Y | a `working-memory` module has no budget and no summary; the agenda line reserves 256 bytes of the 2 KB | §6, §10 |
+
+### Changes in v1.6
+
+Decided 2026-09-27, from the operator's objection after abandoning the M1 interview: it read as a
+form. The prior art's interview felt like an advisor getting to know the person, and §2.1 had
+credited its rule without its conversation. AF records a second decision of the same day, from the domain-driven design
+analysis in `docs/ddd/`: the kernel's second, read-only repository was running with no section of
+the spec describing it.
+
+| | change | sections |
+|---|---|---|
+| Z | the interview is a conversation in two ways chosen from the agenda — getting to know the person, and a check-in; answers become drafts across kinds and modules; the interviewer labels what it infers and challenges what it doubts; the interview is exempt from terse working preferences | §4.2, §9 |
+| AA | drafts are written at once as unconfirmed records; the agenda gains a `draft` reason and renames `empty` to `onboarding`; every ratified kind renders marked unconfirmed until reviewed | §4.1, §9, §10 |
+| AB | `review` carries the person's answer, in their own words, into the commit | §4.1, §9 |
+| AC | manifests gain `lenses` and `draft` per kind and `intro` per module; the kernel serves the module set through a read-only `modules` tool, which withholds from a caller the modules it may not read | §4.1, §6, §11 |
+| AD | `identity` gains `register`, how the person wants to be spoken to; §2.3's refusal narrows from the persona, traits and voice to a persona or a name | §2.3, §7 |
+| AE | `memory` gains `thread`: what the person raised that no enabled module holds, found by meaning when a module that covers it is enabled, developed into that module's records, then deleted; one naming a core `self` module is refused a body | §7, §9, §13 |
+| AF | the notebook — the person's own notes repository, which the kernel lists, reads and searches and never writes — is specified as the one exception to one repository per kernel instance; consumers are refused it; whether it gets dense search is M2's | §4.1, §5, §11, §12, §14 |
 
 ## Sources
 

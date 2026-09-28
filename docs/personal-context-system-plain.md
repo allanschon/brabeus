@@ -1,9 +1,9 @@
 # The personal context system, in plain language
 
 This describes the system specified in [`personal-context-system-v1.md`](personal-context-system-v1.md)
-at version 1.5, for someone who might use it rather than build it. It assumes you have used an
-AI assistant and know it forgets you between conversations. The kernel through M1's record,
-migration, review and agenda is built; the context block, plugin changes and deployment are in progress.
+at version 1.6, for someone who might use it rather than build it. It assumes you have used an
+AI assistant and know it forgets you between conversations. The first milestone is built; the
+conversational interview described below arrives with the second.
 
 ## The problem it solves
 
@@ -25,7 +25,8 @@ follows.
 
 The record is organised into **modules**. Four come with the system, because everyone has these:
 
-- **identity** — who you are, what you hold true, how you like to be worked with.
+- **identity** — who you are, what you hold true, how you like to be worked with, and how you
+  like to be spoken to.
 - **telos** — what you're here to do, the goals you're working toward, what gets in the way,
   where you are now and where you want to be, and the decisions you've made along the way.
 - **health** — the honest current state of your body and what you're doing about it.
@@ -37,6 +38,10 @@ the assistant needs somewhere to keep those, and the system was originally built
 
 Anything else — a module for your business, your creative practice, your home — is something you
 or someone else adds. Nothing beyond what you enable is installed.
+
+If you keep your own notes in a git repository, the system can search those too. It reads them
+and never writes to them, and they stay in whatever shape you keep them; they are yours, not part
+of the record.
 
 ## Two kinds of record, and why it matters
 
@@ -70,13 +75,24 @@ named source of evidence, like your task tracker or your code repositories. Each
 back as one of three things: it held, it didn't, or the evidence couldn't be reached. That third
 state matters: if a password expires, the system says "I couldn't check", not "you failed".
 
-**When you have a few minutes**, you run the interview. It isn't a questionnaire. The system
-already knows what's on file and what the evidence says, so it starts with the sharpest
-contradiction, or the most overdue item, and asks "still right?" You confirm, correct, retire
-it, or say "later" — and "later" is recorded too, so a question you keep putting off becomes
-visible as one you keep putting off. When you stop, it reflects back: for each thing you said
-you value, the goals that serve it and how they're doing. That reflection, grouped by your
-values rather than by task, is the point of the whole system.
+**When you have a few minutes**, you run the interview. It isn't a questionnaire; it's a
+conversation, in whatever manner you've said you like to be spoken to. The first time, it gets to
+know you: it works through who you are and what you're aiming at, one topic at a time, and asks in
+ways that make answering easy — "looking back at 80, what would you want to be true?" rather than
+"state your mission". You can answer at length and wander; it sorts what you say into the right
+places, drafts each one in your words, tells you which parts are its own suggestions, and asks
+you to confirm them. It will also push back: if a goal can't be measured, or something you said
+contradicts something on file, it says so. Anything it can't file yet, because you've mentioned a
+part of your life the system doesn't cover, it notes so a later conversation can pick it up.
+
+After that, the interview is a check-in. The system already knows what's on file and what the
+evidence says, so it starts with the sharpest contradiction, or the most overdue item, and asks
+"still right?" You confirm, correct, retire it, or say "later" — and "later" is recorded too, so a
+question you keep putting off becomes visible as one you keep putting off. You can stop at any
+point; nothing you've said is lost, and the next conversation picks up where you left off. When
+you stop, it reflects back: for each thing you said you value, the goals that serve it and how
+they're doing. That reflection, grouped by your values rather than by task, is the point of the
+whole system.
 
 **Decisions** get their own treatment. When you make one, you can record what you decided, what
 you didn't, what you predict will happen, how sure you are, and when to check. On that date it
