@@ -167,11 +167,17 @@ func AgendaLine(items []agenda.Item) (string, *Fault) {
 	if !ok {
 		return "agenda: nothing due", nil
 	}
-	who := top.Module + "/" + top.Kind
-	if top.ID != "" {
-		who += " " + top.ID
-	} else if top.Name != "" {
-		who += " " + top.Name
+	// An untagged item (a pre-module record, or one whose kernel keys failed
+	// to parse) has no module or kind to name; its path is the only thing
+	// that identifies it.
+	who := top.Path
+	if top.Module != "" {
+		who = top.Module + "/" + top.Kind
+		if top.ID != "" {
+			who += " " + top.ID
+		} else if top.Name != "" {
+			who += " " + top.Name
+		}
 	}
 	base := fmt.Sprintf("agenda: [%s] %s", who, top.Question)
 	rev, snooze := "", ""
