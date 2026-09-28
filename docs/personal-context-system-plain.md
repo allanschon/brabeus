@@ -1,7 +1,7 @@
 # The personal context system, in plain language
 
 This describes the system specified in [`personal-context-system-v1.md`](personal-context-system-v1.md)
-at version 1.6, for someone who might use it rather than build it. It assumes you have used an
+at version 1.7, for someone who might use it rather than build it. It assumes you have used an
 AI assistant and know it forgets you between conversations.
 
 It describes the whole design, and not all of it is built yet. What works today is the record
@@ -59,11 +59,11 @@ The `memory` module is this kind.
 Other records are **your record**. The assistant may draft one, but only you can confirm it, and
 confirming it is a specific act the system records — a question was asked, you answered. These
 records are shown to the assistant at the start of every conversation, they have a shelf life
-after which the system asks whether they're still true, and by default nobody but your own
-assistant can read them. The four core modules are this kind.
+after which the system asks whether they're still true, and nobody but your own assistant can
+read them. The four core modules are this kind.
 
 The system enforces this difference. The assistant cannot mark one of your records as confirmed
-by writing it, and no amount of configuration can make your health records readable by something
+by writing it, and no amount of configuration can make those four modules readable by something
 that isn't you. When people ask why this isn't just a folder of notes, this is the answer.
 
 ## What a day looks like

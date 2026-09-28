@@ -59,12 +59,14 @@ Records refer to each other by identifier, never by containment: a goal names th
 changes which module governs it, not where it lives, so the record keeps one history (spec §7:
 "Model proposes, person ratifies, one file").
 
-**Claims (M2) will live inside the goal record**, because spec §8.1 records a claim's results "on
-the goal"; the goal is therefore their aggregate root. That creates a conflict with the revision
-line. A result written to the goal moves its `updated` stamp, and the revision line compares
-`updated` against `reviewed`, so as built every scheduled claim run would mark its goal "revised
-since the last review". Either results need a stamp of their own, or the revision line has to
-compare content rather than stamps.
+**Claims (M2) belong to the goal**, so the goal is their aggregate root. Their results are the
+kernel's, not the person's, and they are written by a claim-result operation of their own that
+never changes the goal's content or its `updated` stamp (spec §8.1). A plain write would move
+`updated`, and because the revision line compares `updated` against `reviewed`, every scheduled
+run would then mark its goal "revised since the last review". Keeping results off those two
+halves means the goal's content and history stay what the person said, and the revision line
+reports only what they changed. Whether results sit in a stamp-like section of the goal or in a
+file of their own is decided in M2.
 
 ## Module set
 

@@ -1,12 +1,13 @@
 # The personal context system — C4 diagrams
 
 These diagrams accompany [`personal-context-system-v1.md`](personal-context-system-v1.md) at
-v1.6. They describe the same system as the specification at four levels of detail, and where they
+v1.7. They describe the same system as the specification at four levels of detail, and where they
 disagree, the specification is correct. Components carry the specification's descriptive names.
 
-The diagrams show the whole design, not only what is built. M0 and M1 are built. The claims
-runner, its adapters and the conversational interview of the fourth diagram arrive with M2, and the
-view with M3 (spec §14).
+The diagrams show the whole design, not only what is built. An element tagged with a milestone,
+such as "(M2)", arrives in that milestone, and its arrows are dashed; §14 of the specification says
+which milestones are delivered. A tag stays true after delivery, so the diagrams need no update
+when a milestone lands. The conversational interview of the fourth diagram is also M2.
 
 The diagrams follow the [C4 model](https://c4model.com/): a context diagram for who uses the
 system and what it talks to; a container diagram for the separately deployable pieces; a
@@ -31,17 +32,17 @@ flowchart TB
     githost["Git host<br/><i>holds the private record repository;<br/>scans every push for secrets</i>"]
     tracker["Task tracker<br/><i>evidence: done and open items by label and date</i>"]
     forge["Git forge<br/><i>evidence: commits by repository and date</i>"]
-    idp["Identity layer<br/><i>fronts the read-only view</i>"]
+    idp["Identity layer<br/><i>fronts the read-only view (M3)</i>"]
     consumer["Read-only consumer<br/><i>another agent, a dashboard,<br/>an exchange with another system</i>"]
 
     person -- "talks to, in sessions;<br/>answers the interview" --> assistant
-    person -- "reads the view<br/>(through the identity layer)" --> idp
-    idp --> system
+    person -. "reads the view (M3)<br/>(through the identity layer)" .-> idp
+    idp -.-> system
     assistant -- "MCP: search, read, write, review, context" --> system
     consumer -. "MCP: search, read, list only;<br/>never write; audience-filtered" .-> system
     system -- "pull, commit, push" --> githost
-    system -- "runs claims against" --> tracker
-    system -- "runs claims against" --> forge
+    system -. "runs claims against (M2)" .-> tracker
+    system -. "runs claims against (M2)" .-> forge
 
     classDef person fill:#08427b,stroke:#052e56,color:#fff
     classDef system fill:#1168bd,stroke:#0b4884,color:#fff
@@ -69,14 +70,14 @@ flowchart TB
 
     subgraph assistant_host ["The assistant, on each of the person's machines"]
         cc["Claude Code"]
-        plugin["<b>Plugin</b><br/><i>SessionStart hook: injects the context block, drains the outbox,<br/>resolves scope keys · PreToolUse guard: only when a working-memory module is enabled ·<br/>skills: /interview, /done, /health, plus any a module contributes</i>"]
+        plugin["<b>Plugin</b><br/><i>SessionStart hook: injects the context block, drains the outbox,<br/>resolves scope keys · PreToolUse guard: only when a working-memory module is enabled ·<br/>skills: /interview, /done (M2), /health, plus any a module contributes</i>"]
         outbox[("Outbox<br/><i>writes queued while the kernel is unreachable</i>")]
         cc --- plugin
         plugin --- outbox
     end
 
     subgraph kernel_host ["The kernel host — one container, or two"]
-        kernel["<b>Kernel</b><br/><i>Go, one static binary · MCP over HTTP · the only writer</i><br/>store · retrieval · identity · profiles · modules · context · claims · agenda · review · budgets · audience · view"]
+        kernel["<b>Kernel</b><br/><i>Go, one static binary · MCP over HTTP · the only writer</i><br/>store · retrieval · identity · profiles · modules · context · claims (M2) · agenda · review · budgets · audience · view (M3)"]
         embed["Embedding sidecar<br/><i>local model, loopback only,<br/>never published</i>"]
         modules[("Module manifests<br/><i>memory · identity · telos · health · finance ·<br/>any module a deployment adds</i>")]
         clone[("Working clone<br/><i>of the record repository</i>")]
@@ -84,7 +85,7 @@ flowchart TB
         kernel -- "embeds queries and records" --> embed
         kernel -- "loads, validates" --> modules
         kernel -- "reads, writes, commits" --> clone
-        kernel -- "lists, reads, searches" --> nbclone
+        kernel -- "reads, searches" --> nbclone
     end
 
     repo[("<b>Record repository</b><br/><i>private git; one per kernel instance;<br/>the trust boundary beneath the kernel</i>")]
@@ -96,12 +97,13 @@ flowchart TB
 
     person --> cc
     plugin -- "MCP" --> kernel
-    person -- "browser" --> idp -- "/view/, read-only" --> kernel
+    person -. "browser" .-> idp
+    idp -. "/view/, read-only (M3)" .-> kernel
     consumer -. "MCP, read tools only" .-> kernel
     clone -- "pull / push, secrets scanned at the host" --> repo
     nbclone -- "pull only" --> notes
-    kernel -- "tracker adapter" --> tracker
-    kernel -- "forge adapter" --> forge
+    kernel -. "tracker adapter (M2)" .-> tracker
+    kernel -. "forge adapter (M2)" .-> forge
 
     classDef person fill:#08427b,stroke:#052e56,color:#fff
     classDef container fill:#438dd5,stroke:#2e6295,color:#fff
@@ -113,7 +115,7 @@ flowchart TB
     class idp,tracker,forge,consumer ext
 ```
 
-The diagram is deliberate about five things:
+The diagram is deliberate about six things:
 
 - **The plugin is thin.** It has two hooks, one of them conditional, and a few skills. Installing
   it changes nothing in the assistant's global configuration except the plugin's own
@@ -142,7 +144,7 @@ components in the first group serve both profiles; those in the second serve onl
 ```mermaid
 flowchart LR
     subgraph shared ["Shared by both profiles"]
-        identity["<b>Identity</b><br/><i>who is calling: network layer or token;<br/>unidentified callers see nothing</i>"]
+        identity["<b>Identity</b><br/><i>who is calling: network layer or token;<br/>unidentified callers are refused</i>"]
         audience["<b>Audience filter</b><br/><i>per module, per consumer;<br/>hides, never removes</i>"]
         profiles["<b>Profiles</b><br/><i>working-memory · ratified-record;<br/>closed set; enforces each bundle</i>"]
         modloader["<b>Module loader</b><br/><i>validates manifests;<br/>refuses what it does not understand;<br/>checks budgets sum under the cap</i>"]
@@ -156,14 +158,14 @@ flowchart LR
 
     subgraph ratified ["ratified-record only"]
         review["<b>Review</b><br/><i>question, verdict and answer into the commit;<br/>the only path that moves reviewed</i>"]
-        claims["<b>Claims runner</b><br/><i>declared adapters, data-only arguments;<br/>pass · fail · no-evidence, each timestamped</i>"]
-        adapters["<b>Adapters</b><br/><i>tracker · forge · date · manual;<br/>one implementation per backend</i>"]
-        agenda["<b>Agenda</b><br/><i>fails, then drafts, then stale by priority and age,<br/>then onboarding; snoozes counted; no-evidence excluded</i>"]
+        claims["<b>Claims runner (M2)</b><br/><i>declared adapters, data-only arguments;<br/>pass · fail · no-evidence, each timestamped</i>"]
+        adapters["<b>Adapters (M2)</b><br/><i>tracker · forge · date · manual;<br/>one implementation per backend</i>"]
+        agenda["<b>Agenda</b><br/><i>fails by nearest goal date, then drafts, then stale<br/>by priority and age, then onboarding; preferences last<br/>in each; snoozes counted; no-evidence excluded</i>"]
         context["<b>Context renderer</b><br/><i>agenda line in reserved space,<br/>then module templates in priority order;<br/>2 KB hard cap; per-module budgets;<br/>overflow refused, never truncated</i>"]
-        view["<b>View</b><br/><i>the same render as HTML, plus freshness,<br/>claim state, revision lines, snooze counts,<br/>manual fraction; read-only; loopback</i>"]
+        view["<b>View (M3)</b><br/><i>the same render as HTML, plus freshness,<br/>claim state, revision lines, snooze counts,<br/>manual fraction; read-only; loopback</i>"]
     end
 
-    mcp[/"MCP endpoint<br/>search · read · list · write · review · context · modules"/]
+    mcp[/"MCP endpoint<br/>search · read · list · write · review · context ·<br/>modules (M2) · reflect (M2)"/]
     health[/"/healthz + the four silent failures"/]
 
     mcp --> identity --> audience
@@ -174,18 +176,19 @@ flowchart LR
     profiles -. "governs" .-> store
     profiles -. "governs" .-> retrieval
     profiles -. "governs" .-> review
-    claims --> adapters
-    claims -- "results, through the store" --> store
-    agenda --> claims
+    claims -.-> adapters
+    claims -. "results, through the store,<br/>never moving a goal's updated" .-> store
+    agenda -.-> claims
     agenda --> store
     context --> agenda
-    view --> context
+    view -.-> context
     review --> store
     migrate --> store
     freshlint --> store
     freshlint --> health
     modloader --> health
     mcp -. "modules: the manifests, read-only" .-> modloader
+    mcp -. "reflect: the gap by value, read-only" .-> agenda
 
     classDef comp fill:#85bbf0,stroke:#5d82a8,color:#000
     classDef iface fill:#fff,stroke:#5d82a8,color:#000
@@ -198,8 +201,9 @@ identified, is filtered by audience, and only then reaches retrieval or the stor
 schema validation and credential refusal before it becomes a commit. The profile of the record's
 module decides what the write means: in a `working-memory` module it is complete, and in a
 `ratified-record` module it leaves a draft that only a `review` can confirm. The claims runner
-never sees a request; it runs on a schedule, and its results enter the store like any other
-write, so the kernel remains the only writer.
+(M2) never sees a request; it runs on the deployment's interval, and its results enter the store
+through the kernel's claim-result operation, so the kernel remains the only writer and a result
+never makes a goal look revised.
 
 ## Level 4 — the interview, as a dynamic diagram
 
@@ -215,24 +219,24 @@ sequenceDiagram
     participant P as Person
     participant A as Assistant (plugin)
     participant K as Kernel
-    participant S as Claims scheduler
+    participant S as Claims scheduler (M2)
     participant T as Tracker / forge
 
     Note over S,T: on a schedule, independent of any session
     S->>T: run each non-manual claim
     T-->>S: evidence, or nothing
-    S->>K: write result: pass / fail / no-evidence, timestamped
+    S->>K: record the result through the claim-result operation, when a claim's state changes
 
     Note over A,K: every session start
     A->>K: context
-    K->>K: compute agenda: fails, drafts, stale by priority and age, onboarding
+    K->>K: compute agenda: fails, drafts, stale by priority and age, onboarding, with preferences last in each
     K-->>A: 2 KB block, first line is the top agenda item with its question and, if revised since last reviewed, its revision line
     A-->>P: the line is in context, and the assistant may voice it
 
     Note over P,K: /interview, or the person picks up the first line
-    A->>K: context, modules
+    A->>K: context, modules (M2)
     K-->>A: the agenda, and every enabled module's kinds, fields, lenses and intro
-    A->>A: getting to know the person while any onboarding item remains, else a check-in
+    A->>A: getting to know the person when the top agenda item is onboarding, else a check-in
     loop until the person says enough, stop, or later
         A->>P: a topic's lens, or the top agenda item, in the person's register
         P-->>A: an answer, as long and as wandering as they like
@@ -244,7 +248,7 @@ sequenceDiagram
         K->>K: write question, verdict and answer into the commit, then move reviewed or count a snooze
     end
 
-    A->>K: reflect
+    A->>K: reflect (M2)
     K-->>A: per value, the goals that serve it and their claims' state, then goals serving no named value
     A-->>P: the gap, grouped by what the person said matters
 ```
@@ -261,8 +265,9 @@ history can be read as a list of things the person was asked and said.
 - **A deployment diagram.** C4's fourth standard diagram places containers on infrastructure.
   That belongs to each deployment, and the specification deliberately describes none, so that it
   holds no one person's setup (spec §12). A deployment draws its own in the operator's notes.
-- **The inside of a module.** A module is a manifest, templates, and optional skills and
-  adapters; it has no running code of its own to diagram. Its contract is spec §6.
+- **The inside of a module.** A module is a manifest, templates and optional skills. It declares
+  the adapters it uses but carries none, because an adapter is kernel code; so a module has no
+  running code of its own to diagram. Its contract is spec §6.
 - **The second kernel instance** for a shared memory across people (spec §15). When it is
   designed, it is a second copy of the container diagram with a different repository and the
   plugin's MCP registration pointing at both.

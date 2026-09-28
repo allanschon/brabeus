@@ -9,7 +9,7 @@ the Greek games.
 
 ## Status
 
-The specification is at v1.6 (`docs/personal-context-system-v1.md`). Milestones M0 and M1 are
+The specification is at v1.7 (`docs/personal-context-system-v1.md`). Milestones M0 and M1 are
 built: modules load and validate, every write names a module and a kind, and the context block
 renders from the person's records with the agenda's question as its first line. M2 adds evidence
 checks on goals and the conversational interview. Section 14 of the specification lists what each

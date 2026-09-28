@@ -1,15 +1,15 @@
-# A personal AI context system — v1.6 specification
+# A personal AI context system — v1.7 specification
 
 **Working name: Brabeus.** See §16.
 
-**Status: v1.6. M0 and M1 are built; see §14.**
+**Status: v1.7. M0 and M1 are built; see §14.**
 
 This document describes a system built on the kernel this repository already contains: a
 private store with hybrid retrieval, a Claude Code plugin and a deploy agent. The kernel has no
 opinions about content. Everything it stores belongs to a module, and every module runs under one
 of a small set of profiles the kernel defines (§1.1).
 
-C4 diagrams of the system at v1.6 — context, containers, kernel components, and the interview
+C4 diagrams of the system at v1.7 — context, containers, kernel components, and the interview
 as a sequence — are in [`personal-context-system-c4.md`](personal-context-system-c4.md). A
 plain-language description for someone who might use it rather than build it is
 [`personal-context-system-plain.md`](personal-context-system-plain.md).
@@ -42,8 +42,9 @@ replacing the assistant's per-machine scratch files. A store of that kind fills 
 pointers and project notes: how to reach a host, which field is not on which screen, what a
 tool does silently. Almost none of it is about the person.
 
-The personal record is not that. The two differ on every axis that matters, and forcing them
-into one shape was the prior art's mistake (§2.2). But the axes are not independent — a
+The personal record is not that. The two differ on every axis that matters, which is why the
+prior art keeps them in separate trees (`MEMORY/` and `USER/`), and why forcing them into one
+shape fails. But the axes are not independent — a
 model-written record pushed into every session is the model's inferences presented as the
 person's; a person-ratified record that is only searched is a record nobody sees — so they are
 not declared one by one. **The kernel defines a small closed set of profiles, each a fixed bundle
@@ -54,10 +55,14 @@ of the axes, and every module runs under one:**
 | author | the model, freely, mid-session | the person, through `review` (§9) |
 | read | pull: searched on demand, never in the block | push: rendered into the 2 KB block, agenda first (§10); searched only when asked |
 | freshness | a record is timeless, dated, or a pointer — linted by `/health`, never interviewed | `reviewed` against `freshness_days` |
-| audience default | the person's own agents | `self` |
-| `review` | optional — a `review` promotes a record to confirmed | required — `write` may create, only `review` confirms |
-| keying | module, kind, and scope keys the plugin resolves (machine, project) | module and kind |
+| audience default | `self` | `self` |
+| `review` | none, except the crossing `preference`, which a review moves under `identity` (§7) | required — `write` may create, only `review` confirms |
+| keying | module, kind, and scope keys the plugin resolves (machine, project) | module and kind; a scope only when written with one (§5) |
 | interview, claims, agenda | no | yes |
+
+A working-memory module may declare `audience: any`; a core module may not (§6). `review` is how
+the person confirms their record, so it accepts only a record whose governing module is
+`ratified-record`; a working-memory record has no confirmed state for it to set.
 
 A module declares its kinds, fields, layout, thresholds, adapters and budget (§6), and picks a
 profile. It cannot edit the profile. A third profile — a record several people ratify, a memory
@@ -116,8 +121,8 @@ or no system at all, just observation and daily logging until preferences accret
 
 Measured on v7.40.4, installed 2026-09-24:
 
-- **The harness.** By the install's own count, 74 hook commands across 11 events and 57
-  skills; a 213-entry permission allowlist, `defaultMode: "auto"`, and an `autoMode` block telling the permission classifier to
+- **The harness.** By the install's own count, 74 hook commands across 11 events (60 scripts,
+  some wired to several events) and 57 skills; a 213-entry permission allowlist, `defaultMode: "auto"`, and an `autoMode` block telling the permission classifier to
   auto-approve edits to `settings.json`, the hooks and the system prompt. The constitution is
   25 KB. The ISA format has seventeen sections. The Algorithm doctrine has a changelog longer
   than most specifications.
@@ -156,7 +161,7 @@ Measured on v7.40.4, installed 2026-09-24:
 | TELOS as typed, sectioned intent | a persona or a name for the assistant — the register it speaks in is the person's own (§7); narratives (the pitch-line form of mission, useful for publishing, not for direction) |
 | current state → ideal state, gap as signal | seven fixed dimensions and a coverage percentage |
 | claims with named falsifiers | the seventeen-section artifact and the phase machine |
-| the interview rule, and the conversation around it (§9) | the 60 hooks that surround it |
+| the interview rule, and the conversation around it (§9) | the 74 hook commands that surround it |
 | modules as the unit of capability | shipping every module to everyone |
 | a small private record the assistant reads first | a 25 KB constitution |
 
@@ -258,6 +263,7 @@ which milestone delivers each. None of it knows what a `goal` or a `trap` is.
 | **claims** | evidence adapters run on a schedule; results are three-state — pass, fail, no evidence — each with its own timestamp; whatever runs them writes results through the kernel (§8.1) |
 | **agenda** | computes what is due — failed claims, drafts, stale records, onboarding — and renders the top item, with its question, as the first line of the context block (§9) |
 | **review** | a distinct operation carrying the question asked, a verdict and the person's answer in their own words; the only path that moves `reviewed` (§9) |
+| **reflect** | a read-only tool that computes the gap by value — each value, the goals that serve it with their claim states and days since confirmed, and the goals that serve none — for the interview to phrase (§9) |
 | **budgets** | validates each enabled module's byte budget against the cap on load; refuses overflow rather than truncating (§10) |
 | **audience** | enforces per-module readability per consumer, so a read-only consumer cannot read a module the person has kept to their own sessions (§11) |
 | **view** | a read-only HTML rendering of context, freshness, claim state, revision lines and snooze counts |
@@ -318,8 +324,8 @@ records (§15). A kernel serving several roots is a kernel change, not a configu
 
 **The notebook is the one exception, and it is read-only.** A deployment may point the kernel at
 a second repository: the person's own notes, written by the person, by the assistant at their
-request through its own tools, and by whatever editor they use. The kernel lists, reads and
-searches it, named by the tools' `repo` argument (`projects` in this version), and never writes to
+request through its own tools, and by whatever editor they use. The kernel reads and searches
+it, named by the tools' `repo` argument (`projects` in this version), and never writes to
 it. It has no modules, no scopes and no audience of its own, and its files keep whatever
 conventions the person uses; nothing in it is a record in §5's sense. It is not a profile, because
 profiles govern records the kernel writes (§1.1). Because it is never written, it leaves the
@@ -331,8 +337,18 @@ and no `module` is rewritten by the server — the only writer — to `module: m
 matching `kind`, in one commit, with search verified before and after. Nothing is left untagged.
 
 Scope is one of `global`, `project/<remote-slug>` or `machine/<host>`, enforced on read, as it
-was in the server this is built on. Scope says *where* a record applies. It does not say *who* may read it; that is the module's audience
+was in the server this is built on. Every record carries a scope, `global` by default. The plugin
+fills in machine and project automatically for a module that declares `scope_keys`, and in this
+version only a working-memory module may declare them. A ratified record is `global` unless
+written with a scope, as a crossing preference keeps the one it had in `memory`. Scope says
+*where* a record applies. It does not say *who* may read it; that is the module's audience
 (§6, §11), and the two are enforced independently.
+
+A write whose content matches the record makes no commit and leaves `updated` alone, because
+writes are repeated (the outbox replays them, and the assistant re-saves notes it already holds)
+and a repeat must not read as a change: on a ratified record it would show a revision that never
+happened. A write that would change a record the person has already confirmed is refused
+(§9).
 
 **A write whose fields do not match the module's schema is rejected.** The current server already
 makes malformed frontmatter impossible by composing it; this extends the same guarantee to module
@@ -341,7 +357,9 @@ data.
 ## 6. The module contract
 
 Each module has a `module.json` at its root. It is JSON rather than YAML so that the kernel can
-parse it with its standard library and refuse any key it does not know:
+parse it with its standard library. A key the kernel does not know refuses the module, because an ignored key is a declaration the author believes is in force
+and is not: a misspelling, or a key from a newer kernel, would otherwise change behaviour
+silently. A manifest looks like this:
 
 ```json
 {
@@ -376,7 +394,10 @@ understand, and refuses to start if the enabled modules' `budget_bytes` sum to m
 less the agenda line's reservation (§10). A module's summary template receives only that
 module's records, already scope-filtered, and may select on `reviewed` so that confirmed
 records can be preferred over inferred ones. Templates are logic-light by design: they select
-and format, they do not compute.
+and format, they do not compute. Templates get only the `first`, `date` and `age` functions,
+because a template ships with a module and must only format the records it is given: a function
+that could read the environment or a file would let a module template print a deployment's
+secrets into the block. A new function is a kernel change, reviewed like one.
 
 `audience` defaults to the profile's default (§1.1). A module that wants to be readable by other
 consumers says so; a core module may not.
@@ -395,7 +416,13 @@ Which keys a manifest declares depends on its profile. A `ratified-record` modul
 former — it is never in the block — and may declare `scope_keys`, a `layout` of `free` (the path
 rule is the store's own tree) or `kind` (`<module>/<kind>/<slug>.md`, the default), and
 `legacy_types`, the map the one-time migration (§5) uses. Per kind, `interview` and
-`freshness_days` are optional; `first` is the question asked when nothing of the kind is on file
+`freshness_days` are optional. A stale record whose kind declares no `interview` prompt is asked
+"Is this still right?", so no module leaves the first line with nothing to ask. A kind without
+`freshness_days` is never asked about because of its age; its records still reach the agenda as
+drafts, through a failed claim, or through its `due_field`, because some kinds are better asked
+about on a date than by age. `due_field` names a date field that makes a record due once the date
+has passed and the record has not been reviewed since; the agenda lists it as `stale`, with the
+kind's `interview` question. `first` is the question asked when nothing of the kind is on file
 (§9); `timeless` exempts the kind from the freshness lint (§1.1). A `ratified-record` module's
 `onboarding` lists the kinds to ask for, in order, when none of that kind is on file; each named
 kind must carry `first`, because onboarding asks exactly that question. `id` is the one reserved
@@ -417,7 +444,7 @@ deployment's configuration and the adapter reads it from the environment.
 
 | module | profile | kinds | what it holds |
 |---|---|---|---|
-| `memory` | `working-memory` | `note`, `trap`, `preference`, `project`, `thread` by default; a deployment renames or extends them | the assistant's working notes — what it learned, what bit it, how a project is laid out. This is the existing server's content, and it is the only module with scope keys |
+| `memory` | `working-memory` | `note`, `trap`, `preference`, `project`, `thread` by default; a deployment renames or extends them | the assistant's working notes — what it learned, what bit it, how a project is laid out. This is the existing server's content, and it is the only shipped module that declares scope keys (§5) |
 | `identity` | `ratified-record` | `register`, `fact`, `belief`, `value`, `preference` | who the person is, what they hold true, how they want to be worked with and spoken to |
 | `telos` | `ratified-record` | `mission`, `goal`, `problem`, `challenge`, `strategy`, `current`, `ideal`, `decision` | direction: what they are here to do, what they are working toward, what gets in the way, where they are and where they want to be — and the decisions they made on the way |
 | `health` | `ratified-record` | `baseline`, `condition`, `routine`, `metric` | the honest current state of the body, and what is being done about it |
@@ -438,15 +465,24 @@ serves no named value is allowed, and the interview says so when it reflects.
 
 A `decision` is a claim the person makes about themselves, captured before the outcome is known:
 what was decided, the alternatives rejected, a prediction, a confidence, the worst case, and a
-`revisit` date. The revisit date is a `date` claim (§8.1), so when it passes the decision is on
-the agenda (§9) and the interview asks whether the prediction held — which is the one question a
+`revisit` date. The kind names `revisit` as its `due_field` (§6), so when the date passes the
+decision is on the agenda (§9) and the interview asks whether the prediction held — which is the one question a
 person almost never asks themselves unprompted. The format is
 [seandavi/lifeos-template](https://github.com/seandavi/lifeos-template)'s `/decide`, adopted
 because it is the best prospective-decision format in the field and because a decision with a
 revisit date is the only kind of goal that comes with its own falsifier.
 
-`health` and `finance` are `audience: self` and the manifest may not change that; a deployment
-that wants another consumer to read them edits the module, visibly.
+The four core modules are `audience: self`, and no manifest may change that, because they are
+the person's own record — who they are, what they value, what they are aiming at, their body and
+their money — and a consumer is untrusted by definition (§11). They are private without exception.
+Something meant to be shared, such as goals the person wants another agent to see, belongs in a
+separate module declared `any`, such as a `telos-shared`; the core record stays whole.
+
+`identity` and `telos` are two modules, not one, because several things are set per module and
+the two use them differently: each has its own budget, so a long list of goals cannot crowd out
+who the person is; identity renders and is asked first; and each has its own onboarding and
+`intro`, which matters because modules are the topics of getting to know you (§9) and "who you
+are" and "where you are going" are two different conversations.
 
 `preference` is the one kind that exists in both profiles, and the profiles make the overlap
 exact. A record of how the person wants to be worked with — terse answers, report before acting
@@ -454,6 +490,12 @@ exact. A record of how the person wants to be worked with — terse answers, rep
 it. The interview reviews `memory/preference` records like any `identity` kind; a `review` sets
 `reviewed` on the same file, and from then on it renders in the block as `identity/preference`.
 Model proposes, person ratifies, one file. No other kind crosses.
+
+In a deployment without `identity`, a `memory/preference` is an ordinary working-memory record: it
+is searched, never asked about and never rendered, and `review` refuses it, because its governing
+module is `memory`. A `reviewed` stamp it already carries stays in the file and takes effect
+again if `identity` is enabled, so the preference renders as the confirmed one it was without
+being asked again.
 
 `register` is how the person wants to be spoken to — dry or warm, formal or loose, how much colour
 — as a ratified statement that renders in the block, so every session uses it. It is not a persona:
@@ -475,7 +517,9 @@ other module, known or not, keeps what the person said as a summary. The check c
 the name and description carry; keeping those to the topic is the interviewer's part.
 
 Health and finance ship with `manual` as their only adapter in v1. Wearable, bank and calendar
-adapters are modules that someone writes later.
+adapters come later. Each is added to the kernel as an interface with its own backends, and health
+or finance declares it, because a module is data and must not carry code that calls an outside
+service (§3.5, §8.1).
 
 ## 8. Intent engineering
 
@@ -497,8 +541,9 @@ claims:
     check: { adapter: manual }
 ```
 
-The system runs every non-manual claim on a schedule and records the result on the goal.
-A result is one of three states, each with its own timestamp:
+The system runs every non-manual claim on the deployment's interval, daily by default, and
+records the result against the goal. A result is one of three states, each with its own
+timestamp:
 
 | state | means |
 |---|---|
@@ -508,13 +553,21 @@ A result is one of three states, each with its own timestamp:
 
 Only `fail` is a contradiction. `no-evidence` is a fault in the deployment, reported by
 `/health` and shown in the view, and it never opens an interview as if the person were behind.
-A `pass` older than the claim's schedule is shown as stale, not as passing.
+A `pass` older than two intervals is shown as stale, not as passing, so one missed run does not
+change every goal's state but a scheduler that has stopped shows within two days.
 
-A `manual` claim is asked at interview and its answer recorded through `review`; a manual
-`fail` ranks equally with an adapter `fail`, so modules without adapters are not second-class.
+A `manual` claim is asked at interview, and its answer is recorded with the kernel's
+claim-result operation, like an adapter's result. A review of the goal happens only if the person
+also confirms or corrects the goal itself, so whether the evidence is in stays separate from
+whether the goal is still right. A manual `fail` ranks equally with an adapter `fail`, so modules
+without adapters are not second-class.
 
-Whether the kernel or a sibling process runs the schedule is open (§15). Either way results
-reach the record through the kernel's write path, so there is still one writer.
+Results are written by the kernel's claim-result operation; they never change a goal's content
+or its `updated` stamp. What the person said about a goal is theirs, and whether the evidence
+agrees is the kernel's, so a result must not make a goal look revised (§9's revision line) or fill
+its history with results. Where results are stored is decided in M2. Whether the kernel or a
+sibling process runs the schedule is open (§15); either way results reach the record through the
+kernel, so there is still one writer.
 
 The claim carries no code: the adapter is named, the arguments are data, and the kernel
 refuses an adapter the module did not declare.
@@ -553,15 +606,23 @@ after what they mean as well as what they said.
 
 **The agenda.** The kernel computes it from fields the record already has, so it is stateless:
 
-1. claims in `fail` — adapter and manual alike — ordered by the goal's priority;
-2. drafts: records in a `ratified-record` module that have never been reviewed, oldest first —
-   approvals left over from an earlier conversation. A crossing `memory/preference` the model
-   wrote on its own is not a draft; it is asked, like a stale record, once it has been on file
-   past its kind's freshness;
-3. records past their kind's `freshness_days`, ordered by module priority and then by age;
+1. claims in `fail` — adapter and manual alike — ordered by the goal's `by` date, nearest first,
+   and then by how long the claim has been failing, because a goal due soon still has time to act
+   on;
+2. drafts: records governed by a `ratified-record` module that have never been reviewed, oldest
+   first — approvals left over from an earlier conversation, and preferences the model wrote in
+   `memory`, which are due as soon as they are written;
+3. records past their kind's `freshness_days`, or past the date their kind's `due_field` names,
+   ordered by module priority and then by age;
 4. onboarding: kinds a module lists in `onboarding` of which nothing is on file, in module
    priority and then `onboarding` order;
 5. nothing, if none of these exists.
+
+Within each reason, preferences sort last, native and crossing alike: a preference about how the
+assistant works is one the person changes when it bothers them, so re-confirming one matters less
+than the rest of the record, and a preference the model inferred stays behind what the person said
+themselves. Onboarding keeps `identity`'s own order, because the first conversation is where
+preferences are set.
 
 Each item carries its reason — `fail`, `draft`, `stale` or `onboarding` — and the question for
 it: the kind's `draft`, `interview` or `first` prompt (§6). `no-evidence` claims are not on the
@@ -572,7 +633,10 @@ count, so a "later" is visible rather than silent.
 question — *"G3, 'ship the guide by October': the claim 'three articles this quarter' failed on
 2026-09-20 (2 found). Still right?"* — and, when the record has been revised since it was last
 reviewed, its revision line from git: *"target lowered from 3 to 2 on 2026-09-04."* It is one
-item, never a list, and it has reserved space outside the modules' budgets (§10). That line is what
+item, never a list: a single question is something the assistant can raise and the person can
+answer in a sentence, while a list is a backlog the person has to sort; the rest of the agenda
+waits behind it for the interview, and one item fits the line's 256-byte reservation outside the
+modules' budgets (§10). That line is what
 bounds staleness to "the next session" without anyone remembering anything (§1). There is no
 daemon, no status indicator and no notification, and this specification keeps refusing them,
 because each is a cue the person would have to notice.
@@ -581,15 +645,28 @@ because each is a cue the person would have to notice.
 corrected (with the new content), retired, or later — and the person's answer in their own words.
 It writes the question, the verdict and the answer into the commit, and it is the only path that
 moves `reviewed`. A plain `write` never does. So a `reviewed` date in history is, by construction,
-a question that was asked and answered, and the answer can be read back.
+a question that was asked and answered, and the answer can be read back. `review` accepts only a
+record whose governing module is `ratified-record` (§1.1).
 
-**The conversation.** `/interview` runs in one of two ways, chosen from the agenda: *getting to
-know you* while any enabled `ratified-record` module still has an onboarding item, and a
-*check-in* otherwise.
+**A confirmed record changes only through `review`.** Once a record whose governing module is
+`ratified-record` has been reviewed, a `write` that would change its content is refused, and so
+is a `delete`. Its content changes only through a `corrected` review, and it leaves the record
+only through a `retired` one, which keeps it in history. Without this, a value the person
+confirmed could be reworded by the assistant and still render as confirmed, which is the model's
+inference presented as the person's (§1.1). A draft, never reviewed, may still be rewritten or
+deleted, so a wrong path or an interrupted conversation can be put right. The rule follows the
+governing module, so a crossing preference the person has confirmed is frozen too; a refinement
+the assistant learns later becomes a new `memory/preference`, which the interview then asks about.
+
+**The conversation.** `/interview` runs in one of two ways, chosen by the top agenda item's
+reason: a *check-in* while the top item is a failed claim, a draft or a stale record, and *getting
+to know you* when the top item is onboarding. So leftover drafts and failed claims are raised
+before new topics, as the agenda's order intends, and one conversation can move from confirming
+drafts into getting to know the person.
 
 - *Getting to know you* walks topics: modules in priority order, each introduced by its `intro`,
-  and within each module the kinds in `onboarding` order, opened with the kind's `lenses` rather
-  than a field prompt. Before it opens a module it looks for threads whose topic the module
+  and within each module the kinds in `onboarding` order, opened with the kind's `lenses`, or its
+  `first` question when it declares none. Before it opens a module it looks for threads whose topic the module
   covers (§7), and starts from those.
 - A *check-in* opens with the top agenda item and follows the conversation from there, returning
   to the agenda when a topic runs out.
@@ -614,7 +691,8 @@ end it at once, and nothing is lost: every draft is already in the record, and t
 agenda opens on it.
 
 **Reflect back.** When the person stops, or asks for it, the interview closes with the gap
-grouped by value: for each `identity/value`, the goals that `serve` it and their claims'
+grouped by value, computed by the kernel's `reflect` tool (§4.1) and phrased by the interviewer,
+because the reflection is counts and dates that a model could get wrong unnoticed: for each `identity/value`, the goals that `serve` it and their claims'
 state, then the goals that serve no named value. *"You said family time matters most; the
 two goals that serve it have not been confirmed in 94 days, and the three that serve
 'craft' are all on track."* The gap is the message, delivered without judgement.
@@ -663,8 +741,10 @@ already runs.
 - **Audience, enforced.** Scope says where a record applies; it does not say who may read it.
   A read-only consumer is identified like any caller and sees only modules whose `audience` is
   `any`, on every path that names a module: records, search, the block and the `modules` tool.
-  `health` and `finance` are `self` and cannot be made otherwise by configuration (§7).
-  An unidentified caller sees nothing. This rule exists because, in the server this system is
+  A forbidden module contributes nothing, not even its name, because the name of a module the
+  person added is itself something they may not want a reader to know. The four core modules
+  are `self` and cannot be made otherwise by configuration (§7). An unidentified caller is
+  refused before any tool runs, so it sees nothing. This rule exists because, in the server this system is
   built on, the fail-closed default for an unidentified caller is `global` scope, and `global` is
   where health and finance records live.
 - **The repository is the boundary beneath the kernel** (§3.8). Audience is a read-time filter;
@@ -677,7 +757,7 @@ already runs.
 - **Nothing executes from the record.** Claims name adapters; templates format; the view renders.
   No path exists by which record content becomes a command.
 - **The notebook is refused to consumers.** It has no modules, so no per-module audience can
-  stand in for it; a read-only consumer cannot list, read or search it at all (§5).
+  stand in for it; a read-only consumer cannot read or search it at all (§5).
 - **The view is not a control plane.** It has no POST routes. Anything that changes state goes
   through the assistant, through the kernel's validated write.
 
@@ -743,15 +823,14 @@ The system is accepted when one real deployment passes these, described in the s
 
 ## 14. Milestones
 
-| # | delivers | accepted when |
-|---|---|---|
-| M0 | the public repository seeded; §12's contents present; §13's last clause enforced on every push by CI | delivered 2026-09-27 |
-| M1 | the two profiles; module contract with `profile`, `budget_bytes` and `audience`; the `memory` module and the one-time migration; `telos` and `identity`; `context` tool with the agenda line; `review`; `SessionStart` injection; the guard made conditional | the existing store migrates and still answers; the 2 KB block renders from real records on all machines; a stale record surfaces as the first line; `reviewed` moves only on `review` |
-| M2 | three-state claims and the `tracker`, `forge`, `date`, `manual` adapters; results written through the kernel; the conversational `/interview` (§9) with lenses, drafts, threads and the register; the `modules` tool; `review` carrying the answer; whether the notebook's search includes the dense leg (§5); reflection by value | the first line names a measured contradiction; a revoked credential produces `no-evidence`, not an accusation; a first interview turns the person's own answers into confirmed values and goals, and leaves a thread for anything no module holds |
-| M3 | the view | read-only, fronted by the deployment's identity layer; shows revision lines, snooze counts and the manual fraction |
-| M4 | `health` and `finance`, `audience: self` | both populated by interview, `manual` claims asked and recorded; absent from a read-only consumer's results |
-| M5 | *removed in v1.2* — the general memory's prefixes are not modules and are not migrated | — |
-| M6 | sharing hygiene | §12 and §13's last item pass — continuously, from M0 onward; a second person installs from the README |
+| # | delivers | accepted when | status |
+|---|---|---|---|
+| M0 | the public repository seeded; §12's contents present; §13's last clause enforced on every push by CI | CI runs §13's last clause on every push, and the seeded repository passes it | delivered 2026-09-27 |
+| M1 | the two profiles; module contract with `profile`, `budget_bytes` and `audience`; the `memory` module and the one-time migration; `telos` and `identity`; `context` tool with the agenda line; `review`; `SessionStart` injection; the guard made conditional | the existing store migrates and still answers; the 2 KB block renders from real records on all machines; a stale record surfaces as the first line; `reviewed` moves only on `review` | delivered 2026-09-27 |
+| M2 | three-state claims and the `tracker`, `forge`, `date`, `manual` adapters; results written through the kernel; the conversational `/interview` (§9) with lenses, drafts, threads and the register; the `modules` tool; `review` carrying the answer; whether the notebook's search includes the dense leg (§5); reflection by value, through the `reflect` tool; the v1.7 agenda, review, claim and caller changes (§16 AI–AQ, AT and AU) | the first line names a measured contradiction; a revoked credential produces `no-evidence`, not an accusation; a first interview turns the person's own answers into confirmed values and goals, and leaves a thread for anything no module holds | planned |
+| M3 | the view | read-only, fronted by the deployment's identity layer; shows revision lines, snooze counts and the manual fraction | planned |
+| M4 | `health` and `finance`, `audience: self` | both populated by interview, `manual` claims asked and recorded; absent from a read-only consumer's results | planned |
+| M6 | sharing hygiene | §12 and §13's last item pass — continuously, from M0 onward; a second person installs from the README | ongoing since M0 |
 
 M1 is larger than it was, because the profiles and the migration have to exist before any
 record is written under the new rules. It is still one milestone: nothing in it is optional.
@@ -765,8 +844,6 @@ record is written under the new rules. It is still one milestone: nothing in it 
 - Whether the outbox (writes queued while the kernel is unreachable) needs schema validation at
   drain time or only at write time. A rejection at drain is one of the four faults `/health`
   reports (§4.2).
-- Whether `identity` and `telos` are two modules or one. The split follows "who you are" versus
-  "where you are going"; the evidence for keeping it is that they have different freshness.
 - **Shared memory across people.** A working memory for a group, or a record two people both
   ratify, is not designed. What it would need is known: a third profile — model-written,
   attributed to a person, audience the group, pull — a per-person identity in the kernel where
@@ -779,7 +856,7 @@ record is written under the new rules. It is still one milestone: nothing in it 
   write a note. [mnott/PAI](https://github.com/mnott/PAI) shows the alternative: a `PostToolUse`
   classifier that turns tool calls into observations, and a pre-compaction summary. Both are
   plugin-side features the `working-memory` profile would turn on, like the guard (§4.2). Not
-  designed, and not M1: the design question inside it is how much of what the model does should
+  designed, and not planned for any milestone: the design question inside it is how much of what the model does should
   become record without anyone deciding it should, which is the same question §1.1 answers "no"
   to for the personal record and has not yet answered for working memory.
 - **Self-maintenance of the store.** Duplicates and contradictions accumulate in a
@@ -834,7 +911,7 @@ is summarised in §1.1.
 |---|---|---|
 | G | the personal context system is a product on the kernel, beside the general memory, not the kernel's future, because the two have different goals. Superseded by L and M: they are now two profiles on one kernel | title, §1.1, §4, §12 |
 | H | there is no unstructured tier; a record without a module is general memory and lives in that product's store. The general memory is now the `memory` module (M), so every record belongs to a module | §5, §13 |
-| I | M5 is removed: `infra`- and `projects`-style prefixes are not modules and are not migrated | §14 |
+| I | M5 is removed: `infra`- and `projects`-style prefixes stay directories inside the `memory` module, whose `free` layout keeps existing paths, because they are working notes and giving them modules would give them the personal record's structure | §14 |
 | J | `identity/preference` is named as the one shared kind, readable through both products, because every session needs the person's preferences at its start. Restated by O in terms of profiles | §1.1, §7, §13 |
 | K | module-declared layouts are closed, because the case for them was the `projects` prefix; "one process or two" is opened for M1. Layouts returned, per profile, in V | §15 |
 
@@ -864,7 +941,7 @@ directly; two larger things opened rather than decided, because each carries a d
 | | change | sections |
 |---|---|---|
 | R | `working-memory` freshness is no longer "none": a record is timeless, dated, or a pointer, and `/health` lints it, so working notes do not go stale unnoticed | §1.1, §4.2 |
-| S | `telos` gains a `decision` kind — alternatives, prediction, confidence, worst case, revisit date — whose revisit date is a `date` claim, because a decision with a revisit date comes with its own falsifier | §7 |
+| S | `telos` gains a `decision` kind — alternatives, prediction, confidence, worst case, revisit date — whose revisit date is a `date` claim, because a decision with a revisit date comes with its own falsifier. Replaced by AI: the revisit date is a `due_field` | §7 |
 | T | automatic capture for working memory, self-maintenance of the store, and portability beyond Claude Code are opened in §15, because each carries a design question not yet answered | §15 |
 
 ### Changes in v1.5
@@ -896,6 +973,30 @@ running with no section of the specification describing it.
 | AD | `identity` gains `register`, how the person wants to be spoken to, so every session speaks as the person asked; §2.3's refusal narrows from the persona, traits and voice to a persona or a name | §2.3, §7 |
 | AE | `memory` gains `thread`, so what the person raised that no enabled module holds is kept rather than lost; it is found by meaning when a module that covers it is enabled, developed into that module's records, then deleted. One naming a core `self` module is refused a body, so that detail never sits in the searchable memory module | §7, §9, §13 |
 | AF | the notebook — the person's own notes repository, which the kernel lists, reads and searches and never writes — is specified as the one exception to one repository per kernel instance; consumers are refused it, because it has no audience of its own; whether it gets dense search is decided in M2 | §4.1, §5, §11, §12, §14 |
+
+### Changes in v1.7
+
+Decided 2026-09-28, while settling the design gaps found when the documents were reworded so that
+each rule carries its reason: places where the specification contradicted itself or the code,
+behaviour it left undefined, and rules it stated without a reason.
+
+| | change | sections |
+|---|---|---|
+| AG | the kernel reads and searches the notebook but does not list it, because `list` shows records with modules and kinds, which the notebook does not have; AF's "lists" overstated it | §5, §11 |
+| AH | new adapters are added to the kernel and declared by modules, because a module is data and must not carry code that calls an outside service | §7 |
+| AI | a kind may name a `due_field`, a date that makes its records due once it passes unreviewed; `decision` uses it for `revisit`, replacing S's `date` claim, because a date on the record needs no scheduler or written-back result | §6, §7, §9 |
+| AJ | §1.1 credits the prior art with keeping working memory and the person's record in separate trees, which is what it does; working memory's audience default is `self`, as in the code; `review` accepts only records governed by a `ratified-record` module, because a working-memory record has no confirmed state; LifeOS's hooks are counted as 74 commands from 60 scripts | §1.1, §2.2, §2.3, §9 |
+| AK | a stale record whose kind has no `interview` prompt is asked "Is this still right?", and a kind without `freshness_days` is never stale by age, so no module leaves the first line empty and date-driven kinds are not asked by age | §6 |
+| AL | the interview's way follows the top agenda item's reason, so leftover drafts and failed claims come before new topics; a kind with no `lenses` is opened with its `first` question | §9 |
+| AM | failed claims are ordered by the goal's `by` date, then by how long they have failed, because goals have no priority field and a goal due soon still has time to act on; within each reason preferences sort last, because the person changes them when they bother them; a preference the model wrote is a draft at once, replacing the wait until its freshness ran out | §9 |
+| AN | claims run on one interval per deployment, daily by default, and a `pass` older than two intervals is stale; results are written by the kernel's claim-result operation and never change a goal's content or `updated`, so the revision line stays exact | §8.1 |
+| AO | the kernel's `reflect` tool computes the reflection by value, because it is counts and dates a model could get wrong unnoticed | §4.1, §9, §14 |
+| AP | a crossing preference in a deployment without `identity` is an ordinary working-memory record whose `reviewed` stamp waits for `identity`; every record carries a scope, and a ratified one is `global` unless written with one | §1.1, §5, §7 |
+| AQ | an unidentified caller is refused before any tool runs, matching "sees nothing"; the four core modules are private without exception, with a separate module declared `any` as the way to share | §7, §11 |
+| AR | reasons are recorded for rules that had none: a forbidden module's name is withheld, an unknown manifest key refuses the module, the agenda line is one item, identical content makes no commit, and templates get three functions | §5, §6, §9, §11 |
+| AS | `identity` and `telos` stay two modules, closing §15's question, because budgets, priority and onboarding are per module; §14 gains a status column and loses the removed M5 row, which §16's I now explains; M6 is ongoing since M0, as its acceptance says; the M2 row names v1.7's M2 changes | §7, §14, §15, §16 |
+| AT | a `manual` claim's answer is recorded with the claim-result operation, not through `review`, so whether the evidence is in stays separate from whether the goal is still right | §8.1 |
+| AU | once reviewed, a record governed by a `ratified-record` module is refused `write` and `delete`: its content changes only through a `corrected` review and it leaves only through `retired`, because otherwise the assistant could reword what the person confirmed and it would still render as confirmed; a draft may still be rewritten or deleted, and a confirmed crossing preference is frozen like the rest | §5, §9 |
 
 ## Sources
 
