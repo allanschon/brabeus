@@ -6,8 +6,10 @@ description: Use when the person wants to work through the agenda - the records 
 # Answer the agenda
 
 The kernel keeps a record only the person can ratify. Its agenda is the list of
-records past their freshness, and the questions it asks are written in the
-module manifests. This skill asks them, one at a time, and records the answer.
+records to confirm — never reviewed, or past their freshness or a due date —
+and gaps to fill where nothing of a wanted kind is on file; the questions it
+asks are written in the module manifests. This skill asks them, one at a
+time, and records the answer.
 
 ## The loop
 
