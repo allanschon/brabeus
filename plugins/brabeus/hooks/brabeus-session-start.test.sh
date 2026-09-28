@@ -39,6 +39,7 @@ ctx=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')
 check "emits valid SessionStart JSON"         '[ "$(printf "%s" "$out" | jq -r .hookSpecificOutput.hookEventName)" = SessionStart ]'
 check "the block is the first context"       '[ "$(printf "%s" "$ctx" | head -1)" = "agenda: [identity/value family] Still one of the things you weigh decisions against?" ]'
 check "the routing reminder follows"         'printf "%s" "$ctx" | grep -q "brabeus.*write"'
+check "the routing names the interview"      'printf "%s" "$ctx" | grep -q "/interview.*claim_result"'
 check "profiles read up to claims= after them" '[ "$(cat "$PROFILES")" = "$(printf "working-memory\nratified-record")" ]'
 check "per-session profiles file written"    '[ "$(cat "$PROFILES-s1")" = "$(cat "$PROFILES")" ]'
 

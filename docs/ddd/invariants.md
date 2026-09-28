@@ -104,8 +104,8 @@ Where the spec gives the reason for a rule, the row cites it. Terms are the
 
 ## Interview
 
-Every rule here is M2: the M1 skill reads the agenda's question aloud and records one verdict per
-record.
+Every rule here is M2. The instructed rows are the `interview` skill's prose: a conversation is
+something the kernel cannot check, so they hold only as well as the skill is followed.
 
 | rule                                                                                                                                                 | status                                                  | where                                                                                                  |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
