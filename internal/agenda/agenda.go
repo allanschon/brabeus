@@ -192,10 +192,16 @@ func render(prompt string, r store.Stored) string {
 	return out
 }
 
-// revision names a change since the last review, from the two stamps the
-// record carries. The field-level diff from git ("target lowered from 3 to
-// 2") lands with the claims in M2.
+// revision names a change since the last review. store.Revision reads git
+// history for the field-level line ("target lowered from 3 to 2 on
+// 2026-09-04", spec §9); Records fills it only where updated follows
+// reviewed. When that call failed, or was never run, this falls back to the
+// M1 stamp wording rather than to nothing, so a git failure degrades the
+// agenda line instead of erasing it.
 func revision(r store.Stored) string {
+	if r.Revision != "" {
+		return r.Revision
+	}
 	if r.Reviewed.IsZero() || !r.Updated.After(r.Reviewed) {
 		return ""
 	}
