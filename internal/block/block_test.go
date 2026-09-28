@@ -101,8 +101,8 @@ func TestEveryShippedTemplateMarksAnUnreviewedRecordOfEveryKind(t *testing.T) {
 			if _, ok := fields["revisit"]; ok {
 				fields["revisit"] = "2027-01-01"
 			}
-			rec := rec(fmt.Sprintf("%s/%s/x.md", name, kind), name, kind, fields, "2026-09-20T00:00:00Z", "")
-			text, faults := r.Render(nil, []store.Stored{rec}, now, store.Visibility{})
+			probe := rec(fmt.Sprintf("%s/%s/x.md", name, kind), name, kind, fields, "2026-09-20T00:00:00Z", "")
+			text, faults := r.Render(nil, []store.Stored{probe}, now, store.Visibility{})
 			if len(faults) != 0 {
 				t.Errorf("%s/%s: faults %+v", name, kind, faults)
 			}
@@ -199,11 +199,14 @@ func TestAnOverBudgetModuleRendersOneLineAndAFault(t *testing.T) {
 // the caps hold with every line carrying the " (unconfirmed)" marker too. The
 // only state-dependent content left in any shipped line is the marker itself
 // — the reviewed date that used to follow a telos goal was dropped along with
-// it, since the view (spec §10), not the block, is where a goal's revision
-// line belongs — so the unreviewed pass is provably each template's worst
-// case; a future template that adds another state-dependent suffix needs a
-// pass of its own. If this fails, the caps go down further; the budgets
-// never go up.
+// it, because keeping both suffixes overflows telos in a goal-reviewed,
+// everything-else-unreviewed block: 477 (base) + 4×22 (the dropped suffix,
+// worst case) + 4×14 (the marker) = 621 against telos's 600-byte budget, a
+// state neither the all-reviewed nor the all-unreviewed pass alone would
+// catch. With the suffix gone, the unreviewed pass is provably each
+// template's worst case; a future template that adds another state-dependent
+// suffix needs a pass of its own. If this fails, the caps go down further;
+// the budgets never go up.
 func TestEveryShippedTemplateFitsItsBudgetWhenFullyPopulated(t *testing.T) {
 	now := at("2026-10-01T00:00:00Z")
 	long := strings.Repeat("x", 40) // a plausible 40-byte field value
