@@ -5,6 +5,7 @@
   "priority": 15,
   "budget_bytes": 350,
   "audience": "self",
+  "intro": "the honest current state of the body, and what is being done about it",
   "kinds": {
     "baseline": {"fields": ["statement"], "freshness_days": 365},
     "condition": {"fields": ["statement"], "freshness_days": 120, "interview": "Still current? Anything changed?"},
