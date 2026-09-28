@@ -12,16 +12,22 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/allanschon/brabeus/internal/block"
+	"github.com/allanschon/brabeus/internal/claims"
 	"github.com/allanschon/brabeus/internal/identity"
 	"github.com/allanschon/brabeus/internal/module"
 	"github.com/allanschon/brabeus/internal/retrieval"
@@ -93,6 +99,24 @@ func main() {
 	// gets no set: it is read-only and never validates.
 	memory.SetModules(set)
 
+	// A goal's claims are checked against the adapters' argument schemas when
+	// it is written, so no goal carries a claim that no run could evaluate
+	// (spec §8.1). A backend named but misconfigured stops the kernel here
+	// rather than reading no-evidence on every claim for a day.
+	memory.ValidateClaim = claims.Validate
+	adapters, err := claims.New(claims.FromEnv(os.Getenv), nil)
+	if err != nil {
+		log.Fatalf("claims: %v", err)
+	}
+	interval, err := time.ParseDuration(env("BRABEUS_CLAIM_INTERVAL", "24h"))
+	if err != nil || interval < 0 {
+		log.Fatalf("BRABEUS_CLAIM_INTERVAL %q: a duration such as 24h, or 0 to disable the schedule", os.Getenv("BRABEUS_CLAIM_INTERVAL"))
+	}
+	// The stamp sits beside the working copy on the data volume, not in the
+	// record: when claims last ran is the deployment's fact, not the person's.
+	runner := &claims.Runner{Store: memory, Adapters: adapters, Interval: interval, Now: time.Now,
+		StatePath: filepath.Join(filepath.Dir(memory.Dir), "claims-last-run")}
+
 	// One-time, explicit, and removed from the environment once it has run:
 	// the migration is the only thing that rewrites records nobody asked to
 	// change, and it must not be a thing that happens to a restart.
@@ -135,7 +159,19 @@ func main() {
 	}
 	log.Printf("identity: %s", id.Describe())
 
-	deps := server.Deps{Memory: memory, Projects: projects, Set: set, Block: renderer, Now: time.Now}
+	deps := server.Deps{Memory: memory, Projects: projects, Set: set, Block: renderer, Now: time.Now,
+		LastRun: runner.LastRun, ClaimInterval: interval}
+
+	// Shutdown waits for the claims runner, so a results file it has written
+	// is committed before the process exits: one left uncommitted would read
+	// as "no change" to every later run and never reach the remote.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	runnerDone := make(chan struct{})
+	go func() {
+		defer close(runnerDone)
+		runner.Start(ctx)
+	}()
 
 	go func() {
 		for range time.Tick(15 * time.Minute) {
@@ -174,15 +210,28 @@ func main() {
 	mux.Handle("/mcp", guarded)
 	mux.Handle("/context", ctxGuarded)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, healthz(server.Version, id.Mode(), set))
+		fmt.Fprint(w, healthz(server.Version, id.Mode(), set, claims.Status(runner)))
 	})
 
-	log.Printf("brabeus %s listening on %s", server.Version, addr)
-	log.Fatal((&http.Server{
+	srv := &http.Server{
 		Addr:              addr,
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
-	}).ListenAndServe())
+	}
+	go func() {
+		<-ctx.Done()
+		// A second signal during the drain kills the process as usual.
+		stop()
+		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdown)
+	}()
+	log.Printf("brabeus %s listening on %s", server.Version, addr)
+	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		log.Fatal(err)
+	}
+	<-runnerDone
+	log.Printf("brabeus stopped")
 }
 
 // newIdentity selects how the calling machine is identified. tailscale is the
