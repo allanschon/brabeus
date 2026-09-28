@@ -310,7 +310,7 @@ type writeIn struct {
 	Module      string            `json:"module,omitempty" jsonschema:"the module this record belongs to, e.g. memory; list shows what is enabled"`
 	Kind        string            `json:"kind,omitempty" jsonschema:"the module's kind, e.g. note, trap, preference, project"`
 	Fields      map[string]string `json:"fields,omitempty" jsonschema:"the kind's declared fields, required ones included; a working-memory kind has none"`
-	Scope       string            `json:"scope" jsonschema:"global, project/<slug> or machine/<host>"`
+	Scope       string            `json:"scope,omitempty" jsonschema:"global, project/<slug> or machine/<host>; defaults to global when omitted"`
 	Body        string            `json:"body" jsonschema:"the record itself, markdown, without frontmatter"`
 	Type        string            `json:"type,omitempty" jsonschema:"deprecated: the pre-module type (user, feedback, project, reference), mapped to a module and kind for one milestone; name module and kind instead"`
 }
