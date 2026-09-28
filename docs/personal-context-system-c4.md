@@ -225,7 +225,7 @@ sequenceDiagram
         A->>P: a topic's lens, or the top agenda item, in the person's register
         P-->>A: an answer, as long and as wandering as they like
         A->>K: write a draft for each thing the answer holds, in any module, and a thread for what no module holds
-        A->>K: delete a thread once its module holds a draft from it
+        A->>K: delete a thread once a module that covers it holds a draft from it
         A->>P: the drafts, the interviewer's own inferences labelled, challenges where warranted
         P-->>A: confirmed / corrected / retired / later, in their own words
         A->>K: review(record, question, verdict, answer), once per draft

@@ -37,9 +37,10 @@ A `later` verdict leaves the state as it was and counts a snooze. A write to a d
 draft; the interview rewrites drafts freely until the person confirms one (spec §9). A write to a
 ratified record also keeps its state, which is the gap described in [`invariants.md`](invariants.md).
 
-A `memory/thread` is a record like any other, and names its target module by name, not by
-reference: the module need not be enabled, and nothing checks the name. It ends by deletion once
-the module it names holds a draft developed from it (spec §7).
+A `memory/thread` is a record like any other. Its `belongs_to` field is a guess at a module, not a
+reference: the module need not exist, and the thread is matched to one by meaning when a module is
+enabled. It ends by deletion once a module that covers it holds a draft developed from it
+(spec §7).
 
 **The consistency boundary is the store, not the record.** Every change takes the store's single
 lock, pulls, rewrites the record and the index line in `MEMORY.md`, commits and pushes. The index

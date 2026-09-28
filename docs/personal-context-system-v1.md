@@ -448,11 +448,18 @@ it names no character and gives the assistant no name (§2.3). It is first in `i
 onboarding, so getting to know the person starts by agreeing how to talk.
 
 `thread` is the note the interview leaves when the person raises something no enabled module can
-hold (§9): the topic, the date, and the module it belongs in, which need not exist yet. When that
-module is enabled, the interview picks the thread up and develops it into records of that module;
-once the module holds at least a draft from it, the thread is deleted. Nothing else ends a thread,
-so one naming a module that is not enabled stays on file. A thread whose module is a
-core module with `audience: self` holds a pointer only; the substance waits for its ratified home.
+hold (§9): the topic, the date, and in its `belongs_to` field the module the interviewer judges it
+belongs in. That is a guess: the module need not exist yet, and may never exist under that name.
+So a thread is picked up by meaning, not by name. When a module is enabled, the interview looks
+for threads whose topic the module covers, whatever they name, and develops each into records of
+that module; once the module holds at least a draft from it, the thread is deleted. Nothing else
+ends a thread, so one that no enabled module covers stays on file.
+
+A thread whose `belongs_to` names a core module with `audience: self` holds a pointer only, and the
+kernel refuses it a body; the substance waits for its ratified home. The kernel knows the core
+modules whether or not they are enabled, so the check needs nothing else. A thread naming any
+other module, known or not, keeps what the person said as a summary. The check cannot see what
+the name and description carry; keeping those to the topic is the interviewer's part.
 
 Health and finance ship with `manual` as their only adapter in v1. Wearable, bank and calendar
 adapters are modules that someone writes later.
@@ -568,16 +575,16 @@ know you* while any enabled `ratified-record` module still has an onboarding ite
 
 - *Getting to know you* walks topics: modules in priority order, each introduced by its `intro`,
   and within each module the kinds in `onboarding` order, opened with the kind's `lenses` rather
-  than a field prompt. Before it opens a module it looks for threads that name the module (§7),
-  and starts from those.
+  than a field prompt. Before it opens a module it looks for threads whose topic the module
+  covers (§7), and starts from those.
 - A *check-in* opens with the top agenda item and follows the conversation from there, returning
-  to the agenda when a thread runs out.
+  to the agenda when a topic runs out.
 
 Either way, an answer is sorted into as many drafts as it contains, across kinds and modules,
 and each draft is written at once as an unconfirmed record, in the person's words; a draft may be
 rewritten until it is confirmed. What the person volunteers is handled the same way, whether or
 not anything asked for it. What no enabled module can hold becomes a `memory/thread` naming the
-module it belongs in (§7). The interviewer labels what it contributes — an inference, a suggested
+module it seems to belong in (§7). The interviewer labels what it contributes — an inference, a suggested
 date, a strategy of its own — and challenges where it should: an entry that belongs to another
 kind, a goal nobody could measure, a contradiction with something on file, a statement that
 implies more than it says. Drafts are offered for approval one at a time or together, and each
@@ -694,8 +701,8 @@ The system is accepted when one real deployment passes these, described in the s
   becomes drafts in more than one kind and module, each confirmed through `review` with the
   person's own words in the commit; the person's register is agreed first.
 - **A topic with no module is kept, not lost.** Something the person volunteers that no enabled
-  module holds becomes a `memory/thread`; when the module it names is enabled, the next interview
-  opens with it.
+  module holds becomes a `memory/thread`; when a module that covers it is enabled, the next
+  interview opens with it, whatever module the thread named.
 - **The interview opens with evidence.** On a record where a goal's claim has gone false, the
   first line of the next session's context is that contradiction, before `/interview` is
   invoked.
@@ -869,7 +876,7 @@ the spec describing it.
 | AB | `review` carries the person's answer, in their own words, into the commit | §4.1, §9 |
 | AC | manifests gain `lenses` and `draft` per kind and `intro` per module; the kernel serves the module set through a read-only `modules` tool, which withholds from a caller the modules it may not read | §4.1, §6, §11 |
 | AD | `identity` gains `register`, how the person wants to be spoken to; §2.3's refusal narrows from the persona, traits and voice to a persona or a name | §2.3, §7 |
-| AE | `memory` gains `thread`: what the person raised that no enabled module holds, developed into that module's records when it is enabled, then deleted | §7, §9, §13 |
+| AE | `memory` gains `thread`: what the person raised that no enabled module holds, found by meaning when a module that covers it is enabled, developed into that module's records, then deleted; one naming a core `self` module is refused a body | §7, §9, §13 |
 | AF | the notebook — the person's own notes repository, which the kernel lists, reads and searches and never writes — is specified as the one exception to one repository per kernel instance; consumers are refused it; whether it gets dense search is M2's | §4.1, §5, §11, §12, §14 |
 
 ## Sources

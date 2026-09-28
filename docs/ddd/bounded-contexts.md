@@ -172,7 +172,7 @@ Relationships:
   verdicts and the person's answer through `review`.
 - **Schema** (upstream). Conforms to the module set, read through the `modules` tool.
 - **Record** (upstream). Writes and rewrites drafts and threads through the `write` tool, and
-  deletes a thread once its module holds a draft from it (§7).
+  deletes a thread once a module that covers it holds a draft from it (§7).
 - **Context block** (upstream). The person's register renders in the block like any ratified
   record, which is how it reaches every session, not just the interview.
 - **Claude Code** (external). Runs as a skill in the person's session.
