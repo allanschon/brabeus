@@ -36,8 +36,7 @@ store's own tree (`free`) or `<module>/<kind>/<slug>.md` (`kind`). `legacy_types
 one-time migration uses to give records written before modules a kind.
 
 The specification adds `lenses` and `draft` per kind and `intro` per module, for the
-conversational interview. The kernel accepts them from M2; until then it refuses them, as it
-refuses any key it does not know.
+conversational interview. The kernel validates their shape and attaches no meaning to them.
 
 The kernel loads and validates the manifests when it starts and refuses a set it does not
 understand, because an ignored key is a declaration the author believes is in force and is not: a

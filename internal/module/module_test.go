@@ -1,6 +1,7 @@
 package module
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -235,8 +236,8 @@ func TestTheShippedManifestsLoad(t *testing.T) {
 			t.Errorf("%s audience = %q", name, m.Audience)
 		}
 	}
-	if m, _ := set.Module("identity"); len(m.Onboarding) == 0 || m.Onboarding[0] != "value" {
-		t.Errorf("identity onboarding = %v; the first interview starts with values (§9)", m.Onboarding)
+	if m, _ := set.Module("identity"); len(m.Onboarding) == 0 || m.Onboarding[0] != "register" {
+		t.Errorf("identity onboarding = %v; getting to know the person starts by agreeing how to talk (§7)", m.Onboarding)
 	}
 }
 
@@ -297,5 +298,82 @@ func TestTheBundleIsFixedByTheProfile(t *testing.T) {
 	}
 	if _, ok := Profile("shared").Bundle(); ok {
 		t.Error("an unknown profile has no bundle")
+	}
+}
+
+// v1.7 §6: lenses are two to four questions, draft and intro are strings, and a
+// working-memory kind declares none of them, because how to ask belongs to a
+// ratified module and working memory is never interviewed.
+func TestLensesDraftAndIntroAreValidatedAndRatifiedOnly(t *testing.T) {
+	withLenses := func(n int) string {
+		qs := make([]string, n)
+		for i := range qs {
+			qs[i] = fmt.Sprintf(`"way %d?"`, i)
+		}
+		return strings.Replace(telosJSON, `"first": "What are you working toward, and by when?"`,
+			`"first": "What are you working toward, and by when?", "lenses": [`+strings.Join(qs, ",")+`], "draft": "Is this the goal as you would put it?"`, 1)
+	}
+	if _, err := load(t, []string{"telos"}, map[string]string{"telos": strings.Replace(withLenses(2), `"priority": 10,`, `"priority": 10, "intro": "direction",`, 1)}); err != nil {
+		t.Fatalf("two lenses, a draft and an intro are valid: %v", err)
+	}
+	for _, n := range []int{1, 5} {
+		_, err := load(t, []string{"telos"}, map[string]string{"telos": withLenses(n)})
+		wantErr(t, err, "lenses")
+	}
+	wm := strings.Replace(memoryJSON, `"note": {"fields": []}`, `"note": {"fields": [], "lenses": ["a?", "b?"]}`, 1)
+	_, err := load(t, []string{"memory"}, map[string]string{"memory": wm})
+	wantErr(t, err, "lenses")
+	wm = strings.Replace(memoryJSON, `"priority": 20,`, `"priority": 20, "intro": "notes",`, 1)
+	_, err = load(t, []string{"memory"}, map[string]string{"memory": wm})
+	wantErr(t, err, "intro")
+}
+
+// v1.7 AI: due_field names a declared field of the kind.
+func TestDueFieldMustNameADeclaredField(t *testing.T) {
+	ok := strings.Replace(telosJSON, `"worst_case", "revisit"]`, `"worst_case", "revisit"], "due_field": "revisit"`, 1)
+	if _, err := load(t, []string{"telos"}, map[string]string{"telos": ok}); err != nil {
+		t.Fatalf("revisit is declared: %v", err)
+	}
+	bad := strings.Replace(telosJSON, `"worst_case", "revisit"]`, `"worst_case", "revisit"], "due_field": "deadline"`, 1)
+	_, err := load(t, []string{"telos"}, map[string]string{"telos": bad})
+	wantErr(t, err, "deadline")
+}
+
+// §8.1: the kernel refuses an adapter the module did not declare, so it must
+// know which adapters exist; a manifest naming one it does not know is refused.
+func TestAManifestMayDeclareOnlyKnownAdapters(t *testing.T) {
+	bad := strings.Replace(telosJSON, `"adapters": ["tracker", "forge", "date", "manual"]`, `"adapters": ["tracker", "wearable"]`, 1)
+	_, err := load(t, []string{"telos"}, map[string]string{"telos": bad})
+	wantErr(t, err, "wearable")
+}
+
+// §7: register is first in identity's onboarding, and memory declares thread
+// with belongs_to. Properties of the shipped modules, tested here because the
+// kernel attaches no meaning to manifest content.
+func TestTheShippedIdentityStartsWithRegisterAndMemoryDeclaresThread(t *testing.T) {
+	set, err := Load(filepath.Join("..", "..", "modules"), []string{"memory", "identity", "telos"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, _ := set.Module("identity")
+	if len(id.Onboarding) == 0 || id.Onboarding[0] != "register" {
+		t.Errorf("identity onboarding = %v; register comes first (§7)", id.Onboarding)
+	}
+	if id.Intro == "" {
+		t.Error("identity has no intro")
+	}
+	for kind, k := range id.Kinds {
+		if len(k.Lenses) < 2 && k.First != "" {
+			t.Errorf("identity/%s has a first question but no lenses", kind)
+		}
+	}
+	mem, _ := set.Module("memory")
+	th, ok := mem.Kinds[Thread]
+	if !ok || len(th.Fields) != 1 || th.Fields[0] != BelongsTo {
+		t.Errorf("memory/thread = %+v %v; it declares belongs_to", th, ok)
+	}
+	tl, _ := set.Module("telos")
+	if tl.Kinds["decision"].DueField != "revisit" {
+		t.Errorf("decision.due_field = %q", tl.Kinds["decision"].DueField)
 	}
 }
