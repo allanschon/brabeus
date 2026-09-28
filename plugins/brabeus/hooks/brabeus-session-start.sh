@@ -81,7 +81,7 @@ else
 fi
 
 read -r -d '' ROUTING <<CTX || true
-Durable facts go to the brabeus MCP server's \`write\` tool (module, kind, scope, path), never to a file under ~/.claude/projects/*/memory/. \`context\` is the block above; \`review\` answers its agenda line. If the server is unreachable, queue a frontmattered file in ~/.claude/memory-outbox/ and the next session drains it.
+Durable facts go to the brabeus MCP server's \`write\` tool (module, kind, scope, path), never to a file under ~/.claude/projects/*/memory/. \`context\` is the block above, and its first line is what the person's record is asking; \`/interview\` works through it, confirming with \`review\` and recording a manual claim's answer with \`claim_result\`. If the server is unreachable, queue a frontmattered file in ~/.claude/memory-outbox/ and the next session drains it.
 CTX
 
 CONTEXT="$block"
