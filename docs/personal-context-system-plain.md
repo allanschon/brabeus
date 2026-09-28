@@ -2,8 +2,13 @@
 
 This describes the system specified in [`personal-context-system-v1.md`](personal-context-system-v1.md)
 at version 1.6, for someone who might use it rather than build it. It assumes you have used an
-AI assistant and know it forgets you between conversations. The first milestone is built; the
-conversational interview described below arrives with the second.
+AI assistant and know it forgets you between conversations.
+
+It describes the whole design, and not all of it is built yet. What works today is the record
+itself, the two kinds of record described below, the short block your assistant reads at the start
+of each conversation, and a simple version of the interview. Checking your goals against evidence,
+the conversational interview, and decisions that come back to ask whether you were right arrive
+next. The read-only view comes after that, and then the health and finance modules.
 
 ## The problem it solves
 
@@ -15,7 +20,7 @@ are its guesses about you, presented back as if they were facts.
 
 This system is a private record of who you are, what you value, what you're aiming at and how
 it's going, kept in a form your assistant reads at the start of every conversation. Two things
-make it more than a notebook. The assistant checks parts of the record against real evidence —
+make it more than a place to keep notes. The assistant checks parts of the record against real evidence —
 did the thing you said you'd do actually happen? And it periodically asks you whether what's on
 file is still true, then shows you the gap between what you said matters and what the record
 shows. You never have to remember to maintain it. That last part is the rule everything else
@@ -98,7 +103,7 @@ whole system.
 you didn't, what you predict will happen, how sure you are, and when to check. On that date it
 comes back and asks whether you were right — which is a question almost nobody asks themselves.
 
-**A view** exists too: a read-only page showing your record, what's stale, how the claims are
+**A view** is planned too: a read-only page showing your record, what's stale, how the claims are
 doing, whether a goal has been quietly lowered since you last confirmed it, and what you've
 snoozed. It's for you, behind whatever login your setup already uses.
 

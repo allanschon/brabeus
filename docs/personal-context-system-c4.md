@@ -1,9 +1,12 @@
 # The personal context system — C4 diagrams
 
-Companion to [`personal-context-system-v1.md`](personal-context-system-v1.md) at v1.6. These
-diagrams say the same thing as the spec at four altitudes; where they disagree, the spec wins.
-Names are the spec's descriptive ones. M1 is built; the conversational interview of the fourth
-diagram arrives with M2.
+These diagrams accompany [`personal-context-system-v1.md`](personal-context-system-v1.md) at
+v1.6. They describe the same system as the specification at four levels of detail, and where they
+disagree, the specification is correct. Components carry the specification's descriptive names.
+
+The diagrams show the whole design, not only what is built. M0 and M1 are built. The claims
+runner, its adapters and the conversational interview of the fourth diagram arrive with M2, and the
+view with M3 (spec §14).
 
 The diagrams follow the [C4 model](https://c4model.com/): a context diagram for who uses the
 system and what it talks to; a container diagram for the separately deployable pieces; a
@@ -11,8 +14,9 @@ component diagram for the inside of the kernel; and a dynamic diagram for the on
 matters most, the interview. They are Mermaid flowcharts styled by C4 level rather than
 Mermaid's own C4 syntax, so they render anywhere Mermaid does.
 
-Legend: a rounded box is a person; a rectangle is a system, container or component at the
-diagram's level; a dashed border is something outside the system; a cylinder is a store.
+In every diagram, a rounded box is a person, a rectangle is a system, container or component at
+that diagram's level, a dashed border marks something outside the system, and a cylinder holds
+data.
 
 ## Level 1 — system context
 
@@ -47,15 +51,17 @@ flowchart TB
     class assistant,githost,tracker,forge,idp,consumer ext
 ```
 
-Two things this level fixes. The person never touches the system directly except through the
-assistant or the view. And the read-only consumer's arrow is dashed and one-way: it is
-identified like any caller, sees only modules whose audience is `any`, and has no write path
+This level fixes two things. The person reaches the system only through the assistant or the
+view, never directly. And the read-only consumer's arrow is dashed and one-way, because a consumer
+is identified like any caller, sees only modules whose audience is `any`, and has no write path; a
+write influenced by an untrusted reader would be injection into the person's next session
 (spec §11).
 
 ## Level 2 — containers
 
-The separately deployable pieces. One kernel instance serves one repository; a deployment
-enables some set of modules (spec §4, §5).
+These are the separately deployable pieces. One kernel instance serves one record repository,
+and may also read the person's own notes as the notebook. A deployment chooses which modules to
+enable (spec §4, §5).
 
 ```mermaid
 flowchart TB
@@ -107,29 +113,31 @@ flowchart TB
     class idp,tracker,forge,consumer ext
 ```
 
-What the picture is careful about:
+The diagram is deliberate about five things:
 
-- **The plugin is thin.** Two hooks, one of them conditional, and skills. Nothing in the
-  assistant's global configuration changes except the plugin's registration (spec §3.2).
+- **The plugin is thin.** It has two hooks, one of them conditional, and a few skills. Installing
+  it changes nothing in the assistant's global configuration except the plugin's own
+  registration (spec §3.2).
 - **The kernel is the only writer** to the working clone, and the clone is the only path to the
   repository. A sibling process that runs claims writes its results through the kernel, not to
   the clone (spec §8.1).
 - **The notebook is read-only.** The kernel pulls the person's own notes and never commits to
-  them; they have no modules and no audience, so a consumer is refused them outright (spec §5,
-  §11).
-- **The embedding sidecar publishes nothing.** It exists because the kernel is a static binary
-  and the model call should cross a visible boundary.
-- **The identity layer is the deployment's**, not the system's. The view has no authentication of
-  its own and binds to loopback (spec §10).
-- **Two kernel instances, two repositories** is how a second trust domain — a memory shared with
-  other people — would sit beside this one, with the plugin registering both. It is not drawn
-  because it is not designed (spec §15).
+  them, so the one-writer rule still holds. The notes have no modules and so no audience of their
+  own, which is why a consumer is refused them outright (spec §5, §11).
+- **The embedding sidecar publishes nothing.** It is a separate container because the kernel is
+  a static binary, and because the call to a model should cross a boundary that can be seen.
+- **The identity layer belongs to the deployment**, not the system. The view has no
+  authentication of its own and binds to loopback, so the deployment's identity layer is the only
+  way to reach it (spec §10).
+- **Two kernel instances with two repositories** is how a second trust domain, such as a memory
+  shared with other people, would sit beside this one, with the plugin registering both. It is not
+  drawn because it is not yet designed (spec §15).
 
 ## Level 3 — components of the kernel
 
-What is inside the kernel box, and which profile each component serves. Everything to the left
-of the profiles line is shared by both; everything to the right belongs to `ratified-record`
-modules, with the two exceptions noted.
+This level shows what is inside the kernel, and which profile each component serves. The
+components in the first group serve both profiles; those in the second serve only
+`ratified-record` modules.
 
 ```mermaid
 flowchart LR
@@ -147,7 +155,7 @@ flowchart LR
     end
 
     subgraph ratified ["ratified-record only"]
-        review["<b>Review</b><br/><i>question + answer into the commit;<br/>the only path that moves reviewed</i>"]
+        review["<b>Review</b><br/><i>question, verdict and answer into the commit;<br/>the only path that moves reviewed</i>"]
         claims["<b>Claims runner</b><br/><i>declared adapters, data-only arguments;<br/>pass · fail · no-evidence, each timestamped</i>"]
         adapters["<b>Adapters</b><br/><i>tracker · forge · date · manual;<br/>one implementation per backend</i>"]
         agenda["<b>Agenda</b><br/><i>fails, then drafts, then stale by priority and age,<br/>then onboarding; snoozes counted; no-evidence excluded</i>"]
@@ -185,17 +193,21 @@ flowchart LR
     class mcp,health iface
 ```
 
-Reading order for someone new: a request enters at the MCP endpoint, is identified, is
-audience-filtered, and only then reaches retrieval or the store. A write passes schema validation
-and credential refusal before it becomes a commit. The profile of the record's module decides
-whether that write may be a plain `write` or must be a `review`. The claims runner never reads
-the request path at all; it runs on a schedule and its results re-enter through the store like
-any other write.
+For someone reading the diagram for the first time: a request enters at the MCP endpoint, is
+identified, is filtered by audience, and only then reaches retrieval or the store. A write passes
+schema validation and credential refusal before it becomes a commit. The profile of the record's
+module decides what the write means: in a `working-memory` module it is complete, and in a
+`ratified-record` module it leaves a draft that only a `review` can confirm. The claims runner
+never sees a request; it runs on a schedule, and its results enter the store like any other
+write, so the kernel remains the only writer.
 
 ## Level 4 — the interview, as a dynamic diagram
 
-The one flow that makes the system more than a notebook. The kernel makes two decisions — what is
-due, and what counts as reviewed — and the assistant holds the conversation around them (spec §9).
+The interview is the flow that makes the system more than a place to keep notes. The kernel makes
+two decisions, what is due and what counts as reviewed, and the assistant holds the conversation
+around them (spec §9). Keeping those two decisions in the kernel means the conversation can be as
+loose as the person likes without anyone being able to mark a record confirmed that the person did
+not confirm.
 
 ```mermaid
 sequenceDiagram
@@ -237,7 +249,7 @@ sequenceDiagram
     A-->>P: the gap, grouped by what the person said matters
 ```
 
-Four things the sequence makes visible that prose can hide. The scheduler and the session never
+The sequence makes four things visible that prose can hide. The scheduler and the session never
 touch each other; they meet only in the store. The kernel decides what is due, and the assistant
 decides how to ask about it. Drafts reach the store before anything is confirmed, so a stop in the
 middle loses nothing and the next session's agenda opens on them. And `reviewed` moves at exactly
@@ -247,10 +259,10 @@ history can be read as a list of things the person was asked and said.
 ## What is deliberately not drawn
 
 - **A deployment diagram.** C4's fourth standard diagram places containers on infrastructure.
-  That is one deployment's business, and the spec is careful to have none in it; the operator's
-  companion note is where a deployment draws its own.
-- **The module internals.** A module is a manifest, templates, optional skills and optional
-  adapters; there is no runtime inside it to diagram. Its contract is spec §6.
+  That belongs to each deployment, and the specification deliberately describes none, so that it
+  holds no one person's setup (spec §12). A deployment draws its own in the operator's notes.
+- **The inside of a module.** A module is a manifest, templates, and optional skills and
+  adapters; it has no running code of its own to diagram. Its contract is spec §6.
 - **The second kernel instance** for a shared memory across people (spec §15). When it is
   designed, it is a second copy of the container diagram with a different repository and the
   plugin's MCP registration pointing at both.
