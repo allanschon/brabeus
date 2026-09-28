@@ -39,6 +39,10 @@ the assistant needs somewhere to keep those, and the system was originally built
 Anything else — a module for your business, your creative practice, your home — is something you
 or someone else adds. Nothing beyond what you enable is installed.
 
+If you keep your own notes in a git repository, the system can search those too. It reads them
+and never writes to them, and they stay in whatever shape you keep them; they are yours, not part
+of the record.
+
 ## Two kinds of record, and why it matters
 
 This is the idea that does the most work, so it's worth a minute.

@@ -242,7 +242,7 @@ rows; the rest is added by this specification. None of it knows what a `goal` or
 | responsibility | does |
 |---|---|
 | store | one markdown file per record, frontmatter composed by the server, committed and pushed to one private git repository; writes validated against the record's module schema |
-| retrieval | hybrid lexical + dense search, scope-filtered on read; `working-memory` records are searched by default, `ratified-record` ones only when asked |
+| retrieval | hybrid lexical + dense search, scope-filtered on read; `working-memory` records are searched by default, `ratified-record` ones only when asked, and the notebook (§5) when named |
 | identity | who is calling, from the network layer or a token |
 | **profiles** | the closed set in §1.1; each module's manifest names one and the kernel enforces its bundle — who may write, whether records are rendered or searched, whether `review` is required, the audience default |
 | **modules** | loads module manifests; exposes each module's kinds, interview prompts and summary template, and serves the module set to the plugin through a read-only `modules` tool; refuses a manifest that does not validate |
@@ -305,6 +305,16 @@ private repository. Records for a different set of people are a different reposi
 therefore a different kernel instance; the assistant's client may register more than one kernel,
 which is how a shared memory would sit beside a personal one without either holding the other's
 records (§15). A kernel serving several roots is a kernel change, not a configuration.
+
+**The notebook is the one exception, and it is read-only.** A deployment may point the kernel at
+a second repository: the person's own notes, written by the person, by the assistant at their
+request through its own tools, and by whatever editor they use. The kernel lists, reads and
+searches it, named by the tools' `repo` argument (`projects` in this version), and never writes to
+it. It has no modules, no scopes and no audience of its own, and its files keep whatever
+conventions the person uses; nothing in it is a record in §5's sense. It is not a profile, because
+profiles govern records the kernel writes (§1.1). Because it is never written, it leaves the
+one-writer rule intact; because it has no audience, it is refused to consumers outright (§11).
+Whether its search includes the dense leg is decided in M2 (§14).
 
 **Existing records are migrated by the kernel, once.** A record with the pre-module `type` field
 and no `module` is rewritten by the server — the only writer — to `module: memory` and the
@@ -639,6 +649,8 @@ already runs.
   by writing it.
 - **Nothing executes from the record.** Claims name adapters; templates format; the view renders.
   No path exists by which record content becomes a command.
+- **The notebook is refused to consumers.** It has no modules, so no per-module audience can
+  stand in for it; a read-only consumer cannot list, read or search it at all (§5).
 - **The view is not a control plane.** It has no POST routes. Anything that changes state goes
   through the assistant, through the kernel's validated write.
 
@@ -650,7 +662,7 @@ real record and no deployment configuration.
 
 Everything that is one person's lives in three places outside the repository: the private record
 repository; the deployment's environment (hosts, tokens, adapter endpoints); and the operator's
-own notes. A contributor can run the whole system against the synthetic corpus without knowing
+own notes, which a deployment may also serve read-only as the notebook (§5). A contributor can run the whole system against the synthetic corpus without knowing
 anything about any real deployment.
 
 The onboarding target: a person with an assistant, a git host and one machine runs the kernel in
@@ -707,7 +719,7 @@ The system is accepted when one real deployment passes these, described in the s
 |---|---|---|
 | M0 | the public repository seeded; §12's contents present; §13's last clause enforced on every push by CI | delivered 2026-09-27 |
 | M1 | the two profiles; module contract with `profile`, `budget_bytes` and `audience`; the `memory` module and the one-time migration; `telos` and `identity`; `context` tool with the agenda line; `review`; `SessionStart` injection; the guard made conditional | the existing store migrates and still answers; the 2 KB block renders from real records on all machines; a stale record surfaces as the first line; `reviewed` moves only on `review` |
-| M2 | three-state claims and the `tracker`, `forge`, `date`, `manual` adapters; results written through the kernel; the conversational `/interview` (§9) with lenses, drafts, threads and the register; the `modules` tool; `review` carrying the answer; reflection by value | the first line names a measured contradiction; a revoked credential produces `no-evidence`, not an accusation; a first interview turns the person's own answers into confirmed values and goals, and leaves a thread for anything no module holds |
+| M2 | three-state claims and the `tracker`, `forge`, `date`, `manual` adapters; results written through the kernel; the conversational `/interview` (§9) with lenses, drafts, threads and the register; the `modules` tool; `review` carrying the answer; whether the notebook's search includes the dense leg (§5); reflection by value | the first line names a measured contradiction; a revoked credential produces `no-evidence`, not an accusation; a first interview turns the person's own answers into confirmed values and goals, and leaves a thread for anything no module holds |
 | M3 | the view | read-only, fronted by the deployment's identity layer; shows revision lines, snooze counts and the manual fraction |
 | M4 | `health` and `finance`, `audience: self` | both populated by interview, `manual` claims asked and recorded; absent from a read-only consumer's results |
 | M5 | *removed in v1.2* — the general memory's prefixes are not modules and are not migrated | — |
@@ -843,7 +855,9 @@ Decided 2026-09-27, while planning M1, because the kernel's loader forced each o
 
 Decided 2026-09-27, from the operator's objection after abandoning the M1 interview: it read as a
 form. The prior art's interview felt like an advisor getting to know the person, and §2.1 had
-credited its rule without its conversation.
+credited its rule without its conversation. AF records a second decision of the same day, from the domain-driven design
+analysis in `docs/ddd/`: the kernel's second, read-only repository was running with no section of
+the spec describing it.
 
 | | change | sections |
 |---|---|---|
@@ -853,6 +867,7 @@ credited its rule without its conversation.
 | AC | manifests gain `lenses` and `draft` per kind and `intro` per module; the kernel serves the module set through a read-only `modules` tool | §4.1, §6 |
 | AD | `identity` gains `register`, how the person wants to be spoken to; §2.3's refusal narrows from the persona, traits and voice to a persona or a name | §2.3, §7 |
 | AE | `memory` gains `thread`: what the person raised that no enabled module holds, picked up when that module is enabled | §7, §9, §13 |
+| AF | the notebook — the person's own notes repository, which the kernel lists, reads and searches and never writes — is specified as the one exception to one repository per kernel instance; consumers are refused it; whether it gets dense search is M2's | §4.1, §5, §11, §12, §14 |
 
 ## Sources
 

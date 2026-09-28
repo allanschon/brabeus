@@ -74,12 +74,15 @@ flowchart TB
         embed["Embedding sidecar<br/><i>local model, loopback only,<br/>never published</i>"]
         modules[("Module manifests<br/><i>memory · identity · telos · health · finance ·<br/>any module a deployment adds</i>")]
         clone[("Working clone<br/><i>of the record repository</i>")]
+        nbclone[("Notebook clone<br/><i>of the person's own notes;<br/>optional, read-only</i>")]
         kernel -- "embeds queries and records" --> embed
         kernel -- "loads, validates" --> modules
         kernel -- "reads, writes, commits" --> clone
+        kernel -- "lists, reads, searches" --> nbclone
     end
 
     repo[("<b>Record repository</b><br/><i>private git; one per kernel instance;<br/>the trust boundary beneath the kernel</i>")]
+    notes[("Notebook repository<br/><i>the person's own notes,<br/>written outside the system</i>")]
     idp["Identity layer"]
     tracker["Task tracker"]
     forge["Git forge"]
@@ -90,6 +93,7 @@ flowchart TB
     person -- "browser" --> idp -- "/view/, read-only" --> kernel
     consumer -. "MCP, read tools only" .-> kernel
     clone -- "pull / push, secrets scanned at the host" --> repo
+    nbclone -- "pull only" --> notes
     kernel -- "tracker adapter" --> tracker
     kernel -- "forge adapter" --> forge
 
@@ -99,7 +103,7 @@ flowchart TB
     classDef ext fill:#999,stroke:#6b6b6b,color:#fff,stroke-dasharray:5 5
     class person person
     class cc,plugin,kernel,embed container
-    class outbox,modules,clone,repo store
+    class outbox,modules,clone,repo,nbclone,notes store
     class idp,tracker,forge,consumer ext
 ```
 
@@ -110,6 +114,9 @@ What the picture is careful about:
 - **The kernel is the only writer** to the working clone, and the clone is the only path to the
   repository. A sibling process that runs claims writes its results through the kernel, not to
   the clone (spec §8.1).
+- **The notebook is read-only.** The kernel pulls the person's own notes and never commits to
+  them; they have no modules and no audience, so a consumer is refused them outright (spec §5,
+  §11).
 - **The embedding sidecar publishes nothing.** It exists because the kernel is a static binary
   and the model call should cross a visible boundary.
 - **The identity layer is the deployment's**, not the system's. The view has no authentication of
@@ -134,7 +141,7 @@ flowchart LR
         schema["<b>Schema validation</b><br/><i>a write that does not match<br/>its module's kind is rejected</i>"]
         credref["<b>Credential refusal</b><br/><i>credential shapes rejected<br/>before git</i>"]
         store["<b>Store</b><br/><i>one file per record; frontmatter composed here;<br/>index maintained by the same write;<br/>pull → write → commit → push</i>"]
-        retrieval["<b>Retrieval</b><br/><i>lexical + dense, fused;<br/>working-memory searched by default,<br/>ratified-record only when asked</i>"]
+        retrieval["<b>Retrieval</b><br/><i>lexical + dense, fused;<br/>working-memory searched by default,<br/>ratified-record only when asked,<br/>the notebook when named</i>"]
         migrate["<b>Migration</b><br/><i>one-time: pre-module records<br/>retagged to the memory module</i>"]
         freshlint["<b>Freshness lint</b><br/><i>working-memory: timeless,<br/>dated, or a pointer</i>"]
     end
