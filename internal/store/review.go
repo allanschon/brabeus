@@ -183,6 +183,21 @@ type Stored struct {
 	Revision string
 }
 
+// LessByReview orders two records confirmed first, most recently reviewed
+// first, then unreviewed by most recently updated. Shared by block's
+// per-kind grouping and agenda.Reflect's value ordering (C7), so the two
+// cannot silently disagree about what "in review order" means.
+func LessByReview(a, b Stored) bool {
+	ai, bi := a.Reviewed.IsZero(), b.Reviewed.IsZero()
+	if ai != bi {
+		return !ai
+	}
+	if !ai {
+		return a.Reviewed.After(b.Reviewed)
+	}
+	return a.Updated.After(b.Updated)
+}
+
 // Records enumerates every record with its metadata. The index and the
 // conventions file are structure, not records. Pre-module files are included
 // with Module empty, so the agenda can say "migrate first" rather than

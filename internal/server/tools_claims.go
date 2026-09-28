@@ -8,6 +8,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/allanschon/brabeus/internal/agenda"
 	"github.com/allanschon/brabeus/internal/scope"
 	"github.com/allanschon/brabeus/internal/store"
 )
@@ -54,13 +55,10 @@ type claimResultOut struct {
 
 // governedByRatified reports whether a record's governing module is one the
 // person ratifies: the only records whose claims the kernel reads (§8.1).
+// module.Set.Interviewed is the shared predicate; agenda.Reflect uses the
+// same one, since agenda cannot import server to call this directly.
 func governedByRatified(d Deps, r store.Stored) bool {
-	gov, _, ok := d.Set.RuleFor(r.Module, r.Kind)
-	if !ok {
-		return false
-	}
-	bundle, _ := gov.Profile.Bundle()
-	return bundle.Interviewed
+	return d.Set.Interviewed(r.Module, r.Kind)
 }
 
 func nowFor(d Deps) time.Time {
@@ -154,6 +152,51 @@ func claimsFor(d Deps, caller string, audience store.Visibility, goal string) (c
 	return out, nil
 }
 
+type reflectIn struct{}
+
+// reflectFor computes the reflection (spec §9): the gap between the person's
+// values and their goals, over the caller's whole visible record — filtered
+// as RenderContext filters it, with no project (K14), since the reflection
+// answers about the whole person, not one session's view.
+func reflectFor(d Deps, caller string, consumer bool, audience store.Visibility) (agenda.Reflection, error) {
+	if consumer {
+		return agenda.Reflection{}, fmt.Errorf("a consumer is asked nothing and the values are self (spec §11)")
+	}
+	all, err := d.Memory.Records()
+	if err != nil {
+		return agenda.Reflection{}, err
+	}
+	recs := make([]store.Stored, 0, len(all))
+	for _, r := range all {
+		if !r.Retired.IsZero() || audience.Hides(r.Module) || !scope.Visible(r.Scope, caller, false) {
+			continue
+		}
+		recs = append(recs, r)
+	}
+	results, err := d.Memory.ClaimResults()
+	if err != nil {
+		log.Printf("claim results: %v", err)
+	}
+	return agenda.Reflect(d.Set, recs, results, nowFor(d)), nil
+}
+
+// registerReflectTool registers reflect: the gap by value, for the
+// interviewer to phrase (§9). It never takes an input; the reflection is
+// always about the whole of what the caller may see.
+func registerReflectTool(s *mcp.Server, d Deps, caller string, consumer bool, audience store.Visibility) {
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "reflect",
+		Description: "The gap by value, as facts: each value, the goals that serve it with their claim states and " +
+			"days since confirmed, then goals serving no value. Phrase it in the person's register; do not recount it yourself.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in reflectIn) (*mcp.CallToolResult, agenda.Reflection, error) {
+		out, err := reflectFor(d, caller, consumer, audience)
+		if err != nil {
+			return nil, agenda.Reflection{}, err
+		}
+		return nil, out, nil
+	})
+}
+
 // recordClaimResult is the claim_result tool: one claim's state as the person
 // gave it, through the claim-result operation and never through review
 // (§8.1). The merge runs under the store's lock, so a scheduled run landing
@@ -213,8 +256,10 @@ func recordClaimResult(d Deps, caller string, consumer bool, audience store.Visi
 	return claimResultOut{Goal: rel, Commit: commit}, nil
 }
 
-// registerClaimTools registers claims (read) and claim_result (write).
+// registerClaimTools registers claims (read), claim_result (write) and
+// reflect (read).
 func registerClaimTools(s *mcp.Server, d Deps, caller string, consumer bool, audience store.Visibility) {
+	registerReflectTool(s, d, caller, consumer, audience)
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "claims",
 		Description: "The claims on the person's goals, each with its state: pass, fail, no-evidence or unchecked, " +
