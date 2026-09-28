@@ -220,11 +220,12 @@ sequenceDiagram
     Note over P,K: /interview, or the person picks up the first line
     A->>K: context, modules
     K-->>A: the agenda, and every enabled module's kinds, fields, lenses and intro
-    A->>A: mode: getting to know the person while any onboarding item remains, else a check-in
+    A->>A: getting to know the person while any onboarding item remains, else a check-in
     loop until the person says enough, stop, or later
         A->>P: a topic's lens, or the top agenda item, in the person's register
         P-->>A: an answer, as long and as wandering as they like
         A->>K: write a draft for each thing the answer holds, in any module, and a thread for what no module holds
+        A->>K: delete a thread once its module holds a draft from it
         A->>P: the drafts, the interviewer's own inferences labelled, challenges where warranted
         P-->>A: confirmed / corrected / retired / later, in their own words
         A->>K: review(record, question, verdict, answer), once per draft

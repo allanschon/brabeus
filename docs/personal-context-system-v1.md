@@ -245,7 +245,7 @@ rows; the rest is added by this specification. None of it knows what a `goal` or
 | retrieval | hybrid lexical + dense search, scope-filtered on read; `working-memory` records are searched by default, `ratified-record` ones only when asked, and the notebook (§5) when named |
 | identity | who is calling, from the network layer or a token |
 | **profiles** | the closed set in §1.1; each module's manifest names one and the kernel enforces its bundle — who may write, whether records are rendered or searched, whether `review` is required, the audience default |
-| **modules** | loads module manifests; exposes each module's kinds, interview prompts and summary template, and serves the module set to the plugin through a read-only `modules` tool; refuses a manifest that does not validate |
+| **modules** | loads module manifests; exposes each module's kinds, interview prompts and summary template, and serves the module set to the plugin through a read-only `modules` tool, which lists to a caller only the modules it may read (§11); refuses a manifest that does not validate |
 | **context** | renders a size-capped session block from the enabled `ratified-record` modules' templates |
 | **claims** | evidence adapters run on a schedule; results are three-state — pass, fail, no evidence — each with its own timestamp; whatever runs them writes results through the kernel (§8.1) |
 | **agenda** | computes what is due — failed claims, drafts, stale records, onboarding — and renders the top item, with its question, as the first line of the context block (§9) |
@@ -449,7 +449,9 @@ onboarding, so getting to know the person starts by agreeing how to talk.
 
 `thread` is the note the interview leaves when the person raises something no enabled module can
 hold (§9): the topic, the date, and the module it belongs in, which need not exist yet. When that
-module is enabled, the interview picks the thread up and retires it. A thread whose module is a
+module is enabled, the interview picks the thread up and develops it into records of that module;
+once the module holds at least a draft from it, the thread is deleted. Nothing else ends a thread,
+so one naming a module that is not enabled stays on file. A thread whose module is a
 core module with `audience: self` holds a pointer only; the substance waits for its ratified home.
 
 Health and finance ship with `manual` as their only adapter in v1. Wearable, bank and calendar
@@ -560,7 +562,7 @@ It writes the question, the verdict and the answer into the commit, and it is th
 moves `reviewed`. A plain `write` never does. So a `reviewed` date in history is, by construction,
 a question that was asked and answered, and the answer can be read back.
 
-**The conversation.** `/interview` runs in one of two modes, chosen from the agenda: *getting to
+**The conversation.** `/interview` runs in one of two ways, chosen from the agenda: *getting to
 know you* while any enabled `ratified-record` module still has an onboarding item, and a
 *check-in* otherwise.
 
@@ -571,7 +573,7 @@ know you* while any enabled `ratified-record` module still has an onboarding ite
 - A *check-in* opens with the top agenda item and follows the conversation from there, returning
   to the agenda when a thread runs out.
 
-In both modes an answer is sorted into as many drafts as it contains, across kinds and modules,
+In both an answer is sorted into as many drafts as it contains, across kinds and modules,
 and each draft is written at once as an unconfirmed record, in the person's words; a draft may be
 rewritten until it is confirmed. What the person volunteers is handled the same way, whether or
 not anything asked for it. What no enabled module can hold becomes a `memory/thread` naming the
@@ -637,7 +639,8 @@ already runs.
   the write tool. A write influenced by an untrusted reader is injection into the next session.
 - **Audience, enforced.** Scope says where a record applies; it does not say who may read it.
   A read-only consumer is identified like any caller and sees only modules whose `audience` is
-  `any`. `health` and `finance` are `self` and cannot be made otherwise by configuration (§7).
+  `any`, on every path that names a module: records, search, the block and the `modules` tool.
+  `health` and `finance` are `self` and cannot be made otherwise by configuration (§7).
   An unidentified caller sees nothing. This exists because the fail-closed default for an
   unidentified caller today is `global`, and `global` is where health and finance will live.
 - **The repository is the boundary beneath the kernel** (§3.8). Audience is a read-time filter;
@@ -861,12 +864,12 @@ the spec describing it.
 
 | | change | sections |
 |---|---|---|
-| Z | the interview is a conversation in two modes chosen from the agenda — getting to know the person, and a check-in; answers become drafts across kinds and modules; the interviewer labels what it infers and challenges what it doubts; the interview is exempt from terse working preferences | §4.2, §9 |
+| Z | the interview is a conversation in two ways chosen from the agenda — getting to know the person, and a check-in; answers become drafts across kinds and modules; the interviewer labels what it infers and challenges what it doubts; the interview is exempt from terse working preferences | §4.2, §9 |
 | AA | drafts are written at once as unconfirmed records; the agenda gains a `draft` reason and renames `empty` to `onboarding`; every ratified kind renders marked unconfirmed until reviewed | §4.1, §9, §10 |
 | AB | `review` carries the person's answer, in their own words, into the commit | §4.1, §9 |
-| AC | manifests gain `lenses` and `draft` per kind and `intro` per module; the kernel serves the module set through a read-only `modules` tool | §4.1, §6 |
+| AC | manifests gain `lenses` and `draft` per kind and `intro` per module; the kernel serves the module set through a read-only `modules` tool, which withholds from a caller the modules it may not read | §4.1, §6, §11 |
 | AD | `identity` gains `register`, how the person wants to be spoken to; §2.3's refusal narrows from the persona, traits and voice to a persona or a name | §2.3, §7 |
-| AE | `memory` gains `thread`: what the person raised that no enabled module holds, picked up when that module is enabled | §7, §9, §13 |
+| AE | `memory` gains `thread`: what the person raised that no enabled module holds, developed into that module's records when it is enabled, then deleted | §7, §9, §13 |
 | AF | the notebook — the person's own notes repository, which the kernel lists, reads and searches and never writes — is specified as the one exception to one repository per kernel instance; consumers are refused it; whether it gets dense search is M2's | §4.1, §5, §11, §12, §14 |
 
 ## Sources
