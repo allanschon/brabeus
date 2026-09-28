@@ -5,6 +5,7 @@
   "priority": 25,
   "budget_bytes": 350,
   "audience": "self",
+  "intro": "what there is, what is owed, what is aimed at",
   "kinds": {
     "account": {"fields": ["statement"], "freshness_days": 120},
     "obligation": {"fields": ["statement", "due"], "freshness_days": 90, "interview": "Still owed? Still the same terms?"},
