@@ -1,6 +1,7 @@
 package agenda
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +21,7 @@ func testSet() *module.Set {
 			}},
 		{Name: "telos", Profile: module.RatifiedRecord, Priority: 10, Onboarding: []string{"goal"},
 			Kinds: map[string]module.Kind{
-				"goal":     {Fields: []string{"id", "title", "ideal", "by"}, FreshnessDays: 90, Interview: "Still right? Progress since {reviewed}?", First: "What are you working toward?"},
+				"goal":     {Fields: []string{"id", "title", "ideal", "by"}, Optional: []string{"claims", "serves"}, FreshnessDays: 90, Interview: "Still right? Progress since {reviewed}?", First: "What are you working toward?"},
 				"current":  {Fields: []string{"dimension", "text"}, FreshnessDays: 90, Interview: "Where are you now on {dimension}?"},
 				"decision": {Fields: []string{"revisit"}, DueField: "revisit", Interview: "The revisit date passed. Did the prediction hold?"},
 			}},
@@ -49,7 +50,7 @@ func TestStaleRecordsComeFirstByModulePriorityThenAge(t *testing.T) {
 		rec("identity/value/v3.md", "identity", "value", nil, "2026-09-20T00:00:00Z", "", 0),                                       // never reviewed: a draft, leads everything
 		rec("memory/n.md", "memory", "note", nil, "2020-01-01T00:00:00Z", "", 0),                                                   // working-memory: never on the agenda
 	}
-	items := Compute(testSet(), records, now)
+	items := Compute(testSet(), records, nil, now)
 	var got []string
 	var snoozes int
 	for _, it := range items {
@@ -75,7 +76,7 @@ func TestQuestionsAreRenderedFromTheKindsPrompt(t *testing.T) {
 		rec("telos/goal/g1.md", "telos", "goal", map[string]string{"id": "G1"}, "2026-05-01T00:00:00Z", "2026-05-01T00:00:00Z", 0),
 		rec("telos/current/c.md", "telos", "current", map[string]string{"dimension": "fitness", "text": "ok"}, "2026-01-01T00:00:00Z", "2025-01-01T00:00:00Z", 0), // reviewed well past its 90-day freshness: stays a stale-question test
 	}
-	items := Compute(testSet(), records, now)
+	items := Compute(testSet(), records, nil, now)
 	byPath := map[string]Item{}
 	for _, it := range items {
 		byPath[it.Path] = it
@@ -97,12 +98,12 @@ func TestQuestionsAreRenderedFromTheKindsPrompt(t *testing.T) {
 func TestARevisionSinceTheLastReviewIsNamed(t *testing.T) {
 	now := at("2026-10-01T00:00:00Z")
 	r := rec("telos/goal/g1.md", "telos", "goal", nil, "2026-09-04T00:00:00Z", "2026-05-01T00:00:00Z", 0)
-	items := Compute(testSet(), []store.Stored{r}, now)
+	items := Compute(testSet(), []store.Stored{r}, nil, now)
 	if len(items) == 0 || items[0].Revision != "revised 2026-09-04, last reviewed 2026-05-01" {
 		t.Errorf("items = %+v", items)
 	}
 	fresh := rec("telos/goal/g2.md", "telos", "goal", nil, "2026-05-01T00:00:00Z", "2026-05-01T00:00:00Z", 0)
-	if items := Compute(testSet(), []store.Stored{fresh}, now); items[0].Revision != "" {
+	if items := Compute(testSet(), []store.Stored{fresh}, nil, now); items[0].Revision != "" {
 		t.Errorf("no revision when updated == reviewed: %q", items[0].Revision)
 	}
 }
@@ -116,7 +117,7 @@ func TestAStoredRevisionIsPreferredOverTheStampFallback(t *testing.T) {
 	now := at("2026-10-01T00:00:00Z")
 	r := rec("telos/goal/g1.md", "telos", "goal", nil, "2026-09-04T00:00:00Z", "2026-05-01T00:00:00Z", 0)
 	r.Revision = "by moved from 2026-10-01 to 2026-12-01 on 2026-09-04"
-	items := Compute(testSet(), []store.Stored{r}, now)
+	items := Compute(testSet(), []store.Stored{r}, nil, now)
 	if len(items) == 0 || items[0].Revision != r.Revision {
 		t.Errorf("items[0].Revision = %q, want the stored line %q", items[0].Revision, r.Revision)
 	}
@@ -125,7 +126,7 @@ func TestAStoredRevisionIsPreferredOverTheStampFallback(t *testing.T) {
 func TestRetiredRecordsAreNeverAsked(t *testing.T) {
 	r := rec("identity/value/v.md", "identity", "value", nil, "2020-01-01T00:00:00Z", "2020-01-01T00:00:00Z", 0)
 	r.Retired = at("2026-01-01T00:00:00Z")
-	for _, it := range Compute(testSet(), []store.Stored{r}, at("2026-10-01T00:00:00Z")) {
+	for _, it := range Compute(testSet(), []store.Stored{r}, nil, at("2026-10-01T00:00:00Z")) {
 		if it.Path == r.Path {
 			t.Errorf("retired record on the agenda: %+v", it)
 		}
@@ -137,7 +138,7 @@ func TestOnboardingGapsFollowStaleItemsInModuleOrder(t *testing.T) {
 	records := []store.Stored{
 		rec("identity/value/v.md", "identity", "value", nil, "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 0), // fresh; a value exists
 	}
-	items := Compute(testSet(), records, now)
+	items := Compute(testSet(), records, nil, now)
 	var got []string
 	for _, it := range items {
 		if it.Reason == Onboarding {
@@ -151,7 +152,7 @@ func TestOnboardingGapsFollowStaleItemsInModuleOrder(t *testing.T) {
 }
 
 func TestAnEmptyRecordAsksTheFirstQuestionFirst(t *testing.T) {
-	top, ok := Top(Compute(testSet(), nil, at("2026-10-01T00:00:00Z")))
+	top, ok := Top(Compute(testSet(), nil, nil, at("2026-10-01T00:00:00Z")))
 	if !ok || top.Reason != Onboarding || top.Module != "identity" || top.Kind != "value" {
 		t.Errorf("top = %+v %v", top, ok)
 	}
@@ -169,7 +170,7 @@ func TestAWorkingMemoryPreferenceIsAskedUnderIdentitysRule(t *testing.T) {
 		rec("personal/terse.md", "memory", "preference", nil, "2026-01-01T00:00:00Z", "", 0),
 		rec("personal/note.md", "memory", "note", nil, "2020-01-01T00:00:00Z", "", 0),
 	}
-	items := Compute(testSet(), records, now)
+	items := Compute(testSet(), records, nil, now)
 	var sawPref, sawNote bool
 	for _, it := range items {
 		sawPref = sawPref || (it.Path == "personal/terse.md" && it.Reason == Draft && it.Question == DefaultDraft)
@@ -194,7 +195,7 @@ func TestAReviewedThenStaleCrossingRecordAlsoSortsAfterNativeItems(t *testing.T)
 		rec("identity/value/v.md", "identity", "value", nil, "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z", 0),  // native, stale
 		rec("personal/terse.md", "memory", "preference", nil, "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z", 0), // crossing, reviewed long ago, stale again
 	}
-	items := Compute(testSet(), records, now)
+	items := Compute(testSet(), records, nil, now)
 	var got []string
 	for _, it := range items {
 		if it.Reason == Stale {
@@ -209,7 +210,7 @@ func TestAReviewedThenStaleCrossingRecordAlsoSortsAfterNativeItems(t *testing.T)
 func TestAPreModuleRecordIsReportedNotSkipped(t *testing.T) {
 	r := store.Stored{Path: "personal/old.md"}
 	r.LegacyType = "feedback"
-	items := Compute(testSet(), []store.Stored{r}, at("2026-10-01T00:00:00Z"))
+	items := Compute(testSet(), []store.Stored{r}, nil, at("2026-10-01T00:00:00Z"))
 	if len(items) == 0 || items[0].Reason != Stale || !strings.Contains(items[0].Question, "migrat") {
 		t.Errorf("a pre-module file should surface as a stale item saying to migrate: %+v", items)
 	}
@@ -223,7 +224,7 @@ func TestAPreModuleRecordIsReportedNotSkipped(t *testing.T) {
 func TestAMalformedRecordSurfacesAsFixByHandNotNeverReviewed(t *testing.T) {
 	r := rec("identity/value/bad.md", "identity", "value", nil, "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 0)
 	r.Malformed = []string{"reviewed"}
-	items := Compute(testSet(), []store.Stored{r}, at("2026-10-01T00:00:00Z"))
+	items := Compute(testSet(), []store.Stored{r}, nil, at("2026-10-01T00:00:00Z"))
 	if len(items) == 0 || items[0].Reason != Stale {
 		t.Fatalf("items = %+v", items)
 	}
@@ -246,7 +247,7 @@ func TestDraftsComeBeforeStaleRecordsAndAskTheDraftQuestion(t *testing.T) {
 		rec("telos/goal/g1.md", "telos", "goal", map[string]string{"id": "G1"}, "2026-09-30T00:00:00Z", "", 0),   // draft, written yesterday
 		rec("identity/value/v3.md", "identity", "value", nil, "2026-09-20T00:00:00Z", "", 0),                     // draft, older
 	}
-	items := Compute(testSet(), records, now)
+	items := Compute(testSet(), records, nil, now)
 	var got []string
 	for _, it := range items {
 		got = append(got, string(it.Reason)+":"+it.Path)
@@ -274,7 +275,7 @@ func TestPreferencesSortLastWithinEachReasonAndACrossingOneIsADraftAtOnce(t *tes
 		rec("identity/preference/old.md", "identity", "preference", nil, "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z", 0),        // stale preference
 		rec("telos/goal/g2.md", "telos", "goal", map[string]string{"id": "G2"}, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", 0), // stale goal, lower priority module
 	}
-	items := Compute(testSet(), records, now)
+	items := Compute(testSet(), records, nil, now)
 	var got []string
 	for _, it := range items {
 		if it.Reason == Draft || it.Reason == Stale {
@@ -295,7 +296,7 @@ func TestAStaleRecordWithNoInterviewPromptIsAskedTheDefault(t *testing.T) {
 	k := set.Modules[1].Kinds["current"]
 	k.Interview = ""
 	set.Modules[1].Kinds["current"] = k
-	items := Compute(set, []store.Stored{r}, at("2026-10-01T00:00:00Z"))
+	items := Compute(set, []store.Stored{r}, nil, at("2026-10-01T00:00:00Z"))
 	if len(items) == 0 || items[0].Question != DefaultInterview {
 		t.Errorf("items = %+v", items)
 	}
@@ -308,7 +309,7 @@ func TestADueFieldMakesARecordStaleOnceTheDatePasses(t *testing.T) {
 	past := rec("telos/decision/d1.md", "telos", "decision", map[string]string{"revisit": "2026-09-15"}, "2026-06-01T00:00:00Z", "2026-06-01T00:00:00Z", 0)
 	future := rec("telos/decision/d2.md", "telos", "decision", map[string]string{"revisit": "2027-01-01"}, "2026-06-01T00:00:00Z", "2026-06-01T00:00:00Z", 0)
 	reviewedAfter := rec("telos/decision/d3.md", "telos", "decision", map[string]string{"revisit": "2026-09-15"}, "2026-06-01T00:00:00Z", "2026-09-20T00:00:00Z", 0)
-	items := Compute(testSet(), []store.Stored{past, future, reviewedAfter}, now)
+	items := Compute(testSet(), []store.Stored{past, future, reviewedAfter}, nil, now)
 	var got []string
 	for _, it := range items {
 		if it.Reason == Stale {
@@ -321,7 +322,7 @@ func TestADueFieldMakesARecordStaleOnceTheDatePasses(t *testing.T) {
 }
 
 func TestOnboardingIsTheReasonsName(t *testing.T) {
-	top, _ := Top(Compute(testSet(), nil, at("2026-10-01T00:00:00Z")))
+	top, _ := Top(Compute(testSet(), nil, nil, at("2026-10-01T00:00:00Z")))
 	if top.Reason != Onboarding || string(top.Reason) != "onboarding" {
 		t.Errorf("reason = %q", top.Reason)
 	}
@@ -331,9 +332,92 @@ func TestOnboardingIsTheReasonsName(t *testing.T) {
 // an item could edit the record it was computed from.
 func TestAnItemsFieldsAreACopy(t *testing.T) {
 	r := rec("identity/value/v.md", "identity", "value", map[string]string{"statement": "s"}, "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z", 0)
-	items := Compute(testSet(), []store.Stored{r}, at("2026-10-01T00:00:00Z"))
+	items := Compute(testSet(), []store.Stored{r}, nil, at("2026-10-01T00:00:00Z"))
 	items[0].Fields["statement"] = "changed"
 	if r.Fields["statement"] != "s" {
 		t.Error("the item's fields alias the record's map")
+	}
+}
+
+func result(idx int, text string, state store.ClaimState, since string, detail string) store.ClaimResult {
+	return store.ClaimResult{Index: idx, Text: text, Adapter: "tracker", State: state, Detail: detail, Since: at(since), Recorded: at(since)}
+}
+
+// AM: failed claims head the agenda, nearest goal date first, then by how
+// long the claim has been failing; no-evidence is never on it; a goal whose
+// by date does not parse sorts last among fails rather than breaking them.
+func TestFailedClaimsHeadTheAgendaByTheGoalsDateThenByHowLongTheyHaveFailed(t *testing.T) {
+	now := at("2026-10-01T00:00:00Z")
+	claims := "- text: \"three articles\"\n  check: {adapter: tracker, min: 3}\n- text: \"a commit a fortnight\"\n  check: {adapter: forge, repo: a/b, since: -14d, min: 1}"
+	g := func(path, id, by string) store.Stored {
+		return rec(path, "telos", "goal", map[string]string{"id": id, "title": "t", "by": by, "claims": claims}, "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 0)
+	}
+	records := []store.Stored{
+		g("telos/goal/late.md", "G1", "2027-06-01"),
+		g("telos/goal/soon.md", "G2", "2026-11-01"),
+		g("telos/goal/soon2.md", "G3", "2026-11-01"),
+		g("telos/goal/odd.md", "G4", "someday"),
+		rec("identity/value/v.md", "identity", "value", nil, "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z", 0), // stale
+	}
+	results := map[string][]store.ClaimResult{
+		"telos/goal/late.md":  {result(0, "three articles", store.Fail, "2026-09-01T00:00:00Z", "1 found")},
+		"telos/goal/soon.md":  {result(0, "three articles", store.Fail, "2026-09-20T00:00:00Z", "2 found"), result(1, "a commit a fortnight", store.NoEvidence, "2026-09-20T00:00:00Z", "credential refused")},
+		"telos/goal/soon2.md": {result(1, "a commit a fortnight", store.Fail, "2026-09-10T00:00:00Z", "0 found")},
+		"telos/goal/odd.md":   {result(0, "three articles", store.Fail, "2026-01-01T00:00:00Z", "0 found")},
+	}
+	items := Compute(testSet(), records, results, now)
+	var got []string
+	for _, it := range items {
+		if it.Reason == Fail {
+			got = append(got, it.ID+":"+it.ClaimText)
+		}
+	}
+	want := "G3:a commit a fortnight,G2:three articles,G1:three articles,G4:three articles"
+	if strings.Join(got, ",") != want {
+		t.Errorf("fail order = %v, want %s", got, want)
+	}
+	if len(items) < 2 || items[0].Reason != Fail || items[len(items)-1].Reason == Fail {
+		t.Fatalf("fails come first and stale after: %+v", items)
+	}
+	if q := items[1].Question; q != `the claim "three articles" failed on 2026-09-20 (2 found). Still right? Progress since 2026-09-01?` {
+		t.Errorf("question = %q", q)
+	}
+	for _, it := range items {
+		if it.Reason == Fail && strings.Contains(it.ClaimText, "fortnight") && it.ID == "G2" {
+			t.Error("a no-evidence claim is a fault, not an agenda item")
+		}
+	}
+}
+
+// A result left over from a claim the person has since reworded matches
+// nothing on the goal and is ignored, not shown against the new wording.
+func TestAResultForAClaimThatNoLongerExistsIsIgnored(t *testing.T) {
+	now := at("2026-10-01T00:00:00Z")
+	r := rec("telos/goal/g.md", "telos", "goal", map[string]string{"id": "G1", "title": "t", "by": "2026-11-01", "claims": "- text: \"four articles\"\n  check: {adapter: tracker, min: 4}"}, "2026-09-25T00:00:00Z", "2026-09-25T00:00:00Z", 0)
+	results := map[string][]store.ClaimResult{"telos/goal/g.md": {result(0, "three articles", store.Fail, "2026-09-20T00:00:00Z", "")}}
+	for _, it := range Compute(testSet(), []store.Stored{r}, results, now) {
+		if it.Reason == Fail {
+			t.Errorf("stale result surfaced: %+v", it)
+		}
+	}
+}
+
+// A goal never reviewed is a draft, and a failed claim on it still heads the
+// agenda: the same goal appears twice, once per reason, the fail first. The
+// claim's position travels with the item even when it is the first claim, 0.
+func TestADraftGoalWithAFailedClaimIsAskedAboutTheFailFirst(t *testing.T) {
+	now := at("2026-10-01T00:00:00Z")
+	r := rec("telos/goal/g.md", "telos", "goal", map[string]string{"id": "G1", "title": "t", "by": "2026-11-01", "claims": "- text: \"three articles\"\n  check: {adapter: tracker, min: 3}"}, "2026-09-25T00:00:00Z", "", 0)
+	results := map[string][]store.ClaimResult{"telos/goal/g.md": {result(0, "three articles", store.Fail, "2026-09-20T00:00:00Z", "2 found")}}
+	items := Compute(testSet(), []store.Stored{r}, results, now)
+	if len(items) < 2 || items[0].Reason != Fail || items[1].Reason != Draft || items[0].Path != items[1].Path {
+		t.Fatalf("items = %+v", items)
+	}
+	b, _ := json.Marshal(items[0])
+	if !strings.Contains(string(b), `"claim_index":0`) || !strings.Contains(string(b), `"claim":"three articles"`) {
+		t.Errorf("the first claim's index must be on the wire: %s", b)
+	}
+	if b, _ := json.Marshal(items[1]); strings.Contains(string(b), "claim_index") {
+		t.Errorf("an item that is not about a claim carries no index: %s", b)
 	}
 }

@@ -77,6 +77,12 @@ type Store struct {
 	// modules is the loaded set every write is validated against. Nil means
 	// no validation, which only the read-only mirror uses.
 	modules *module.Set
+
+	// ValidateClaim checks one claim's arguments for its adapter at write
+	// time (spec §8.1). The kernel knows a claim's shape and whether its
+	// module declared the adapter; what the arguments mean is the adapter's.
+	// Nil means shape only.
+	ValidateClaim func(adapter string, args map[string]string) error
 }
 
 func (s *Store) SetModules(set *module.Set) { s.modules = set }
@@ -292,14 +298,17 @@ type Match struct {
 	Score float64 `json:"score" jsonschema:"fused relevance across the keyword and meaning legs; higher is better, comparable only within one result set. Not a similarity or a percentage - reciprocal rank fusion scores positions, because a keyword score and a meaning distance are not comparable quantities"`
 }
 
-// walkMarkdown visits every tracked markdown file, skipping git's own storage.
+// walkMarkdown visits every tracked markdown file, skipping git's own storage
+// and the kernel's claim results: nothing under claims/ is a record, and
+// MemoryPath would refuse any tool route back to one listed from there.
 func (s *Store) walkMarkdown(fn func(rel, full string) error) error {
+	results := filepath.Join(s.Dir, claimsDir)
 	return filepath.Walk(s.Dir, func(p string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if info.IsDir() {
-			if info.Name() == ".git" {
+			if info.Name() == ".git" || strings.EqualFold(p, results) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -584,6 +593,9 @@ func MemoryPath(rel string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if strings.HasPrefix(strings.ToLower(clean), claimsDir+"/") {
+		return "", fmt.Errorf("%s/ holds the kernel's claim results, not records (spec §8.1)", claimsDir)
+	}
 	if !strings.HasSuffix(clean, ".md") {
 		return "", fmt.Errorf("memories are markdown: %q must end in .md", rel)
 	}
@@ -736,6 +748,9 @@ func (s *Store) Write(rel string, r Record, caller string) (string, error) {
 		r.Fields = map[string]string{}
 	}
 	if err := checkFields(kind, r.Fields); err != nil {
+		return "", err
+	}
+	if err := s.checkClaims(man, r.Fields); err != nil {
 		return "", err
 	}
 	// A thread naming a core module holds a pointer only (spec §7): the

@@ -45,8 +45,9 @@ What it has instead of an event is its own operation. Spec §8.1 has results wri
 claim-result operation, with a commit subject of its own, which never changes the goal's content or
 its `updated` stamp. A plain write would have moved `updated`, and the revision line would then have
 reported every scheduled run as a revision of the goal (see [`aggregates.md`](aggregates.md)). To
-keep the history readable, a result is committed only when a claim's state changes, together with
-one record per run saying when claims last ran; the storage itself is decided in M2.
+keep the history readable, a result is committed only when a claim's state or its detail changes,
+such as a new answer from the person, into a JSON file per goal under `claims/`. The record of when claims last ran
+belongs to the scheduled run, not to the results files.
 
 ## The done-statement
 
