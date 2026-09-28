@@ -32,7 +32,8 @@ time, and records the answer.
    - **later** — not now. This counts a snooze and the record stays on the
      agenda.
 4. Call `review` with `path` = `agenda.path`, `question` = `agenda.question`
-   verbatim, the verdict, and the body and fields if corrected. Report the commit.
+   verbatim, `answer` = the person's reply verbatim, the verdict, and the
+   body and fields if corrected. Report the commit.
 4b. For an `onboarding` item, the person's answer is a new record. Call `write`
    with `path` = `<module>/<kind>/<slug>.md` (slug from the answer, lower-case,
    hyphens), `module` and `kind` from the item, `scope: global`, `fields` with
@@ -40,9 +41,10 @@ time, and records the answer.
    `problem` take `statement`; a telos `goal` takes `id`, `title`, `ideal`,
    `by`; the `write` error names anything missing), `name` and `description`
    from the answer, `body` = the answer. Then call `review` on that path with
-   `verdict: confirmed` and the first question verbatim, so the record is
-   ratified rather than rendered as "(unconfirmed)". If the person declines
-   the question, say so and move on; there is nothing to snooze.
+   `verdict: confirmed`, the first question verbatim and `answer` = the
+   person's reply verbatim, so the record is ratified rather than rendered as
+   "(unconfirmed)". If the person declines the question, say so and move on;
+   there is nothing to snooze.
 5. Call `context` again and continue from step 1 until nothing is due or the
    person says stop.
 

@@ -310,7 +310,7 @@ type writeIn struct {
 	Module      string            `json:"module,omitempty" jsonschema:"the module this record belongs to, e.g. memory; list shows what is enabled"`
 	Kind        string            `json:"kind,omitempty" jsonschema:"the module's kind, e.g. note, trap, preference, project"`
 	Fields      map[string]string `json:"fields,omitempty" jsonschema:"the kind's declared fields, required ones included; a working-memory kind has none"`
-	Scope       string            `json:"scope" jsonschema:"global, project/<slug> or machine/<host>"`
+	Scope       string            `json:"scope,omitempty" jsonschema:"global, project/<slug> or machine/<host>; defaults to global when omitted"`
 	Body        string            `json:"body" jsonschema:"the record itself, markdown, without frontmatter"`
 	Type        string            `json:"type,omitempty" jsonschema:"deprecated: the pre-module type (user, feedback, project, reference), mapped to a module and kind for one milestone; name module and kind instead"`
 }
@@ -332,6 +332,7 @@ type reviewIn struct {
 	Path     string            `json:"path" jsonschema:"the record's path, as list or context give it"`
 	Question string            `json:"question" jsonschema:"the question that was asked, verbatim; it goes into the commit"`
 	Verdict  string            `json:"verdict" jsonschema:"confirmed, corrected, retired or later"`
+	Answer   string            `json:"answer" jsonschema:"the person's answer, in their own words; it goes into the commit and is required"`
 	Body     string            `json:"body,omitempty" jsonschema:"corrected only: the new body; empty keeps the old"`
 	Fields   map[string]string `json:"fields,omitempty" jsonschema:"corrected only: fields to replace, validated like a write"`
 }
@@ -500,8 +501,8 @@ func New(d Deps, caller string, consumer bool) *mcp.Server {
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "review",
 		Description: "Answer one agenda question. The only operation that moves a record's reviewed date; the " +
-			"question and the verdict go into the commit. Verdicts: confirmed, corrected (with body and/or fields), " +
-			"retired, later (counts a snooze).",
+			"question, the verdict and the person's answer go into the commit. Verdicts: confirmed, corrected " +
+			"(with body and/or fields), retired, later (counts a snooze).",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in reviewIn) (*mcp.CallToolResult, reviewOut, error) {
 		if consumer {
 			return nil, reviewOut{}, fmt.Errorf("a consumer never reviews (spec §11)")
@@ -515,8 +516,8 @@ func New(d Deps, caller string, consumer bool) *mcp.Server {
 		if _, err := gate(d.Memory, rel, caller, false, audience, reviewScopeRefusal); err != nil {
 			return nil, reviewOut{}, err
 		}
-		commit, err := d.Memory.Review(rel, in.Question, store.Answer{
-			Verdict: store.Verdict(in.Verdict), Body: in.Body, Fields: in.Fields,
+		commit, err := d.Memory.Review(rel, store.ReviewInput{
+			Question: in.Question, Verdict: store.Verdict(in.Verdict), Answer: in.Answer, Body: in.Body, Fields: in.Fields,
 		}, caller)
 		if err != nil {
 			return nil, reviewOut{}, err
