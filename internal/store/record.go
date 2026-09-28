@@ -80,11 +80,14 @@ func yamlValue(s string) string {
 	return s
 }
 
-// writeField writes one field. A value with a newline in it is a block (spec
-// §8.1's claims): the key alone, then each line indented two spaces, which is
-// exactly what ParseFrontmatter strips back off.
+// writeField writes one field. The claims field is a block (spec §8.1): the
+// key alone, then each line indented two spaces, which is exactly what
+// ParseFrontmatter strips back off. Every other field stays one line, as it
+// always was: the summary templates, the agenda's prompts and the revision
+// line all put a field's value on a single line, and a newline there would
+// read as a second entry.
 func writeField(b *strings.Builder, k, v string) {
-	if !strings.Contains(v, "\n") {
+	if k != ClaimsField || !strings.Contains(v, "\n") {
 		fmt.Fprintf(b, "%s: %s\n", k, yamlValue(v))
 		return
 	}

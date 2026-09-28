@@ -280,7 +280,7 @@ func DescriptionLine(content string) (int, string) {
 		return 1, ""
 	}
 	for i, line := range lines[1:] {
-		if strings.TrimSpace(line) == "---" {
+		if IsDivider(line) {
 			break
 		}
 		key, _, ok := strings.Cut(line, ":")

@@ -104,11 +104,33 @@ func TestAMultiLineFieldRoundTripsThroughComposeAndParse(t *testing.T) {
 	}
 	// The no-change path compares files without their updated line; a block
 	// line that reads "---" must not end that comparison early.
-	notes := Record{Name: "g3", Description: "d", Module: "telos", Kind: "goal", Scope: "global",
-		Fields: map[string]string{"notes": "above\n---\nbelow"}}
-	a := compose(notes, Meta{Updated: at("2026-09-01T00:00:00Z")}, []string{"notes"})
-	b := compose(notes, Meta{Updated: at("2026-09-02T00:00:00Z")}, []string{"notes"})
+	divided := Record{Name: "g3", Description: "d", Module: "telos", Kind: "goal", Scope: "global",
+		Fields: map[string]string{"claims": "above\n---\nbelow"}}
+	a := compose(divided, Meta{Updated: at("2026-09-01T00:00:00Z")}, []string{"claims"})
+	b := compose(divided, Meta{Updated: at("2026-09-02T00:00:00Z")}, []string{"claims"})
 	if sansUpdated(a) != sansUpdated(b) {
 		t.Errorf("a block containing a divider defeats the no-change path:\n%s", a)
+	}
+}
+
+// Only claims is a block (ruling on the plan): every other field keeps its
+// one-line encoding, because the summary templates, the agenda's prompts and
+// the revision line all put field values on a single line.
+func TestOnlyTheClaimsFieldIsWrittenAsABlock(t *testing.T) {
+	r := Record{Name: "v", Description: "d", Module: "identity", Kind: "value", Scope: "global",
+		Fields: map[string]string{"statement": "family first\n- register: injected"}}
+	text := compose(r, Meta{Updated: at("2026-09-01T00:00:00Z")}, []string{"statement"})
+	if !strings.Contains(text, "statement: \"family first - register: injected\"\n") {
+		t.Errorf("a multi-line statement must stay one line:\n%s", text)
+	}
+	back, _ := ParseRecord(text)
+	if back.Fields["statement"] != "family first - register: injected" {
+		t.Errorf("statement read back as %q", back.Fields["statement"])
+	}
+	block := "- text: \"three articles\"\n  check: {adapter: tracker, min: 3}\n- text: \"date holds\"\n  check: {adapter: manual}"
+	r.Fields = map[string]string{ClaimsField: block}
+	back, _ = ParseRecord(compose(r, Meta{Updated: at("2026-09-01T00:00:00Z")}, []string{ClaimsField}))
+	if back.Fields[ClaimsField] != block {
+		t.Errorf("claims round trip:\n%q\nwant\n%q", back.Fields[ClaimsField], block)
 	}
 }
