@@ -1,33 +1,44 @@
 # Modules
 
-A module is a directory with a manifest, `module.json`. It declares a set of record kinds (each
-with its required and optional fields and a freshness threshold), an interview prompt per kind, a
-summary template that renders the module's part of the context block, the evidence adapters its
-claims may use, and which of the kernel's two fixed profiles it runs under —
-`working-memory` or `ratified-record`. The profile, not the manifest, decides who may write, and
-whether a record needs to be ratified before it renders. See `docs/personal-context-system-v1.md`
-§6 for the full contract.
+A module is a directory with a manifest, `module.json`. The manifest declares a set of record
+kinds, each with its required and optional fields, a freshness threshold and an interview prompt.
+It also declares a summary template that renders the module's part of the context block, the
+evidence adapters its claims may use, and which of the kernel's two fixed profiles it runs under,
+`working-memory` or `ratified-record`. The profile, not the manifest, decides who may write and
+whether a record must be confirmed by the person before it renders as theirs. Keeping those rules
+out of the manifest means no module can loosen them. Section 6 of the specification is the full
+contract.
 
-Two things a manifest cannot say, and where they are instead: a `working-memory` module has no
-budget and no summary template, because its records are searched and never rendered into the
-context block; and a core module's audience is `self` whatever the manifest says. The kernel
-refuses to start on either.
+Two things a manifest cannot say, and the kernel refuses to start if one tries:
 
-Two optional keys per kind beyond the spec's example: `first`, the question the interview asks
-when nothing of that kind is on file yet, and `timeless`, which exempts a kind from the
-working-memory freshness lint. A ratified-record module lists in `onboarding` the kinds to ask
-for, in order, when none of that kind is on file; each must carry a `first` question. Two optional keys on a working-memory module: `layout`, `free` or
-`kind`, which says whether the path rule is the store's own tree or `<module>/<kind>/<slug>.md`;
-and `legacy_types`, the map the one-time migration uses to give pre-module records a kind.
+- A `working-memory` module has no budget and no summary template, because its records are
+  searched and never rendered into the context block.
+- A core module's audience is `self`, whatever the manifest says, so that no configuration can
+  make the person's own record readable by another program.
 
-The kernel loads and validates these on startup and refuses a set it does not understand; it
-enforces the kinds on writes, and rendering the summaries lands with the context block.
+A kind may carry two optional keys. `first` is the question the interview asks when nothing of
+that kind is on file yet. `timeless` exempts a kind from the working-memory freshness lint, which
+lists any record that is neither timeless, dated nor a pointer. A
+ratified-record module lists in `onboarding` the kinds to ask for, in order, when none of that kind
+is on file, and each kind it names must carry a `first` question.
 
-Five modules ship: `memory` under `working-memory` — the assistant's per-machine working notes,
-and the only module with scope keys — and four core modules under `ratified-record`: `identity`,
-`telos`, `health` and `finance`. See §7 for what each holds.
+A working-memory module may carry two more. `layout` says whether the module's paths follow the
+store's own tree (`free`) or `<module>/<kind>/<slug>.md` (`kind`). `legacy_types` is the map the
+one-time migration uses to give records written before modules a kind.
+
+Specification v1.6 adds `lenses` and `draft` per kind and `intro` per module, for the
+conversational interview. The kernel accepts them from M2; until then it refuses them, as it
+refuses any key it does not know.
+
+The kernel loads and validates the manifests when it starts and refuses a set it does not
+understand. It enforces each module's kinds on every write and renders each ratified-record
+module's summary into the context block.
+
+Five modules ship. `memory` runs under `working-memory`: it holds the assistant's working notes,
+and it is the only module with scope keys. The four core modules, `identity`, `telos`, `health` and
+`finance`, run under `ratified-record`. Section 7 of the specification describes what each holds.
 
 Each of the four ratified-record modules ships `summary.md.tmpl`, a `text/template` over
-`internal/block.Data`. The custom functions are `first`, `date` and `age`; `text/template`'s own
-builtins (`index`, `or`, `printf` and the rest) are available as always. Nothing else is added
-deliberately.
+`internal/block.Data`. The kernel adds three functions, `first`, `date` and `age`, and adds no
+others; `text/template`'s own built-in functions, such as `index`, `or` and `printf`, are available
+as usual.

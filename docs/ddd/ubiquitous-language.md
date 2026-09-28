@@ -1,7 +1,8 @@
 # Ubiquitous language
 
-The terms Brabeus uses, grouped by the bounded context each belongs to
-([`bounded-contexts.md`](bounded-contexts.md)). **Plain wording** is how the
+This glossary lists the terms Brabeus uses, grouped by the bounded context each belongs to
+([`bounded-contexts.md`](bounded-contexts.md)). Each term has one meaning inside its context, and
+the notes after each table separate a term from the ordinary words it could be mistaken for. **Plain wording** is how the
 [plain-language description](../personal-context-system-plain.md) says it, for a reader who uses
 the system rather than builds it. **Also called** lists every other name the same concept goes by
 in the spec, the code, the tools or the plugin, including names the code still uses where this
@@ -42,8 +43,9 @@ repository is one.
 | legacy type | a record's pre-module `type`, mapped to a kind through `legacy_types`                                                                                                                                                                                                         | —                                | the `type` alias                                  |
 | notebook    | the person's own notes repository, which they and the assistant write outside the kernel; the kernel lists, reads and searches it (lexically only) as `repo: projects`, never writes it, and refuses it to consumers; the one exception to one repository per kernel instance | your notes                       | the mirror; the projects mirror                   |
 
-*Record* means one file. The whole repository is *the store*; the spec, and the name of the
-`ratified-record` mode, also call it "the record".
+*Record* means one file, and the whole repository is *the store*. The spec, and the name of the
+`ratified-record` mode, also call the whole repository "the record"; this glossary keeps the two
+apart, because a rule about one file and a rule about every file are different rules.
 
 *Memory* is the name of one module, `memory`, and part of the name of one mode, `working-memory`.
 The tools also use it for any record, and `MEMORY.md` is the index.
@@ -102,15 +104,17 @@ was built for, not what everyone has.
 | revision line      | a note that a record changed since it was last reviewed                                                                                                             | whether a goal has been quietly lowered        | —                                                  |
 
 *Review* is not code review or an inspection; it is the person answering a question. `reviewed`
-moves on `confirmed`, `corrected` and `retired`, and not on `later`. A *verdict* classifies the
-person's answer; the *answer* is what they said. `store.Answer` in the code is the review input,
-not the answer. A *verdict* is the person's; a *claim state* is an
-adapter's.
+moves on `confirmed`, `corrected` and `retired`, and not on `later`: a deferral says nothing about
+whether the record holds, so the record stays on the agenda with its snooze count (spec §9).
+
+A *verdict* classifies the person's answer, and the *answer* is what they said. `store.Answer` in
+the code is the review input, not the answer. A verdict always comes from the person; a *claim
+state* comes from an adapter.
 
 *Draft* has three senses: a never-reviewed ratified record, the agenda reason that names one, and
 the manifest key holding the question asked of one. This glossary uses *draft* for the record and
-*draft question* for the key. A crossing `memory/preference` the assistant wrote is not a draft;
-it is asked once it passes its freshness.
+*draft question* for the key. A crossing `memory/preference` the assistant wrote is not a draft:
+it is asked about only once it has been on file past its kind's freshness (spec §9).
 
 ## Interview
 
@@ -154,8 +158,11 @@ character (spec §2.3).
 | forbidden modules  | the modules a caller may not see in this session, from audience and, for search, the mode asked for                                     | —                                  | hide-set; `store.Visibility`           |
 | credential refusal | a write matching a credential shape is refused before it reaches git                                                                    | —                                  | the secrets boundary                   |
 
-*Identity* means the `identity` module, who the person is. *Scope* is where a record applies;
-*audience* is who may read its module; the two are enforced independently.
+In this glossary, *identity* means the `identity` module, which holds who the person is. The code's
+`internal/identity` package resolves callers, and is listed above under *caller*.
+
+*Scope* is where a record applies, and *audience* is who may read its module. The kernel enforces
+the two independently, because scope does not say who may read a record (spec §11).
 
 ## The session
 
@@ -186,6 +193,9 @@ checked. They are different failures in different parts of the system.
 | serves         | a goal's link to the values it serves                                                | —                                                       | —                  |
 
 ## Origins
+
+Several terms come from the prior art the spec draws on (§2). The table says where each came from
+and what changed on the way.
 
 | term                         | from                               | what changed                                                                            |
 | ---------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------- |
