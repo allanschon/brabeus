@@ -353,15 +353,15 @@ func TestParseConsumersAndCaller(t *testing.T) {
 		t.Errorf("consumers = %v", c)
 	}
 	id := fakeIdentity{name: "Exchange-Box"}
-	caller, consumer := Caller(id, c, nil)
-	if caller != "exchange-box" || !consumer {
-		t.Errorf("caller=%q consumer=%v", caller, consumer)
+	caller, consumer, ok := Caller(id, c, nil)
+	if caller != "exchange-box" || !consumer || !ok {
+		t.Errorf("caller=%q consumer=%v ok=%v", caller, consumer, ok)
 	}
-	if caller, consumer := Caller(fakeIdentity{name: "desk"}, c, nil); caller != "desk" || consumer {
-		t.Errorf("own machine: caller=%q consumer=%v", caller, consumer)
+	if caller, consumer, ok := Caller(fakeIdentity{name: "desk"}, c, nil); caller != "desk" || consumer || !ok {
+		t.Errorf("own machine: caller=%q consumer=%v ok=%v", caller, consumer, ok)
 	}
-	if _, consumer := Caller(fakeIdentity{}, c, nil); !consumer {
-		t.Error("an unresolved caller is a consumer")
+	if _, _, ok := Caller(fakeIdentity{}, c, nil); ok {
+		t.Error("an unresolved caller is not ok")
 	}
 }
 
@@ -526,6 +526,49 @@ func TestRenderContextEndToEnd(t *testing.T) {
 	}
 	if !strings.HasPrefix(text, "agenda: nothing due\n") || top != nil || strings.Contains(text, "identity:") || strings.Contains(text, "family") {
 		t.Errorf("a consumer sees no self module and is asked nothing:\n%s", text)
+	}
+}
+
+// AQ: an unidentified caller is refused before any tool runs. Fail closed: an
+// own session whose lookup fails gets a clear error, not a quietly reduced view.
+func TestAnUnidentifiedCallerIsRefusedBeforeAnyTool(t *testing.T) {
+	if _, _, ok := Caller(fakeIdentity{}, nil, nil); ok {
+		t.Error("an empty machine name must not be ok")
+	}
+	h := RefuseUnidentified(okHandler(), fakeIdentity{}, nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("POST", "/mcp", nil))
+	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "not identified") {
+		t.Errorf("status %d body %q", w.Code, w.Body.String())
+	}
+	h = RefuseUnidentified(okHandler(), fakeIdentity{name: "desk"}, nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("POST", "/mcp", nil))
+	if w.Code != http.StatusTeapot {
+		t.Errorf("a named caller must reach the handler: %d", w.Code)
+	}
+}
+
+// AC, §11: the modules tool lists to a caller only the modules it may read,
+// with their kinds, lenses, drafts and intros — the interview's scaffolding.
+func TestTheModulesToolWithholdsWhatTheCallerMayNotRead(t *testing.T) {
+	set := testSet(t)
+	own := modulesFor(set, audienceFor(set, false))
+	if len(own.Modules) != 4 {
+		t.Errorf("own session sees every enabled module: %+v", own)
+	}
+	var identity *moduleOut
+	for i := range own.Modules {
+		if own.Modules[i].Name == "identity" {
+			identity = &own.Modules[i]
+		}
+	}
+	if identity == nil || identity.Intro == "" || len(identity.Kinds["register"].Lenses) < 2 || identity.Onboarding[0] != "register" {
+		t.Errorf("identity as served: %+v", identity)
+	}
+	cons := modulesFor(set, audienceFor(set, true))
+	if len(cons.Modules) != 0 {
+		t.Errorf("every shipped module is self; a consumer sees none, not even a name: %+v", cons)
 	}
 }
 

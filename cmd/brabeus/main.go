@@ -150,20 +150,22 @@ func main() {
 		}
 	}()
 
+	// RefuseUnidentified sits closest to each handler (spec §11): a caller the
+	// identity mode cannot name never reaches tool dispatch or the block,
+	// whether or not auth is also configured.
 	mcpHandler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
-		caller, consumer := server.Caller(id, consumers, r)
-		server.LogUnresolvedCaller(caller, r.RemoteAddr)
+		caller, consumer, _ := server.Caller(id, consumers, r)
 		return server.New(deps, caller, consumer)
 	}, nil)
 
 	authMode, authToken := env("BRABEUS_AUTH_MODE", "none"), os.Getenv("BRABEUS_AUTH_TOKEN")
-	guarded, err := server.AuthMiddleware(mcpHandler, authMode, authToken)
+	guarded, err := server.AuthMiddleware(server.RefuseUnidentified(mcpHandler, id, consumers), authMode, authToken)
 	if err != nil {
 		log.Fatalf("auth: %v", err)
 	}
 	// /context serves the same block a session's SessionStart hook wants, so
 	// it needs the same identity and auth boundary as /mcp, not a lighter one.
-	ctxGuarded, err := server.AuthMiddleware(server.ContextHandler(deps, id, consumers), authMode, authToken)
+	ctxGuarded, err := server.AuthMiddleware(server.RefuseUnidentified(server.ContextHandler(deps, id, consumers), id, consumers), authMode, authToken)
 	if err != nil {
 		log.Fatalf("auth: %v", err)
 	}
