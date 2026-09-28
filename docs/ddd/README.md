@@ -1,11 +1,14 @@
 # Domain-driven design
 
-Brabeus described in the terms of domain-driven design: the language it uses, the contexts that
-language holds in, what changes together, what must always be true, and which facts other parts
-react to. They sit beside the [specification](../personal-context-system-v1.md), the
-[C4 diagrams](../personal-context-system-c4.md) and the
-[plain-language description](../personal-context-system-plain.md); where they disagree with the
-specification, the specification is the design and these say where the code differs.
+These documents describe Brabeus in the terms of domain-driven design: the language it uses, the
+contexts in which that language holds, what changes together, what must always be true, and which
+facts other parts of the system react to. They sit beside the
+[specification](../personal-context-system-v1.md), the [C4 diagrams](../personal-context-system-c4.md)
+and the [plain-language description](../personal-context-system-plain.md).
+
+The specification is the design. Where these documents find the code doing something the
+specification does not say, they record the difference rather than treating the code as the
+authority, so that a reader can tell a deliberate rule from an accident of implementation.
 
 | document                                      | answers                                                                               |
 | --------------------------------------------- | ------------------------------------------------------------------------------------- |
