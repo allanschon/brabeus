@@ -138,8 +138,8 @@ func Reflect(set *module.Set, records []store.Stored, results map[string][]store
 		if !r.Retired.IsZero() || r.Kind != goalKind {
 			continue
 		}
-		if _, _, ok := set.RuleFor(r.Module, r.Kind); !ok {
-			continue // not governed by a ratified module
+		if !set.Interviewed(r.Module, r.Kind) {
+			continue // not governed by a ratified module (module.Set.Interviewed)
 		}
 		gap := goalGap(r, now, results[r.Path])
 		matched := false

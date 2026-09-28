@@ -380,3 +380,34 @@ func TestReviewRefusesARecordWithAMalformedKernelKey(t *testing.T) {
 		t.Errorf("the file changed on a refused review:\n%s", got)
 	}
 }
+
+// LessByReview is the review-order comparator block.Data.Kind and
+// agenda.Reflect both sort by (C7): confirmed first, most recently reviewed
+// first; unreviewed after every confirmed record, most recently updated
+// first.
+func TestLessByReviewOrdersConfirmedFirstThenMostRecentlyReviewedThenUnreviewedByUpdated(t *testing.T) {
+	at := func(s string) time.Time { tm, _ := time.Parse(time.RFC3339, s); return tm }
+	older := Stored{Meta: Meta{Reviewed: at("2026-01-01T00:00:00Z")}}
+	newer := Stored{Meta: Meta{Reviewed: at("2026-06-01T00:00:00Z")}}
+	draftOld := Stored{Meta: Meta{Updated: at("2026-01-01T00:00:00Z")}}
+	draftNew := Stored{Meta: Meta{Updated: at("2026-06-01T00:00:00Z")}}
+
+	if !LessByReview(newer, older) {
+		t.Error("a more recently reviewed record must sort before an older one")
+	}
+	if LessByReview(older, newer) {
+		t.Error("an older review must not sort before a more recent one")
+	}
+	if !LessByReview(older, draftNew) {
+		t.Error("any confirmed record must sort before any unreviewed one")
+	}
+	if LessByReview(draftNew, older) {
+		t.Error("an unreviewed record must not sort before a confirmed one")
+	}
+	if !LessByReview(draftNew, draftOld) {
+		t.Error("among unreviewed records, the more recently updated one must sort first")
+	}
+	if LessByReview(draftOld, draftNew) {
+		t.Error("an older draft must not sort before a more recently updated one")
+	}
+}

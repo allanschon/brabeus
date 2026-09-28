@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/allanschon/brabeus/internal/module"
 	"github.com/allanschon/brabeus/internal/store"
 )
 
@@ -44,5 +45,26 @@ func TestReflectGroupsGoalsByTheValuesTheyServeAndListsTheRest(t *testing.T) {
 	}
 	if len(ref.Unknown) != 1 || ref.Unknown[0] != "health" {
 		t.Errorf("unknown = %v; a name matching no live value is reported, not dropped", ref.Unknown)
+	}
+}
+
+// RuleFor alone returns ok=true for a working-memory module's own kind (a
+// zero Kind, an uninterviewed manifest); Reflect must also check
+// Bundle().Interviewed — through module.Set.Interviewed — or a working-memory
+// kind named "goal" would be read as one of the person's goals.
+func TestReflectExcludesAGoalKindGovernedByAWorkingMemoryModule(t *testing.T) {
+	set := &module.Set{Modules: []module.Manifest{
+		{Name: "identity", Profile: module.RatifiedRecord, Priority: 5,
+			Kinds: map[string]module.Kind{"value": {Fields: []string{"statement"}}}},
+		{Name: "memory", Profile: module.WorkingMemory, Priority: 20, Layout: "free",
+			Kinds: map[string]module.Kind{"goal": {}}},
+	}}
+	records := []store.Stored{
+		rec("identity/value/craft.md", "identity", "value", map[string]string{"statement": "craft"}, "2026-06-01T00:00:00Z", "2026-06-01T00:00:00Z", 0),
+		rec("memory/goal/g1.md", "memory", "goal", map[string]string{"id": "G1", "title": "Not a real goal"}, "2026-06-01T00:00:00Z", "", 0),
+	}
+	ref := Reflect(set, records, nil, at("2026-10-01T00:00:00Z"))
+	if len(ref.Values[0].Goals) != 0 || len(ref.Unserved) != 0 {
+		t.Errorf("a working-memory goal is not interviewed; it must not appear at all: values=%+v unserved=%+v", ref.Values, ref.Unserved)
 	}
 }

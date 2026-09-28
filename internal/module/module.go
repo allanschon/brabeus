@@ -351,6 +351,22 @@ func (s *Set) Profiles() []Profile {
 	return out
 }
 
+// Interviewed reports whether a record of this module and kind is governed
+// by a ratified-record module — the check `RuleFor`'s own doc comment warns
+// a caller to make (`Bundle().Interviewed` on the returned manifest), folded
+// into one predicate so the two kernel packages that need it (store's
+// review gate and the server's claims/reflect tools) cannot each get it
+// half right: RuleFor alone returns ok=true for a working-memory module's
+// own kind too, with a zero Kind and an uninterviewed manifest.
+func (s *Set) Interviewed(mod, kind string) bool {
+	gov, _, ok := s.RuleFor(mod, kind)
+	if !ok {
+		return false
+	}
+	bundle, _ := gov.Profile.Bundle()
+	return bundle.Interviewed
+}
+
 // RuleFor names the manifest and kind that govern a record: its own module
 // and kind when that module's profile is interviewed; for a working-memory
 // record whose kind is in Crossing, the ratified module it is reviewed
