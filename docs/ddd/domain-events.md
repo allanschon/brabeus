@@ -61,7 +61,9 @@ claim results, rather than the work they describe, were to become evidence for a
 
 Because the git history is the event log, its commit subjects are the only record of which kind of
 change happened. Spec §9's revision line — "target lowered from 3 to 2 on 2026-09-04" — is built by
-reading that history, so from M2 the kernel will consume its own commits as events.
+reading that history: `store.Revision` walks a record's commits back to its last `review …`
+subject, diffs the field values at that commit against the file now, and reads the kernel's own
+`updated` for the date. So, from M2, the kernel consumes its own commits as events.
 
 The subjects have four shapes: `<module>/<kind>: <name>`, `review <module>/<kind> <name>:
 <verdict>`, `delete <module>/<kind> <name>` and `migrate: tag <n> records …`. The delete commit

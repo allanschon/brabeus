@@ -174,27 +174,51 @@ type Stored struct {
 	Path string
 	Record
 	Meta
+	// Revision is the field-level change since the record's last review
+	// (spec §9), filled below only for a record whose updated follows its
+	// reviewed — the one case Revision itself does any work for.
+	Revision string
 }
 
 // Records enumerates every record with its metadata. The index and the
 // conventions file are structure, not records. Pre-module files are included
 // with Module empty, so the agenda can say "migrate first" rather than
 // silently skipping them.
+//
+// The walk runs under the store's lock, but Revision is called after that
+// lock is released — collected first, computed after — because Revision
+// takes the lock itself; calling it from inside the walk would deadlock.
 func (s *Store) Records() ([]Stored, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	var out []Stored
-	err := s.walkMarkdown(func(rel, full string) error {
-		if strings.EqualFold(rel, indexFile) || strings.EqualFold(rel, conventionsFile) {
+	err := func() error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.walkMarkdown(func(rel, full string) error {
+			if strings.EqualFold(rel, indexFile) || strings.EqualFold(rel, conventionsFile) {
+				return nil
+			}
+			b, err := os.ReadFile(full)
+			if err != nil {
+				return nil
+			}
+			r, meta := ParseRecord(string(b))
+			out = append(out, Stored{Path: rel, Record: r, Meta: meta})
 			return nil
+		})
+	}()
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if out[i].Reviewed.IsZero() || !out[i].Updated.After(out[i].Reviewed) {
+			continue
 		}
-		b, err := os.ReadFile(full)
-		if err != nil {
-			return nil
+		// A git failure here must not fail the whole listing: the agenda
+		// falls back to the M1 stamp wording when Revision is empty, so
+		// degrading to that line is the right outcome, not an error.
+		if line, err := s.Revision(out[i].Path, out[i].Meta); err == nil {
+			out[i].Revision = line
 		}
-		r, meta := ParseRecord(string(b))
-		out = append(out, Stored{Path: rel, Record: r, Meta: meta})
-		return nil
-	})
-	return out, err
+	}
+	return out, nil
 }

@@ -107,6 +107,21 @@ func TestARevisionSinceTheLastReviewIsNamed(t *testing.T) {
 	}
 }
 
+// When Records() (M2) has already filled Stored.Revision with the
+// field-level line read from git, Compute must pass it through verbatim
+// rather than recompute the M1 two-stamp wording from Updated/Reviewed —
+// even though those stamps are present and would otherwise produce a
+// different string.
+func TestAStoredRevisionIsPreferredOverTheStampFallback(t *testing.T) {
+	now := at("2026-10-01T00:00:00Z")
+	r := rec("telos/goal/g1.md", "telos", "goal", nil, "2026-09-04T00:00:00Z", "2026-05-01T00:00:00Z", 0)
+	r.Revision = "by moved from 2026-10-01 to 2026-12-01 on 2026-09-04"
+	items := Compute(testSet(), []store.Stored{r}, now)
+	if len(items) == 0 || items[0].Revision != r.Revision {
+		t.Errorf("items[0].Revision = %q, want the stored line %q", items[0].Revision, r.Revision)
+	}
+}
+
 func TestRetiredRecordsAreNeverAsked(t *testing.T) {
 	r := rec("identity/value/v.md", "identity", "value", nil, "2020-01-01T00:00:00Z", "2020-01-01T00:00:00Z", 0)
 	r.Retired = at("2026-01-01T00:00:00Z")
