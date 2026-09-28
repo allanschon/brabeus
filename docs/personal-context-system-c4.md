@@ -1,8 +1,9 @@
 # The personal context system — C4 diagrams
 
-Companion to [`personal-context-system-v1.md`](personal-context-system-v1.md) at v1.5. These
+Companion to [`personal-context-system-v1.md`](personal-context-system-v1.md) at v1.6. These
 diagrams say the same thing as the spec at four altitudes; where they disagree, the spec wins.
-Names are the spec's descriptive ones. Written 2026-09-26; the kernel through M1's record, migration, review and agenda is built, and the context block, plugin changes and deployment are in progress.
+Names are the spec's descriptive ones. M1 is built; the conversational interview of the fourth
+diagram arrives with M2.
 
 The diagrams follow the [C4 model](https://c4model.com/): a context diagram for who uses the
 system and what it talks to; a container diagram for the separately deployable pieces; a
@@ -142,12 +143,12 @@ flowchart LR
         review["<b>Review</b><br/><i>question + answer into the commit;<br/>the only path that moves reviewed</i>"]
         claims["<b>Claims runner</b><br/><i>declared adapters, data-only arguments;<br/>pass · fail · no-evidence, each timestamped</i>"]
         adapters["<b>Adapters</b><br/><i>tracker · forge · date · manual;<br/>one implementation per backend</i>"]
-        agenda["<b>Agenda</b><br/><i>fails first, then stale by priority and age;<br/>snoozes counted; no-evidence excluded</i>"]
+        agenda["<b>Agenda</b><br/><i>fails, then drafts, then stale by priority and age,<br/>then onboarding; snoozes counted; no-evidence excluded</i>"]
         context["<b>Context renderer</b><br/><i>agenda line in reserved space,<br/>then module templates in priority order;<br/>2 KB hard cap; per-module budgets;<br/>overflow refused, never truncated</i>"]
         view["<b>View</b><br/><i>the same render as HTML, plus freshness,<br/>claim state, revision lines, snooze counts,<br/>manual fraction; read-only; loopback</i>"]
     end
 
-    mcp[/"MCP endpoint<br/>search · read · list · write · review · context"/]
+    mcp[/"MCP endpoint<br/>search · read · list · write · review · context · modules"/]
     health[/"/healthz + the four silent failures"/]
 
     mcp --> identity --> audience
@@ -169,6 +170,7 @@ flowchart LR
     freshlint --> store
     freshlint --> health
     modloader --> health
+    mcp -. "modules: the manifests, read-only" .-> modloader
 
     classDef comp fill:#85bbf0,stroke:#5d82a8,color:#000
     classDef iface fill:#fff,stroke:#5d82a8,color:#000
@@ -185,8 +187,8 @@ any other write.
 
 ## Level 4 — the interview, as a dynamic diagram
 
-The one flow that makes the system more than a notebook. The kernel makes both decisions — what
-to ask, what counts as reviewed — and the assistant asks and listens (spec §9).
+The one flow that makes the system more than a notebook. The kernel makes two decisions — what is
+due, and what counts as reviewed — and the assistant holds the conversation around them (spec §9).
 
 ```mermaid
 sequenceDiagram
@@ -204,17 +206,22 @@ sequenceDiagram
 
     Note over A,K: every session start
     A->>K: context
-    K->>K: compute agenda: fails first, then stale by priority and age
+    K->>K: compute agenda: fails, drafts, stale by priority and age, onboarding
     K-->>A: 2 KB block, first line is the top agenda item with its question and, if revised since last reviewed, its revision line
     A-->>P: the line is in context, and the assistant may voice it
 
     Note over P,K: /interview, or the person picks up the first line
+    A->>K: context, modules
+    K-->>A: the agenda, and every enabled module's kinds, fields, lenses and intro
+    A->>A: mode: getting to know the person while any onboarding item remains, else a check-in
     loop until the person says enough, stop, or later
-        A->>P: the kernel's top item, phrased as its kind's question
-        P-->>A: confirmed / corrected / retired / later
-        A->>K: review(record, question, answer)
-        K->>K: write the answer into the commit, move reviewed, count a snooze on later
-        K-->>A: next agenda item
+        A->>P: a topic's lens, or the top agenda item, in the person's register
+        P-->>A: an answer, as long and as wandering as they like
+        A->>K: write a draft for each thing the answer holds, in any module, and a thread for what no module holds
+        A->>P: the drafts, the interviewer's own inferences labelled, challenges where warranted
+        P-->>A: confirmed / corrected / retired / later, in their own words
+        A->>K: review(record, question, verdict, answer), once per draft
+        K->>K: write question, verdict and answer into the commit, then move reviewed or count a snooze
     end
 
     A->>K: reflect
@@ -222,11 +229,12 @@ sequenceDiagram
     A-->>P: the gap, grouped by what the person said matters
 ```
 
-Three things the sequence makes visible that prose can hide. The scheduler and the session never
-touch each other; they meet only in the store. The assistant never decides what to ask — every
-question it voices came from the kernel with the record it belongs to. And `reviewed` moves at
-exactly one step, on a call that carries the question and the answer, so the record's history
-can be read as a list of things the person was asked and said.
+Four things the sequence makes visible that prose can hide. The scheduler and the session never
+touch each other; they meet only in the store. The kernel decides what is due, and the assistant
+decides how to ask about it. Drafts reach the store before anything is confirmed, so a stop in the
+middle loses nothing and the next session's agenda opens on them. And `reviewed` moves at exactly
+one step, on a call that carries the question, the verdict and the person's words, so the record's
+history can be read as a list of things the person was asked and said.
 
 ## What is deliberately not drawn
 
