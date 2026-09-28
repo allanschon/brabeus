@@ -573,7 +573,7 @@ know you* while any enabled `ratified-record` module still has an onboarding ite
 - A *check-in* opens with the top agenda item and follows the conversation from there, returning
   to the agenda when a thread runs out.
 
-In both an answer is sorted into as many drafts as it contains, across kinds and modules,
+Either way, an answer is sorted into as many drafts as it contains, across kinds and modules,
 and each draft is written at once as an unconfirmed record, in the person's words; a draft may be
 rewritten until it is confirmed. What the person volunteers is handled the same way, whether or
 not anything asked for it. What no enabled module can hold becomes a `memory/thread` naming the
