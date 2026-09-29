@@ -54,7 +54,8 @@ The tools call a record a memory, a name that predates modules.
 - `read` returns one record in full, or a file from the notebook, the person's own notes. Only the
   person's own sessions can read the notebook.
 - `search` ranks records by relevance, by keyword and, when an embedding sidecar is running, by
-  meaning; the notebook is searched by keyword only. It searches working-memory records by default, because ratified records already reach
+  meaning; the notebook is searched by keyword only unless `BRABEUS_NOTEBOOK_EMBED` is set, in
+  which case it gets the same dense leg. It searches working-memory records by default, because ratified records already reach
   every session through the context block. `profile: ratified-record` or `all` widens the search,
   and naming a module widens it for that module alone.
 - `write` saves a record.
@@ -64,7 +65,8 @@ The tools call a record a memory, a name that predates modules.
   ratified record. It is the only operation that moves a record's `reviewed` date, so a
   `reviewed` date always means the person was asked and answered.
 
-`read` and `search` reach the notebook with the argument `repo: projects`.
+`read` and `search` reach the notebook with the argument `repo: notebook` (`repo: projects` still
+works, the name it used before this milestone).
 
 ## The context block
 
