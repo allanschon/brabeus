@@ -1,0 +1,5 @@
+schema_version: "1.1"
+name: judged-stop-asks-nothing-more
+tags: [interview, judged]
+context:
+  scaffold_script: scaffold.sh

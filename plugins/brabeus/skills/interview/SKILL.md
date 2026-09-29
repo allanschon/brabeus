@@ -144,6 +144,13 @@ themselves. Say it in the draft too — "date suggested by the interviewer" in t
 when the person takes it up in their own words, rewrite the draft without the label before
 it is confirmed.
 
+Say it to the person before you ask them to approve, not only in the draft, which they do
+not see. When you show a draft for approval, name in the same question what in it is
+yours: "31 December is my guess at 'by December', G1 is only a label, and linking it to
+craft was my idea; is the goal right as written?" That question goes into the review, so
+the record shows they were told. Show the draft as you wrote it; a draft you describe in
+other words is not the one they are approving.
+
 Challenge where it helps, once and plainly:
 
 - something in the wrong kind: a goal stated as a value, a problem stated as a goal;
@@ -168,8 +175,11 @@ Each approval is one `review` per draft:
   once, the question you asked of them all;
 - `verdict`: `confirmed` if it is right as written; `corrected`, with the new `body` and
   the changed `fields`, if they reword it; `retired` if it should not be there at all;
-- `answer`: the person's reply in their own words. It goes into the history, so the
-  confirmation can be read back later.
+- `answer`: the person's reply, exactly as they gave it, and nothing else. It goes into the
+  history, so the confirmation can be read back later as theirs. Never add your own words:
+  no summary, no note of what you asked, nothing in brackets. If the answer took two
+  replies (a follow-up question about the date, say), give both replies, joined with a
+  space, and put what you asked in `question`.
 
 **Never `review` without the person's answer in this conversation.** A confirmation you
 inferred is exactly what the record exists to prevent.
@@ -221,3 +231,8 @@ confirmed (`-1` means never). Then the goals that serve no value, and any `serve
 that matched no value. Keep it short and say the gap without judgement: *"You said family
 matters most; the two goals that serve it have not been confirmed in three months, and the
 three that serve craft are all on track."* The person draws the conclusion.
+
+The reflection says only what the person said or confirmed as theirs. Anything of yours
+that is on file stays labelled as yours when you mention it: "G1, by 31 December — the date
+I suggested", not "G1, by 31 December". Quote a value or a goal in the words on file, not in
+a rewording of your own.
