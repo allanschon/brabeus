@@ -506,7 +506,7 @@ func TestRenderContextEndToEnd(t *testing.T) {
 	later := time.Now().Add(400 * 24 * time.Hour)
 	d := Deps{Memory: st, Set: set, Block: renderer, Now: func() time.Time { return later }}
 
-	text, faults, top, err := RenderContext(d, "desk", false)
+	text, faults, top, err := RenderContext(d, "desk", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -521,12 +521,77 @@ func TestRenderContextEndToEnd(t *testing.T) {
 		t.Errorf("another machine's record leaked into the block:\n%s", text)
 	}
 
-	text, _, top, err = RenderContext(d, "desk", true)
+	text, _, top, err = RenderContext(d, "desk", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasPrefix(text, "agenda: nothing due\n") || top != nil || strings.Contains(text, "identity:") || strings.Contains(text, "family") {
 		t.Errorf("a consumer sees no self module and is asked nothing:\n%s", text)
+	}
+}
+
+// A record scoped to a project renders only inside that project: the M1
+// finding this task fixes was a project-scoped record rendering in every
+// project, because the block had no notion of "the caller's own project" to
+// compare against. Claims and reflect are untouched (K14): they keep
+// scope.Visible and answer about the whole record.
+func TestAProjectScopedRecordRendersOnlyInItsProject(t *testing.T) {
+	st := newServerStore(t)
+	set := testSet(t)
+	renderer, err := block.New(set)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Write("identity/value/family.md", store.Record{Name: "family", Description: "family first", Module: "identity", Kind: "value", Scope: "project/example--repo",
+		Fields: map[string]string{"statement": "family first"}, Body: "family first"}, "desk"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Review("identity/value/family.md", store.ReviewInput{Question: "Still one of the things you weigh decisions against?", Verdict: store.Confirmed, Answer: "yes"}, "desk"); err != nil {
+		t.Fatal(err)
+	}
+	d := Deps{Memory: st, Set: set, Block: renderer, Now: time.Now}
+
+	text, _, _, err := RenderContext(d, "desk", "example--repo", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "family first") {
+		t.Errorf("a project-scoped record must render inside its own project:\n%s", text)
+	}
+
+	text, _, _, err = RenderContext(d, "desk", "other--repo", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(text, "family first") {
+		t.Errorf("a project-scoped record leaked into a different project:\n%s", text)
+	}
+
+	text, _, _, err = RenderContext(d, "desk", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(text, "family first") {
+		t.Errorf("a project-scoped record leaked outside any project:\n%s", text)
+	}
+}
+
+// GET /context refuses a malformed project rather than letting it reach the
+// filter: the value arrives from the network, so the boundary check runs
+// before scope.VisibleIn ever sees it.
+func TestContextHandlerRefusesAMalformedProject(t *testing.T) {
+	st := newServerStore(t)
+	set := testSet(t)
+	renderer, err := block.New(set)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := Deps{Memory: st, Set: set, Block: renderer, Now: time.Now}
+	h := ContextHandler(d, fakeIdentity{name: "desk"}, nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/context?project=not-a-slug", nil))
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "§5") {
+		t.Errorf("status=%d body=%q", w.Code, w.Body.String())
 	}
 }
 
@@ -713,7 +778,7 @@ func TestClaimResultRecordsAManualAnswerWithoutAReview(t *testing.T) {
 	if len(listed.Claims) != 3 || listed.Claims[1].State != "fail" || listed.Claims[1].Detail != "January, confirmed in writing" {
 		t.Errorf("claims = %+v", listed)
 	}
-	_, _, top, err := RenderContext(d, "desk", false)
+	_, _, top, err := RenderContext(d, "desk", "", false)
 	if err != nil || top == nil || top.Reason != agenda.Fail || top.ClaimText != "date holds" || top.ClaimIndex == nil || *top.ClaimIndex != 1 {
 		t.Errorf("a failed manual claim heads the agenda: %+v %v", top, err)
 	}
