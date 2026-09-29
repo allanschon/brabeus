@@ -1,6 +1,9 @@
 {
   "brabeus": {
     "type": "http",
-    "url": "${BRABEUS_URL}/mcp"
+    "url": "${BRABEUS_URL:-}${EVAL_BRABEUS_URL:-}/mcp",
+    "headers": {
+      "Authorization": "Bearer ${BRABEUS_TOKEN:-}${EVAL_BRABEUS_TOKEN:-}"
+    }
   }
 }

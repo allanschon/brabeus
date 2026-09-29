@@ -176,9 +176,10 @@ plugin's `.mcp.json` appends `/mcp` to it for the tools, and the SessionStart ho
 `bash plugins/brabeus/hooks/test.sh`, which checks that the machine has the tools they need: bash,
 jq, curl and python3.
 
-Set `BRABEUS_TOKEN` if your kernel identifies callers by token; the hooks send it as
-`Authorization: Bearer $BRABEUS_TOKEN`. Leave it unset where the network itself identifies the
-caller, and no header is sent.
+Set `BRABEUS_TOKEN` if your kernel identifies callers by token; the hooks and the MCP registration
+send it as `Authorization: Bearer $BRABEUS_TOKEN`. Leave it unset where the network itself
+identifies the caller. The hooks then send no header, and the MCP registration sends an empty
+`Bearer `, which a kernel that does not use tokens ignores.
 
 Every session start fetches the kernel's context block and puts it first in the session's
 context, with a three-sentence routing reminder under it. If the kernel is unreachable, the

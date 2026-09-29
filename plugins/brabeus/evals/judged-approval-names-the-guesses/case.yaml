@@ -1,0 +1,5 @@
+schema_version: "1.1"
+name: judged-approval-names-the-guesses
+tags: [interview, judged]
+context:
+  scaffold_script: scaffold.sh
