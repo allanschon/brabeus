@@ -11,9 +11,12 @@ import (
 	"github.com/allanschon/brabeus/internal/store"
 )
 
-// Vikunja counts tasks by label and date. It pages /tasks/all and filters
-// itself: measured 2026-09-28, Vikunja 2.5.0 answered 400 to every filter=
-// form tried, and a personal tracker is a few hundred tasks.
+// Vikunja counts tasks by label and date. It pages /tasks, which lists
+// across every project the token's user can see, and filters itself:
+// measured 2026-09-28, Vikunja 2.5.0 answered 400 to every filter= form
+// tried, and a personal tracker is a few hundred tasks. /tasks/all is not a
+// listing route on 2.5.0: it is read as the single-task route with "all" as
+// the id, so it 400s or 401s instead of paging.
 type Vikunja struct {
 	URL, Token string
 	Client     *http.Client
@@ -54,7 +57,7 @@ func (v *Vikunja) Check(ctx context.Context, args map[string]string, now time.Ti
 	count, seenLabel, limit := 0, false, pageLimit(v.maxPages)
 	for page := 1; page <= limit; page++ {
 		var tasks []vikunjaTask
-		endpoint := fmt.Sprintf("%s/api/v1/tasks/all?per_page=%d&page=%d", v.URL, perPage, page)
+		endpoint := fmt.Sprintf("%s/api/v1/tasks?per_page=%d&page=%d", v.URL, perPage, page)
 		if o, err := get(ctx, v.Client, endpoint, map[string]string{"Authorization": "Bearer " + v.Token}, &tasks); err != nil {
 			return Outcome{}, err
 		} else if o != nil {

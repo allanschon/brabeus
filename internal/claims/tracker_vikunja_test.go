@@ -20,7 +20,13 @@ func vikunjaServer(t *testing.T, token string, pages ...string) *httptest.Server
 			http.Error(w, `{"message":"unauthorized"}`, http.StatusUnauthorized)
 			return
 		}
-		if r.URL.Path != "/api/v1/tasks/all" {
+		if r.URL.Path == "/api/v1/tasks/all" {
+			// The real 2.5.0 server reads "all" as a task id, not a listing
+			// route, and answers 400 rather than a page of tasks.
+			http.Error(w, `{"message":"Invalid model provided.","code":1002}`, http.StatusBadRequest)
+			return
+		}
+		if r.URL.Path != "/api/v1/tasks" {
 			http.NotFound(w, r)
 			return
 		}
@@ -69,6 +75,21 @@ func TestVikunjaFailsALabelItKnowsWithNothingInTheWindow(t *testing.T) {
 	out, err := v.Check(context.Background(), map[string]string{"label": "chore", "since": "2026-09-15", "min": "1"}, now)
 	if err != nil || out.State != store.Fail || out.Detail != "0 found" {
 		t.Errorf("chore since 2026-09-15: %+v %v", out, err)
+	}
+}
+
+// Vikunja 2.5.0 reads /tasks/all as the single-task route with "all" as the
+// id, not a listing route, and answers 400 to it; the fake server here does
+// the same, so a regression back to that path fails this test with an HTTP
+// error instead of quietly returning no-evidence.
+func TestVikunjaPagesTheListingRouteNotTheSingleTaskRoute(t *testing.T) {
+	srv := vikunjaServer(t, "tok", tasksPage1, tasksPage2)
+	defer srv.Close()
+	v := &Vikunja{URL: srv.URL, Token: "tok", Client: srv.Client(), perPage: 4}
+	now := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	out, err := v.Check(context.Background(), map[string]string{"label": "article", "since": "2026-07-01", "min": "2"}, now)
+	if err != nil || out.State != store.Pass {
+		t.Errorf("expected /api/v1/tasks to page cleanly: %+v %v", out, err)
 	}
 }
 
