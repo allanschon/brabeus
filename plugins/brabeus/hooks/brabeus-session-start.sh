@@ -7,8 +7,10 @@
 #   2. fetch the kernel's profiles from /healthz and write them where the write
 #      guard reads them, so the guard's decision this session matches the
 #      kernel's modules;
-#   3. fetch /context and emit it as the session's first context, with a
-#      three-sentence routing reminder under it.
+#   3. fetch /context, scoped to this session's project when the cwd names
+#      one, and emit it as the session's first context, with a routing
+#      reminder under it that states the session's own scope keys rather than
+#      leaving the model to guess them.
 #
 # BEST EFFORT, ALWAYS. A session must start whether or not the kernel is up,
 # so every step is bounded by a timeout and every failure is non-fatal. The
@@ -25,6 +27,45 @@ mkdir -p "$OUTBOX" 2>/dev/null || true
 # session's profiles file in step 3. Empty stdin (`printf '' | ... `) is fine:
 # jq prints nothing and $sid stays empty.
 sid=$(jq -r '.session_id // empty' 2>/dev/null || true)
+
+# The session's own scope keys (spec §4.2, §5), resolved here so the routing
+# text below states them rather than asking the model to guess a slug.
+#
+# machine/<host>: the local hostname, lowercased and trimmed the way the
+# kernel's scope package normalises every machine name it compares.
+MACHINE=$(hostname 2>/dev/null | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+
+# project/<owner>--<repo>: computed from the cwd's git remote, ssh or https.
+# Outside a repository, or with no origin remote, PROJECT stays empty and no
+# project scope is sent — spec §5 has no "current project" without one.
+project_from_remote() { # $1 = a git remote URL (ssh://, https:// or scp-like)
+  local url="${1%.git}"
+  url="${url%/}"
+  case "$url" in
+    ssh://*|https://*|http://*)
+      url="${url#*://}"   # scheme://host/... -> host/...
+      url="${url#*@}"     # host may carry user@ -> host/...
+      url="${url#*/}"     # host/owner/repo -> owner/repo
+      ;;
+    *@*:*)
+      url="${url#*@}"     # user@host:owner/repo -> host:owner/repo
+      url="${url#*:}"     # -> owner/repo
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+  case "$url" in
+    */*) ;;
+    *) return 1 ;;
+  esac
+  local owner="${url%/*}" repo="${url##*/}"
+  [ -n "$owner" ] && [ -n "$repo" ] && printf '%s--%s\n' "$owner" "$repo"
+}
+PROJECT=""
+if origin=$(git -C "$PWD" remote get-url origin 2>/dev/null) && [ -n "$origin" ]; then
+  PROJECT=$(project_from_remote "$origin" | tr '[:upper:]' '[:lower:]')
+fi
 
 drained=""
 if [ -n "$(find "$OUTBOX" -maxdepth 1 -name '*.md' -print -quit 2>/dev/null)" ]; then
@@ -64,12 +105,15 @@ auth=()
 # The +"..." form expands to nothing when the array is empty, and to the
 # quoted elements otherwise, on every bash.
 
+CONTEXT_URL="${BRABEUS_URL:-}/context"
+[ -n "$PROJECT" ] && CONTEXT_URL="${CONTEXT_URL}?project=$PROJECT"
+
 block=""
 kernel_note=""
 if [ -n "${BRABEUS_URL:-}" ] && health=$(curl -sf --max-time 5 ${auth[@]+"${auth[@]}"} "$BRABEUS_URL/healthz" 2>/dev/null); then
   # "ok <ver> identity=<mode> modules=<a,b> profiles=<p,q> claims=<when>" → one profile per line.
   write_profiles "$(printf '%s\n' "$health" | sed -n 's/.*profiles=\([^ ]*\).*/\1/p' | tr ',' '\n' | sed '/^$/d')"
-  if ! block=$(curl -sf --max-time 5 ${auth[@]+"${auth[@]}"} "$BRABEUS_URL/context" 2>/dev/null); then
+  if ! block=$(curl -sf --max-time 5 ${auth[@]+"${auth[@]}"} "$CONTEXT_URL" 2>/dev/null); then
     block=""
     kernel_note="Kernel answered /healthz but not /context; no context block this session."
   fi
@@ -80,8 +124,14 @@ else
   kernel_note="Kernel unreachable at ${BRABEUS_URL:-<BRABEUS_URL unset>}; no context block this session and the routing guard is off until it answers."
 fi
 
+if [ -n "$PROJECT" ]; then
+  SCOPE_KEYS="This session's own scope keys are machine/$MACHINE and project/$PROJECT; write with one of these rather than a guessed slug."
+else
+  SCOPE_KEYS="This session's own scope key is machine/$MACHINE; the cwd names no project (not a git repository, or no origin remote)."
+fi
+
 read -r -d '' ROUTING <<CTX || true
-Durable facts go to the brabeus MCP server's \`write\` tool (module, kind, scope, path), never to a file under ~/.claude/projects/*/memory/. \`context\` is the block above, and its first line is what the person's record is asking; \`/interview\` works through it, confirming with \`review\` and recording a manual claim's answer with \`claim_result\`. If the server is unreachable, queue a frontmattered file in ~/.claude/memory-outbox/ and the next session drains it.
+Durable facts go to the brabeus MCP server's \`write\` tool (module, kind, scope, path), never to a file under ~/.claude/projects/*/memory/. $SCOPE_KEYS \`context\` is the block above, and its first line is what the person's record is asking; \`/interview\` works through it, confirming with \`review\` and recording a manual claim's answer with \`claim_result\`. If the server is unreachable, queue a frontmattered file in ~/.claude/memory-outbox/ and the next session drains it.
 CTX
 
 CONTEXT="$block"
