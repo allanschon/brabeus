@@ -149,6 +149,13 @@ made them. `/healthz` ends with `claims=`: `off`, `never`, or the time of the la
 survives a restart. A `pass` older than two intervals is shown as stale, so one missed run changes
 nothing and a stopped schedule shows within two intervals.
 
+A goal whose results the run could not record — a results file that no longer parses, a detail an
+adapter refuses, a goal deleted mid-run — does not stop the run: the kernel logs it, counts it, and
+carries on so one broken goal does not make every other goal's fresh result look stale too. That
+count survives a restart alongside the stamp, and `/healthz` appends `errors=<n>` after `claims=`
+when it is non-zero, so a goal failing on every run is visible on this line and not only in the
+kernel's log. A clean run adds nothing to the line.
+
 ## Upgrading a record from before modules
 
 A record written before modules existed carries `type` instead of `module` and `kind`. Setting

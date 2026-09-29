@@ -300,6 +300,36 @@ func TestOneGoalsBrokenResultsFileDoesNotStopTheRun(t *testing.T) {
 	if _, err := os.ReadFile(statePath); err != nil {
 		t.Errorf("the stamp file was not written: %v", err)
 	}
+	if n := r.Errors(); n != 1 {
+		t.Errorf("Errors() = %d, want 1", n)
+	}
+	// A restart must read the count back from the state file, not report
+	// zero until the next run: the goal fails on every run, and the count
+	// resetting on a restart would hide that for up to an interval.
+	fresh := &Runner{Store: st, StatePath: statePath}
+	if n := fresh.Errors(); n != 1 {
+		t.Errorf("after restart, Errors() = %d, want 1", n)
+	}
+	if _, ok := fresh.LastRun(); !ok {
+		t.Error("after restart, LastRun must still report the stamp")
+	}
+	// Fixing the broken results file and running again clears the count:
+	// the error was this goal's, not a fact that sticks once recorded.
+	if err := os.Remove(broken); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, st.Dir, "add", "-A")
+	gitRun(t, st.Dir, "commit", "-q", "-m", "remove the hand-edited results file")
+	gitRun(t, st.Dir, "push", "-q", "origin", "main")
+	if rep, err := r.Run(context.Background()); err != nil || rep.Errors != 0 {
+		t.Fatalf("clean run: report %+v err %v", rep, err)
+	}
+	if n := r.Errors(); n != 0 {
+		t.Errorf("after a clean run, Errors() = %d, want 0", n)
+	}
+	if b, err := os.ReadFile(statePath); err != nil || strings.Fields(string(b))[0] == "" || len(strings.Fields(string(b))) != 1 {
+		t.Errorf("a clean run's stamp must carry no error count: %q (err %v)", b, err)
+	}
 }
 
 // A run cut short by shutdown records nothing for the goal it was on and

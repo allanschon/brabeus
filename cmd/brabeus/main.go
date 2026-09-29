@@ -240,7 +240,7 @@ func main() {
 	mux.Handle("/mcp", guarded)
 	mux.Handle("/context", ctxGuarded)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, healthz(server.Version, id.Mode(), set, claims.Status(runner)))
+		fmt.Fprint(w, healthz(server.Version, id.Mode(), set, claims.Status(runner), claims.StatusErrors(runner)))
 	})
 
 	srv := &http.Server{
