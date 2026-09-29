@@ -2,7 +2,7 @@
 
 These are the rules that must always hold, grouped by bounded context, each with where it is
 enforced. The point of listing them is to separate the rules the code guarantees from the ones it
-only intends, so that nobody relies on a rule nothing checks. Each rule has one of five statuses:
+only intends, so that nobody relies on a rule nothing checks. Each rule has one of six statuses:
 
 - **Enforced:** code enforces the rule, and a named test fails if it breaks.
 - **Code only:** code enforces the rule, but no test would notice it breaking.
@@ -10,6 +10,11 @@ only intends, so that nobody relies on a rule nothing checks. Each rule has one 
 - **Not enforced:** the spec implies the rule, but the code allows the opposite.
 - **Instructed:** the rule is stated to the model in a skill, and nothing outside the model can
   enforce it. Spec §3.3 calls such a rule advisory.
+- **Evaluated:** an instructed rule that a named grader in a plugin eval case fails on if it is
+  broken; nothing in the kernel enforces it. The cases are in `plugins/brabeus/evals/`, and they
+  run against a real kernel when the skill changes and before a release, not on every commit,
+  because each run is a paid model call. The status says a grader checks the rule, not that the
+  rule holds: read the grader's verdict, not the suite's exit code.
 
 Where the spec gives the reason for a rule, the row cites it. Terms are the
 [glossary's](ubiquitous-language.md).
@@ -105,19 +110,22 @@ Where the spec gives the reason for a rule, the row cites it. Terms are the
 ## Interview
 
 Every rule here is M2. The instructed rows are the `interview` skill's prose: a conversation is
-something the kernel cannot check, so they hold only as well as the skill is followed.
+something the kernel cannot check, so they hold only as well as the skill is followed. The
+evaluated rows are instructed rules that the eval suite in `plugins/brabeus/evals/` checks against
+what a throwaway kernel's repository holds after a scripted interview.
 
-| rule                                                                                                                                                 | status                                                  | where                                                                                                  |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Nothing is confirmed without a review carrying the question asked and the answer                                                                     | enforced                                                | the Ratification rows above: `reviewed` moves only on a review, and a review refuses an empty question or an empty answer |
-| The interview gets to know the person when the top agenda item is onboarding, and checks in otherwise                                                | instructed                                              | spec §9; the `interview` skill                                                                         |
-| An answer becomes as many drafts as it holds, across kinds and modules, each written at once in the person's words                                   | instructed                                              | spec §9                                                                                                |
-| What no enabled module holds becomes a `memory/thread` with a guess at the module it belongs in                                                      | instructed                                              | spec §7, §9                                                                                            |
-| A thread is picked up by meaning, not by the module it named, and ends only by deletion once a module that covers it holds a draft developed from it | instructed                                              | spec §7. `delete` accepts any record the caller may see, so the kernel does not check the condition    |
-| What the interviewer contributes is labelled as its own                                                                                              | instructed                                              | spec §9                                                                                                |
-| One question at a time, and never one whose answer is on file                                                                                        | instructed                                              | spec §9                                                                                                |
-| The interview speaks in the person's register, or in a plain default until one is on file, and is exempt from preferences for terse answers          | instructed                                              | spec §9                                                                                                |
-| "Enough", "stop" and "later" end the interview at once, and nothing is lost                                                                          | instructed for ending; by construction for nothing lost | spec §9. Drafts are written as they arise, so the record already holds them                            |
+| rule                                                                                                                                                 | status                                                 | where                                                                                                                                                                 |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Nothing is confirmed without a review carrying the question asked and the answer                                                                     | enforced                                               | the Ratification rows above: `reviewed` moves only on a review, and a review refuses an empty question or an empty answer                                             |
+| The interview gets to know the person when the top agenda item is onboarding, and checks in otherwise                                                | evaluated                                              | spec §9; the eval cases `first-interview` (an empty record) and `check-in-opens-with-the-contradiction` (a failed claim, raised first)                                |
+| An answer becomes as many drafts as it holds, across kinds and modules, each written at once in the person's words                                   | evaluated                                              | spec §9; `first-interview` reads a register, a value and a goal out of the record, the value in the person's words; `review-carries-the-persons-words`                |
+| What no enabled module holds becomes a `memory/thread` with a guess at the module it belongs in                                                      | evaluated                                              | spec §7, §9; `first-interview` (sleep, with no health module enabled)                                                                                                 |
+| A thread is picked up by meaning, not by the module it named, and ends only by deletion once a module that covers it holds a draft developed from it | evaluated                                              | spec §7; `a-thread-for-a-topic-no-module-holds`. `delete` accepts any record the caller may see, so the kernel does not check the condition                           |
+| What the interviewer contributes is labelled as its own                                                                                              | evaluated                                              | spec §9; a judged grader in `first-interview`, so a run can vary                                                                                                      |
+| A confirmed record changes only through a review carrying the person's words                                                                         | enforced; evaluated for the words                      | the Ratification rows above; `check-in-opens-with-the-contradiction` requires a `corrected` review carrying the person's answer, and no `write` to the confirmed goal |
+| One question at a time, and never one whose answer is on file                                                                                        | instructed                                             | spec §9                                                                                                                                                               |
+| The interview speaks in the person's register, or in a plain default until one is on file, and is exempt from preferences for terse answers          | instructed                                             | spec §9                                                                                                                                                               |
+| "Enough", "stop" and "later" end the interview at once, and nothing is lost                                                                          | evaluated for ending; by construction for nothing lost | spec §9; `stop-loses-nothing`: the drafts are in the record, nothing is reviewed or snoozed, and nothing is asked after the stop                                      |
 
 ## Assistant integration
 
@@ -128,6 +136,12 @@ something the kernel cannot check, so they hold only as well as the skill is fol
 | Installing the plugin changes nothing in the assistant's settings but the plugin's registration                                        | documented | spec §3.2, §13                                              |
 
 ## Where the rules do not hold
+
+**The labelled-inferences grader fails.** In every run of `first-interview` on 2026-09-29, the
+judge failed the rule that what the interviewer contributes is labelled as its own. The goal's
+draft labels the date, the link to a value and the claim as the interviewer's, but the closing
+reflection gives the date the interviewer chose, 31 December, as the person's own, with no label.
+The row stays *evaluated* because the grader is what catches this; the rule does not hold yet.
 
 **A mode's rules live in four packages, not in its bundle.** `module.Bundle` states each mode's
 rules, and `ModelWrites`, `Rendered`, `SearchedDefault` and `ReviewRequired` are never read. The

@@ -1,0 +1,5 @@
+schema_version: "1.1"
+name: a-thread-for-a-topic-no-module-holds
+tags: [interview, threads]
+context:
+  scaffold_script: scaffold.sh
