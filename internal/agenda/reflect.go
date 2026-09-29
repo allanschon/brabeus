@@ -44,6 +44,11 @@ type ClaimGap struct {
 	State  store.ClaimState `json:"state"`
 	Since  string           `json:"since,omitempty"`
 	Manual bool             `json:"manual"`
+	// Detail carries a no-evidence claim's reason (a revoked token, an
+	// unreachable host), so the interviewer can name the deployment fault
+	// instead of guessing at, or leaving unexplained, why the check did
+	// not run (spec §8.1).
+	Detail string `json:"detail,omitempty"`
 }
 
 // valueName is the value's slug, taken from its path rather than its name
@@ -84,7 +89,7 @@ func claimGaps(fields map[string]string, results []store.ClaimResult) []ClaimGap
 		// "manual" names the claims the person answers at interview (§8.1);
 		// the server package holds the same constant, unreachable here
 		// because agenda cannot import server.
-		g := ClaimGap{Text: res.Text, State: res.State, Manual: res.Adapter == "manual"}
+		g := ClaimGap{Text: res.Text, State: res.State, Manual: res.Adapter == "manual", Detail: res.Detail}
 		if !res.Since.IsZero() {
 			g.Since = res.Since.UTC().Format(time.RFC3339)
 		}
