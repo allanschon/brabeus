@@ -187,7 +187,9 @@ func registerReflectTool(s *mcp.Server, d Deps, caller string, consumer bool, au
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "reflect",
 		Description: "The gap by value, as facts: each value, the goals that serve it with their claim states and " +
-			"days since confirmed, then goals serving no value. Phrase it in the person's register; do not recount it yourself.",
+			"days since confirmed, then goals serving no value. Phrase it in the person's register; do not recount it yourself. " +
+			"no-evidence is a fault in the deployment, not the person being behind (spec §8.1): leave it out of the " +
+			"reflection or say the check could not run, never that the person has not been doing the work.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in reflectIn) (*mcp.CallToolResult, agenda.Reflection, error) {
 		out, err := reflectFor(d, caller, consumer, audience)
 		if err != nil {
