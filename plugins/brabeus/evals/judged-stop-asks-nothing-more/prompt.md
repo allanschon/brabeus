@@ -3,7 +3,7 @@ max_turns: 40
 timeout_seconds: 600
 allowed_tools: [Skill, Read, ToolSearch]
 env:
-  EVAL_BRABEUS_URL: "http://127.0.0.1:18094"
+  EVAL_BRABEUS_URL: "http://127.0.0.1:18099"
   EVAL_BRABEUS_TOKEN: "eval"
 ---
 Start the interview with the brabeus:interview skill. I am the person. I will not type again,
