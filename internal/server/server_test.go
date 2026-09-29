@@ -59,6 +59,23 @@ func TestPickRepoRejectsAnUnknownName(t *testing.T) {
 	}
 }
 
+// notebook is the new spelling of projects (M2): a deployment configured
+// before the rename, and one configured after it, must resolve to the same
+// store and the same refusal.
+func TestPickRepoAcceptsNotebookAsTheNewName(t *testing.T) {
+	mem, proj := &store.Store{}, &store.Store{}
+	got, err := pickRepo("notebook", mem, proj, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != proj {
+		t.Error("pickRepo(notebook) did not return the notebook store")
+	}
+	if _, err := pickRepo("notebook", mem, proj, true); err == nil || !strings.Contains(err.Error(), "not readable by this caller") {
+		t.Errorf("a consumer asking for notebook was allowed it, or the wording drifted: %v", err)
+	}
+}
+
 // The mirror is a second corpus with no modules of its own (spec §11):
 // a consumer is refused it outright, not filtered within it.
 func TestPickRepoRefusesTheMirrorToAConsumer(t *testing.T) {

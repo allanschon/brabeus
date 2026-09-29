@@ -223,11 +223,12 @@ never reads as a revision. Claims run on one interval per deployment, daily by d
 
 The Notebook owns nothing the kernel writes. The notebook is the person's own notes repository — notes they
 write, notes the assistant writes there at their request, material they keep — which the kernel
-can read and search, as `repo: projects`, and never writes.
+can read and search, as `repo: notebook` (`repo: projects` still works, the name it used before
+M2), and never writes.
 
-It lives in `cmd/brabeus`, as a second `store.Store` configured by `BRABEUS_MIRROR_*`, and in
-`server.pickRepo`. It has no modules and no scopes, and no embedder, so its search is lexical
-only; whether it gains the dense leg is decided in M2. It bypasses Schema and Callers and audience
+It lives in `cmd/brabeus`, as a second `store.Store` configured by `BRABEUS_NOTEBOOK_*`
+(`BRABEUS_MIRROR_*` still works), and in `server.pickRepo`. It has no modules and no scopes, and
+searches lexically, or by meaning when `BRABEUS_NOTEBOOK_EMBED` is set. It bypasses Schema and Callers and audience
 entirely. Because no per-module audience can stand in for it, consumers are refused it outright
 (§11).
 

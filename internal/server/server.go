@@ -14,25 +14,27 @@ import (
 
 const Version = "0.4.0-dev"
 
-// pickRepo resolves the repo argument. An absent projects mirror is an error
-// rather than a fallback: silently reading the wrong repository is worse than
-// failing the call. A consumer is refused the mirror outright (spec §11): it
-// is a second corpus with no modules of its own, so no per-module audience
-// check could stand in for refusing it entirely.
+// pickRepo resolves the repo argument. notebook is the current name for the
+// person's own notes repository; projects is the same store under its older
+// name, kept working for this milestone (spec §5). An absent notebook is an
+// error rather than a fallback: silently reading the wrong repository is
+// worse than failing the call. A consumer is refused it outright (spec §11):
+// it is a second corpus with no modules of its own, so no per-module
+// audience check could stand in for refusing it entirely.
 func pickRepo(name string, memory, projects *store.Store, consumer bool) (*store.Store, error) {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "", "memory":
 		return memory, nil
-	case "projects":
+	case "projects", "notebook":
 		if consumer {
-			return nil, fmt.Errorf("the projects mirror is not readable by this caller")
+			return nil, fmt.Errorf("the notebook is not readable by this caller")
 		}
 		if projects == nil {
-			return nil, fmt.Errorf("the projects mirror is not configured")
+			return nil, fmt.Errorf("the notebook is not configured")
 		}
 		return projects, nil
 	}
-	return nil, fmt.Errorf("unknown repo %q: use memory or projects", name)
+	return nil, fmt.Errorf("unknown repo %q: use memory or notebook (also accepted as projects)", name)
 }
 
 // Deps is what the server needs to build tools and the context block, gathered
