@@ -589,9 +589,36 @@ func TestContextHandlerRefusesAMalformedProject(t *testing.T) {
 	d := Deps{Memory: st, Set: set, Block: renderer, Now: time.Now}
 	h := ContextHandler(d, fakeIdentity{name: "desk"}, nil)
 	w := httptest.NewRecorder()
-	h.ServeHTTP(w, httptest.NewRequest("GET", "/context?project=not-a-slug", nil))
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/context?project=not/a/slug", nil))
 	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "§5") {
 		t.Errorf("status=%d body=%q", w.Code, w.Body.String())
+	}
+}
+
+// A project key computed from a repository whose owner or name itself
+// contains "--" (legal on both GitHub and Gitea — the hook's own joining
+// separator is not reserved) must round-trip: CheckScope has always accepted
+// it on write, so GET /context must not refuse it on read.
+func TestAProjectKeyWithADoubleDashRoundTrips(t *testing.T) {
+	st := newServerStore(t)
+	set := testSet(t)
+	renderer, err := block.New(set)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Write("identity/value/family.md", store.Record{Name: "family", Description: "family first", Module: "identity", Kind: "value", Scope: "project/acme--my--tool",
+		Fields: map[string]string{"statement": "family first"}, Body: "family first"}, "desk"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Review("identity/value/family.md", store.ReviewInput{Question: "Still one of the things you weigh decisions against?", Verdict: store.Confirmed, Answer: "yes"}, "desk"); err != nil {
+		t.Fatal(err)
+	}
+	d := Deps{Memory: st, Set: set, Block: renderer, Now: time.Now}
+	h := ContextHandler(d, fakeIdentity{name: "desk"}, nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/context?project=acme--my--tool", nil))
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "family first") {
+		t.Errorf("a key the hook computes from a repository named \"my--tool\" must render: status=%d body=%q", w.Code, w.Body.String())
 	}
 }
 

@@ -84,21 +84,41 @@ func TestVisibleIn(t *testing.T) {
 }
 
 // checkProjectKey is the boundary check for a project value arriving over the
-// network (the context tool's argument, or /context's query parameter): spec
-// §5 fixes the shape as <owner>--<repo>, so anything else is refused before
-// it reaches VisibleIn as an unchecked filter.
+// network (the context tool's argument, or /context's query parameter). It
+// must accept exactly what CheckScope already accepts for a project scope's
+// slug — otherwise a repository whose owner or name contains "--" (legal on
+// both GitHub and Gitea) gets a key the writer stores but the reader refuses,
+// so the record is written yet never renders under its own project.
 func TestCheckProjectKey(t *testing.T) {
 	if got, err := CheckProjectKey(""); got != "" || err != nil {
 		t.Errorf("empty project must pass through as none: got=%q err=%v", got, err)
 	}
+	for _, good := range []string{"example--repo", "  Example--Repo  ", "example", "--repo", "example--", "a--b--c", "acme--my--tool"} {
+		if _, err := CheckProjectKey(good); err != nil {
+			t.Errorf("%q must be accepted: CheckScope already accepts project/%s (%v)", good, strings.TrimSpace(good), err)
+		}
+	}
 	if got, err := CheckProjectKey("  Example--Repo  "); got != "example--repo" || err != nil {
 		t.Errorf("a well-formed project is normalised: got=%q err=%v", got, err)
 	}
-	for _, bad := range []string{"example", "--repo", "example--", "own/er--repo", "example repo--x", "a--b--c"} {
+	for _, bad := range []string{"own/er--repo", "example repo--x"} {
 		if _, err := CheckProjectKey(bad); err == nil {
 			t.Errorf("%q must be refused", bad)
 		} else if !strings.Contains(err.Error(), "§5") {
 			t.Errorf("%q: refusal must name the spec section: %v", bad, err)
+		}
+	}
+}
+
+// The reader accepts exactly what the writer accepts: CheckProjectKey must
+// never refuse a slug CheckScope would let a write use as project/<slug>.
+func TestCheckProjectKeyAgreesWithCheckScope(t *testing.T) {
+	for _, slug := range []string{"example--repo", "example", "acme--my--tool", "a--b--c"} {
+		if _, err := CheckScope("project/" + slug); err != nil {
+			t.Fatalf("test fixture: CheckScope(project/%s) = %v, want accepted", slug, err)
+		}
+		if _, err := CheckProjectKey(slug); err != nil {
+			t.Errorf("CheckScope accepts project/%s but CheckProjectKey refuses %q: %v", slug, slug, err)
 		}
 	}
 }
