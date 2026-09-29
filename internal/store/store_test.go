@@ -1109,7 +1109,7 @@ func TestARewriteKeepsReviewedWhereItWas(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Simulate a review having happened: write reviewed into the file directly,
-	// commit, push — the way Task 5's Review will. Then rewrite through Write.
+	// commit, push — the way Review does. Then rewrite through Write.
 	full := filepath.Join(s.Dir, rel)
 	content := strings.Replace(mustRead(t, full), "---\n\nfirst", "reviewed: 2026-09-01T00:00:00Z\n---\n\nfirst", 1)
 	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
@@ -1205,7 +1205,7 @@ func TestAConfirmedCrossingPreferenceIsFrozenLikeTheRest(t *testing.T) {
 	}
 }
 
-// K4: a retired record has left the record, and the write, delete and review
+// A retired record has left the record, and the write, delete and review
 // refusals for it must not point at each other in a loop. Each names "a new
 // path" instead of pointing back at another operation on the same one.
 func TestARetiredRecordCannotBeReviewedAgain(t *testing.T) {

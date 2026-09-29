@@ -6,12 +6,12 @@ import (
 	"testing"
 )
 
-// Under Task 3's freeze, a confirmed record's content changes only through a
+// Under the freeze, a confirmed record's content changes only through a
 // corrected review, which moves reviewed to the same stamp as the change. So
 // the history that actually produces a revision line today is not "a
 // confirmed record was reviewed, then rewritten" (the freeze refuses that
 // rewrite) but a plain rewrite committed outside the review path — the shape
-// every record written before Task 3 landed, or a record touched by
+// every record written before the freeze existed, or a record touched by
 // something other than the kernel. This test hand-seeds exactly that shape,
 // the way TestReviewRefusesARecordWithAMalformedKernelKey seeds a malformed
 // file: a commit made with run(t, ...) rather than through Store.Write.
@@ -74,7 +74,7 @@ func TestRevisionIsEmptyAfterACorrectedReviewSinceThatIsItselfTheReview(t *testi
 	if _, err := s.Review("telos/goal/g3.md", ReviewInput{Question: "Still right?", Verdict: Confirmed, Answer: "yes"}, "m"); err != nil {
 		t.Fatal(err)
 	}
-	// A draft-style rewrite is refused after a review (Task 3), so the change
+	// A draft-style rewrite is refused after a review, so the change
 	// that produces a revision line is a corrected review, and the line is
 	// what a later interview shows beside the next question.
 	setClock(t, "2026-09-04T09:00:00Z")

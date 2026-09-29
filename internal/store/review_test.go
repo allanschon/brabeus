@@ -352,7 +352,7 @@ func TestRecordsEnumeratesEverythingWithMeta(t *testing.T) {
 	}
 }
 
-// Task 3's review found that a kernel key which fails to parse must stop a
+// A kernel key which fails to parse must stop a
 // Write rather than be silently dropped (store.go's Malformed check). Review
 // carries the same risk — composing after applying a verdict would erase
 // whichever key never parsed — so it refuses on the same condition, with the
@@ -382,7 +382,7 @@ func TestReviewRefusesARecordWithAMalformedKernelKey(t *testing.T) {
 }
 
 // LessByReview is the review-order comparator block.Data.Kind and
-// agenda.Reflect both sort by (C7): confirmed first, most recently reviewed
+// agenda.Reflect both sort by: confirmed first, most recently reviewed
 // first; unreviewed after every confirmed record, most recently updated
 // first.
 func TestLessByReviewOrdersConfirmedFirstThenMostRecentlyReviewedThenUnreviewedByUpdated(t *testing.T) {

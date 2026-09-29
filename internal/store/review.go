@@ -185,7 +185,7 @@ type Stored struct {
 
 // LessByReview orders two records confirmed first, most recently reviewed
 // first, then unreviewed by most recently updated. Shared by block's
-// per-kind grouping and agenda.Reflect's value ordering (C7), so the two
+// per-kind grouping and agenda.Reflect's value ordering, so the two
 // cannot silently disagree about what "in review order" means.
 func LessByReview(a, b Stored) bool {
 	ai, bi := a.Reviewed.IsZero(), b.Reviewed.IsZero()

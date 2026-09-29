@@ -19,7 +19,7 @@ import (
 const ClaimsField = "claims"
 
 // claimsDir holds the kernel's claim results, one JSON file per goal at the
-// goal's own path (D2). Nothing under it is a record: not markdown, not
+// goal's own path. Nothing under it is a record: not markdown, not
 // indexed, not listed, and MemoryPath refuses to write a record there.
 const claimsDir = "claims"
 
@@ -66,7 +66,7 @@ type ClaimResult struct {
 	Recorded time.Time  `json:"recorded"`
 }
 
-// resultsFile is one goal's results on disk (D2): the goal it belongs to,
+// resultsFile is one goal's results on disk: the goal it belongs to,
 // and one entry per claim that has a result.
 type resultsFile struct {
 	Goal   string        `json:"goal"`
@@ -282,7 +282,7 @@ func (s *Store) RecordClaimResults(goal string, results []ClaimResult, caller st
 //
 // It never opens the goal for writing, so the goal's content, its updated
 // stamp and its history stay what the person made them. It commits only when
-// a claim's state or its detail changed (K10): a run that finds what the last
+// a claim's state or its detail changed: a run that finds what the last
 // one found writes nothing, and a new answer from the person in the same
 // state is recorded. Since is kept whenever the state is, because it means
 // when the state was entered, whoever wrote the entry.

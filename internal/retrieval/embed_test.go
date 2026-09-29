@@ -52,7 +52,7 @@ func TestEmbedRejectsACountMismatch(t *testing.T) {
 	}
 }
 
-// Vectors are normalised on receipt so Task 3's scan is a dot product rather
+// Vectors are normalised on receipt so the dense leg's scan is a dot product rather
 // than a division per comparison. A caller that skipped this would still get
 // plausible-looking scores, just wrong ones — the failure worth pinning.
 func TestEmbedNormalisesToUnitLength(t *testing.T) {

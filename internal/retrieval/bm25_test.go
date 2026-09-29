@@ -148,8 +148,8 @@ func TestAQuotedPhraseMustAppearLiterally(t *testing.T) {
 
 // A short or all-stop-word phrase tokenizes to nothing and scores zero, but
 // it satisfied the literal check, so it must not be dropped by `s > 0`. The
-// line scan this ranker replaces could find "C++"; this is the regression
-// Task 7 exists to prevent.
+// line scan this ranker replaced could find "C++", and this test keeps the
+// ranker from losing that.
 func TestAQuotedPhraseThatTokenizesToNothingStillScores(t *testing.T) {
 	ix := NewBM25([]Doc{
 		IndexDoc("a.md", "---\nname: a\nscope: global\n---\n\nbuilt with C++ and clang\n"),

@@ -96,7 +96,7 @@ func runStatus(d Deps, at time.Time) (lastRun, interval string, fresh bool) {
 
 // claimsFor lists the claims on every live goal the caller may see, each
 // joined to its result. It answers about the person's whole record, so scope
-// is checked without a project (K14): a machine-scoped goal is hidden from
+// is checked without a project: a machine-scoped goal is hidden from
 // every other machine, and nothing else is.
 func claimsFor(d Deps, caller string, audience store.Visibility, goal string) (claimsOut, error) {
 	if goal != "" {
@@ -156,7 +156,7 @@ type reflectIn struct{}
 
 // reflectFor computes the reflection (spec §9): the gap between the person's
 // values and their goals, over the caller's whole visible record — filtered
-// as RenderContext filters it, with no project (K14), since the reflection
+// as RenderContext filters it, with no project, since the reflection
 // answers about the whole person, not one session's view.
 func reflectFor(d Deps, caller string, consumer bool, audience store.Visibility) (agenda.Reflection, error) {
 	if consumer {
@@ -202,7 +202,7 @@ func registerReflectTool(s *mcp.Server, d Deps, caller string, consumer bool, au
 // recordClaimResult is the claim_result tool: one claim's state as the person
 // gave it, through the claim-result operation and never through review
 // (§8.1). The merge runs under the store's lock, so a scheduled run landing
-// at the same moment keeps its entries and this one keeps its own (C7).
+// at the same moment keeps its entries and this one keeps its own.
 func recordClaimResult(d Deps, caller string, consumer bool, audience store.Visibility, in claimResultIn) (claimResultOut, error) {
 	if consumer {
 		return claimResultOut{}, fmt.Errorf("a consumer never records a claim result (spec §11)")

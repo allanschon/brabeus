@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// at is the store tests' one stamp parser (K1): a fixture with a stamp that
+// at is the store tests' one stamp parser: a fixture with a stamp that
 // does not parse is a broken test, so it fails loudly rather than yield zero.
 func at(s string) time.Time {
 	t, err := time.Parse(time.RFC3339, s)
@@ -79,7 +79,7 @@ func TestAWriteValidatesTheClaimsBlockAgainstTheModuleAndTheHook(t *testing.T) {
 	}
 }
 
-// strictHook stands in for the adapters' own validation (Task 8): a relative
+// strictHook stands in for the adapters' own validation: a relative
 // since of -0d is no interval, and a counting adapter needs its min.
 func strictHook(adapter string, args map[string]string) error {
 	if args["since"] == "-0d" {
@@ -180,7 +180,7 @@ func TestAClaimResultNeverTouchesTheGoalAndCommitsOnlyOnAChange(t *testing.T) {
 	}
 }
 
-// K10: the rule is "committed only when something the person or the adapter
+// The rule is "committed only when something the person or the adapter
 // said changed", judged on State and Detail, not on the file's bytes. A run
 // that only restamps Recorded commits nothing; a new manual answer in the
 // same state is recorded (§8.1) and says so.
@@ -209,7 +209,7 @@ func TestAResultCommitsOnAStateOrANewAnswerAndNeverOnARestamp(t *testing.T) {
 	}
 }
 
-// C7: two writers of one goal's results — the scheduled run and a manual
+// Two writers of one goal's results — the scheduled run and a manual
 // answer — merge under the store's lock, so neither loses the other's entry,
 // and the caller's slice is not reordered behind its back.
 func TestUpdateClaimResultsMergesWithWhatIsAlreadyRecorded(t *testing.T) {

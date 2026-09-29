@@ -28,8 +28,8 @@ type Record struct {
 	Scope       string
 	Fields      map[string]string
 	Body        string
-	// Type is the pre-module alias, accepted until M2 so that clients and queued
-	// outbox files written before modules still land. Write maps it through the
+	// Type is the pre-module alias, still accepted so that clients and queued
+	// outbox files written before modules land. Write maps it through the
 	// module set when Module is empty.
 	Type string
 }

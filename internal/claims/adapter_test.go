@@ -166,7 +166,7 @@ func TestABareRepositoryWithoutAnOwnerIsNoEvidenceBeforeAnyRequest(t *testing.T)
 	}
 }
 
-// K8 end to end: spec §8.1's example block, verbatim, through the store's own
+// Spec §8.1's example block, verbatim, through the store's own
 // parser and then Validate — so the README's worked example is one the kernel
 // accepts, and none of its arguments needs a comma.
 func TestTheSpecsExampleClaimsParseAndValidate(t *testing.T) {

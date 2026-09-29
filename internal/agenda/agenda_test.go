@@ -328,8 +328,8 @@ func TestOnboardingIsTheReasonsName(t *testing.T) {
 	}
 }
 
-// The M1 ledger: Item.Fields aliased the record's live map, so a caller editing
-// an item could edit the record it was computed from.
+// Item.Fields once aliased the record's live map, so a caller editing an item
+// could edit the record it was computed from.
 func TestAnItemsFieldsAreACopy(t *testing.T) {
 	r := rec("identity/value/v.md", "identity", "value", map[string]string{"statement": "s"}, "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z", 0)
 	items := Compute(testSet(), []store.Stored{r}, nil, at("2026-10-01T00:00:00Z"))

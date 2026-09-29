@@ -547,11 +547,10 @@ func TestRenderContextEndToEnd(t *testing.T) {
 	}
 }
 
-// A record scoped to a project renders only inside that project: the M1
-// finding this task fixes was a project-scoped record rendering in every
-// project, because the block had no notion of "the caller's own project" to
-// compare against. Claims and reflect are untouched (K14): they keep
-// scope.Visible and answer about the whole record.
+// A record scoped to a project renders only inside that project. Before M2 it
+// rendered in every project, because the block had no notion of "the caller's
+// own project" to compare against. Claims and reflect keep scope.Visible,
+// because they answer about the whole record.
 func TestAProjectScopedRecordRendersOnlyInItsProject(t *testing.T) {
 	st := newServerStore(t)
 	set := testSet(t)
@@ -712,7 +711,7 @@ func writeServerGoal(t *testing.T, st *store.Store, rel, id, sc string) {
 // §8.1: the claims tool shows each claim with its state, unchecked where
 // nothing is recorded, and a pass older than two intervals as stale — an
 // adapter's pass only, since the schedule never runs a manual claim. It
-// answers about the person's whole record, not one project's view (K14).
+// answers about the person's whole record, not one project's view.
 func TestTheClaimsToolJoinsClaimsToResultsAndMarksAStalePass(t *testing.T) {
 	st := newServerStore(t)
 	set := testSet(t)
