@@ -12,7 +12,7 @@ export XDG_RUNTIME_DIR="$(mktemp -d)"
 # regardless of where this test happens to be checked out.
 WORKDIR="$(mktemp -d)"
 REQLOG="$(mktemp)"
-trap 'rm -rf "$HOME" "$XDG_RUNTIME_DIR" "$WORKDIR" "$REQLOG" "${REPO:-}"; kill "$srv" 2>/dev/null' EXIT
+trap 'rm -rf "$HOME" "$XDG_RUNTIME_DIR" "$WORKDIR" "$REQLOG" "${REPO:-}" "${REPO2:-}"; kill "$srv" 2>/dev/null' EXIT
 PROFILES="$XDG_RUNTIME_DIR/brabeus/profiles"
 
 port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
@@ -63,6 +63,18 @@ ctx=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')
 check "the project query reaches /context"    'grep -q "^/context?project=owner--repo$" "$REQLOG"'
 check "the routing states this session's project key" 'printf "%s" "$ctx" | grep -q "project/owner--repo"'
 check "the routing states this session's machine key"  'printf "%s" "$ctx" | grep -qE "machine/[a-z0-9._-]+"'
+
+# ── the project key round-trips when the repository name itself has "--" ───────────────────────
+# GitHub and Gitea both allow "--" in an owner or repository name, so the joined key can carry
+# more than one run of it. CheckProjectKey must accept this key on the read side exactly as
+# CheckScope always accepted it on the write side (internal/scope).
+REPO2="$(mktemp -d)"
+git -C "$REPO2" init -q
+git -C "$REPO2" remote add origin ssh://forge.example/acme/my--tool.git
+out=$(cd "$REPO2" && printf '{"session_id":"s5"}' | BRABEUS_URL="http://127.0.0.1:$port" BRABEUS_TOKEN="$(printf 't%.0s' $(seq 12))" bash "$HOOK")
+ctx=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')
+check "a repo name containing -- still computes owner--repo" 'grep -q "^/context?project=acme--my--tool$" "$REQLOG"'
+check "the routing states the double-dash project key"       'printf "%s" "$ctx" | grep -q "project/acme--my--tool"'
 
 # ── reachable kernel, wrong token: /healthz answers, /context 401s ─────────────────────────────
 out=$(cd "$WORKDIR" && printf '{"session_id":"s1"}' | BRABEUS_URL="http://127.0.0.1:$port" BRABEUS_TOKEN="$(printf 'x%.0s' $(seq 5))" bash "$HOOK")
