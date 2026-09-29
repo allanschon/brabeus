@@ -136,8 +136,8 @@ func (e *OllamaEmbedder) Embed(ctx context.Context, texts []string) ([][]float32
 	return out.Embeddings, nil
 }
 
-// normalise scales a vector to unit length in place, so Task 3's scan is a dot
-// product rather than a division per comparison.
+// normalise scales a vector to unit length in place, so the dense leg's scan is a
+// dot product rather than a division per comparison.
 //
 // A zero-length vector is left alone. Dividing by its length yields NaN,
 // which is not merely wrong — it compares false against everything, so a NaN

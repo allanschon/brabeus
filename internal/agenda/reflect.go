@@ -52,7 +52,7 @@ type ClaimGap struct {
 }
 
 // valueName is the value's slug, taken from its path rather than its name
-// field: a goal's serves list names values by slug (D5), and the path's
+// field: a goal's serves list names values by slug, and the path's
 // final segment without its extension is the one identifier every value
 // record has, unlike a free-text name.
 func valueName(path string) string {
@@ -73,7 +73,7 @@ func daysSince(now time.Time, reviewed time.Time) int {
 }
 
 // claimGaps joins a goal's claims block to its results (store.JoinResults,
-// C7: the one join the agenda, the claims tool and the runner all share) and
+// the one join the agenda, the claims tool and the runner all share) and
 // renders each as a fact the interviewer can phrase.
 func claimGaps(fields map[string]string, results []store.ClaimResult) []ClaimGap {
 	block := fields[store.ClaimsField]
@@ -110,7 +110,7 @@ func goalGap(r store.Stored, now time.Time, results []store.ClaimResult) GoalGap
 // liveValues returns the live identity/value records in review order
 // (confirmed first, most recently reviewed first; then unreviewed by most
 // recently updated), via store.LessByReview — the comparator block.Data.Kind
-// also uses (C7), so agenda need not import block, which imports agenda, to
+// also uses, so agenda need not import block, which imports agenda, to
 // share it.
 func liveValues(records []store.Stored) []store.Stored {
 	var out []store.Stored
@@ -126,7 +126,7 @@ func liveValues(records []store.Stored) []store.Stored {
 // Reflect computes the gap by value (spec §9): for each live value, the live
 // goals that serve it with their claim states and days since confirmed; then
 // the goals that name no value, or only names that match none. records is the
-// caller's whole visible record (K14); results are the claim results keyed by
+// caller's whole visible record, whatever project it is in; results are the claim results keyed by
 // goal path.
 func Reflect(set *module.Set, records []store.Stored, results map[string][]store.ClaimResult, now time.Time) Reflection {
 	values := liveValues(records)

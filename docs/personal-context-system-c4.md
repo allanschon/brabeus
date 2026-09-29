@@ -121,8 +121,8 @@ The diagram is deliberate about six things:
   it changes nothing in the assistant's global configuration except the plugin's own
   registration (spec §3.2).
 - **The kernel is the only writer** to the working clone, and the clone is the only path to the
-  repository. A sibling process that runs claims writes its results through the kernel, not to
-  the clone (spec §8.1).
+  repository. The claims runner is part of the kernel, so a claim result reaches the clone
+  through the kernel's claim-result operation like any other change (spec §8.1).
 - **The notebook is read-only.** The kernel pulls the person's own notes and never commits to
   them, so the one-writer rule still holds. The notes have no modules and so no audience of their
   own, which is why a consumer is refused them outright (spec §5, §11).
@@ -153,7 +153,6 @@ flowchart LR
         store["<b>Store</b><br/><i>one file per record; frontmatter composed here;<br/>index maintained by the same write;<br/>pull → write → commit → push</i>"]
         retrieval["<b>Retrieval</b><br/><i>lexical + dense, fused;<br/>working-memory searched by default,<br/>ratified-record only when asked,<br/>the notebook when named</i>"]
         migrate["<b>Migration</b><br/><i>one-time: pre-module records<br/>retagged to the memory module</i>"]
-        freshlint["<b>Freshness lint</b><br/><i>working-memory: timeless,<br/>dated, or a pointer</i>"]
     end
 
     subgraph ratified ["ratified-record only"]
@@ -165,7 +164,7 @@ flowchart LR
         view["<b>View (M3)</b><br/><i>the same render as HTML, plus freshness,<br/>claim state, revision lines, snooze counts,<br/>manual fraction; read-only; loopback</i>"]
     end
 
-    mcp[/"MCP endpoint<br/>search · read · list · write · review · context ·<br/>modules (M2) · reflect (M2)"/]
+    mcp[/"MCP endpoint<br/>search · read · list · write · delete · review · context ·<br/>modules (M2) · reflect (M2) · claims (M2) · claim_result (M2)"/]
     health[/"/healthz + the four silent failures"/]
 
     mcp --> identity --> audience
@@ -184,15 +183,13 @@ flowchart LR
     view -.-> context
     review --> store
     migrate --> store
-    freshlint --> store
-    freshlint --> health
     modloader --> health
     mcp -. "modules: the manifests, read-only" .-> modloader
     mcp -. "reflect: the gap by value, read-only" .-> agenda
 
     classDef comp fill:#85bbf0,stroke:#5d82a8,color:#000
     classDef iface fill:#fff,stroke:#5d82a8,color:#000
-    class identity,audience,profiles,modloader,schema,credref,store,retrieval,migrate,freshlint,review,claims,adapters,agenda,context,view comp
+    class identity,audience,profiles,modloader,schema,credref,store,retrieval,migrate,review,claims,adapters,agenda,context,view comp
     class mcp,health iface
 ```
 
@@ -203,7 +200,8 @@ module decides what the write means: in a `working-memory` module it is complete
 `ratified-record` module it leaves a draft that only a `review` can confirm. The claims runner
 (M2) never sees a request; it runs on the deployment's interval, and its results enter the store
 through the kernel's claim-result operation, so the kernel remains the only writer and a result
-never makes a goal look revised.
+never makes a goal look revised. The working-memory freshness lint is not drawn, because it runs
+in the plugin's `/health` skill rather than in the kernel (spec §4.2).
 
 ## Level 4 — the interview, as a dynamic diagram
 
@@ -219,7 +217,7 @@ sequenceDiagram
     participant P as Person
     participant A as Assistant (plugin)
     participant K as Kernel
-    participant S as Claims scheduler (M2)
+    participant S as Claims runner, inside the kernel (M2)
     participant T as Tracker / forge
 
     Note over S,T: on a schedule, independent of any session

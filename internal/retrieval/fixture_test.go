@@ -50,7 +50,7 @@ type fixtureEmbedder struct {
 // A miss is loud, never a zero vector. A zero vector scores 0 against
 // everything, so a stale fixture would present as "the dense leg ranked it
 // last" — a ranking bug that does not exist — rather than as the stale data it
-// is. t.Errorf rather than t.Fatalf because Task 5 embeds from a goroutine,
+// is. t.Errorf rather than t.Fatalf because the store embeds from a goroutine,
 // where only Errorf is legal.
 func (e *fixtureEmbedder) Embed(ctx context.Context, texts []string) ([][]float32, error) {
 	out := make([][]float32, len(texts))

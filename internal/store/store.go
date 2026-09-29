@@ -727,7 +727,7 @@ func (s *Store) Write(rel string, r Record, caller string) (string, error) {
 	r.Type = strings.ToLower(strings.TrimSpace(r.Type))
 	r.Module = strings.ToLower(strings.TrimSpace(r.Module))
 	r.Kind = strings.ToLower(strings.TrimSpace(r.Kind))
-	// The deprecated alias, accepted until M2 (see Record.Type): type in,
+	// The deprecated alias, still accepted (see Record.Type): type in,
 	// module and kind out.
 	if r.Module == "" && r.Type != "" {
 		m, k, ok := s.modules.LegacyKind(r.Type)
@@ -833,8 +833,8 @@ func (s *Store) Write(rel string, r Record, caller string) (string, error) {
 	// there was an old file to freeze against); the reassignment above is
 	// scoped to its own if-statement and does not shadow it. A retired
 	// record gets its own wording: there is no "corrected" to point back to,
-	// only a new path (§9, and the K4 ruling against pointing refusals at
-	// each other in a circle).
+	// only a new path (§9), because refusals that pointed at each other would
+	// send the caller in a circle.
 	if err == nil && s.frozen(oldRecord, meta) && sansUpdated(string(old)) != sansUpdated(content) {
 		if !meta.Retired.IsZero() {
 			return "", fmt.Errorf("%w: %s was retired on %s and stays in history as it was; write the new statement at a new path (spec §9)",

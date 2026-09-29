@@ -65,7 +65,7 @@ func TestVikunjaCountsDoneTasksByLabelAndDateAcrossPages(t *testing.T) {
 	}
 }
 
-// K9: a label the tracker holds on some task, with none inside the window,
+// A label the tracker holds on some task, with none inside the window,
 // is evidence that the claim did not hold — fail by count.
 func TestVikunjaFailsALabelItKnowsWithNothingInTheWindow(t *testing.T) {
 	srv := vikunjaServer(t, "tok", tasksPage1, tasksPage2)

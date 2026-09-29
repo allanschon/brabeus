@@ -221,7 +221,7 @@ func fixByHand(r store.Stored) candidate {
 }
 
 // copyFields clones a record's field map so a caller editing an item's
-// Fields cannot edit the record it was computed from (the M1 ledger).
+// Fields cannot edit the record it was computed from.
 func copyFields(m map[string]string) map[string]string {
 	if m == nil {
 		return nil

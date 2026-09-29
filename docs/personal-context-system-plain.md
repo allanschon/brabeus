@@ -6,9 +6,9 @@ AI assistant and know it forgets you between conversations.
 
 It describes the whole design, and not all of it is built yet. What works today is the record
 itself, the two kinds of record described below, the short block your assistant reads at the start
-of each conversation, and a simple version of the interview. Checking your goals against evidence,
-the conversational interview, and decisions that come back to ask whether you were right arrive
-next. The read-only view comes after that, and then the health and finance modules.
+of each conversation, the interview, checking your goals against evidence, and decisions that come
+back to ask whether you were right. The read-only view comes next, and then the health and
+finance modules.
 
 ## The problem it solves
 

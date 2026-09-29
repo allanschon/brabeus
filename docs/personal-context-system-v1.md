@@ -2,10 +2,11 @@
 
 **Working name: Brabeus.** See §16.
 
-**Status: v1.7. M0 and M1 are built; see §14.**
+**Status: v1.7. M0, M1 and M2 are built; see §14.**
 
 This document describes a system built on the kernel this repository already contains: a
-private store with hybrid retrieval, a Claude Code plugin and a deploy agent. The kernel has no
+private store with hybrid retrieval, a Claude Code plugin, and a Dockerfile that builds the
+kernel. How that image is deployed and updated is each deployment's own concern. The kernel has no
 opinions about content. Everything it stores belongs to a module, and every module runs under one
 of a small set of profiles the kernel defines (§1.1).
 
@@ -260,7 +261,7 @@ which milestone delivers each. None of it knows what a `goal` or a `trap` is.
 | **profiles** | the closed set in §1.1; each module's manifest names one and the kernel enforces its bundle — who may write, whether records are rendered or searched, whether `review` is required, the audience default |
 | **modules** | loads module manifests; exposes each module's kinds, interview prompts and summary template, and serves the module set to the plugin through a read-only `modules` tool, which lists to a caller only the modules it may read (§11); refuses a manifest that does not validate |
 | **context** | renders a size-capped session block from the enabled `ratified-record` modules' templates |
-| **claims** | evidence adapters run on a schedule; results are three-state — pass, fail, no evidence — each with its own timestamp; whatever runs them writes results through the kernel (§8.1) |
+| **claims** | runs the evidence adapters itself, on the deployment's interval; results are three-state — pass, fail, no evidence — each with its own timestamp, and are written through the kernel's claim-result operation (§8.1) |
 | **agenda** | computes what is due — failed claims, drafts, stale records, onboarding — and renders the top item, with its question, as the first line of the context block (§9) |
 | **review** | a distinct operation carrying the question asked, a verdict and the person's answer in their own words; the only path that moves `reviewed` (§9) |
 | **reflect** | a read-only tool that computes the gap by value — each value, the goals that serve it with their claim states and days since confirmed, and the goals that serve none — for the interview to phrase (§9) |
@@ -325,12 +326,15 @@ records (§15). A kernel serving several roots is a kernel change, not a configu
 **The notebook is the one exception, and it is read-only.** A deployment may point the kernel at
 a second repository: the person's own notes, written by the person, by the assistant at their
 request through its own tools, and by whatever editor they use. The kernel reads and searches
-it, named by the tools' `repo` argument (`projects` in this version), and never writes to
+it, named by the tools' `repo` argument, `notebook` (`projects`, its earlier name, is still
+accepted), and never writes to
 it. It has no modules, no scopes and no audience of its own, and its files keep whatever
 conventions the person uses; nothing in it is a record in §5's sense. It is not a profile, because
 profiles govern records the kernel writes (§1.1). Because it is never written, it leaves the
 one-writer rule intact; because it has no audience, it is refused to consumers outright (§11).
-Whether its search includes the dense leg is decided in M2 (§14).
+Its search is lexical unless the deployment sets `BRABEUS_NOTEBOOK_EMBED=1`, which adds the dense
+leg. The default is off because the notebook is much larger than the record, and its first
+embedding pass takes minutes rather than seconds (§16 AW).
 
 **Existing records are migrated by the kernel, once.** A record with the pre-module `type` field
 and no `module` is rewritten by the server — the only writer — to `module: memory` and the
@@ -565,8 +569,10 @@ without adapters are not second-class.
 Results are written by the kernel's claim-result operation; they never change a goal's content
 or its `updated` stamp. What the person said about a goal is theirs, and whether the evidence
 agrees is the kernel's, so a result must not make a goal look revised (§9's revision line) or fill
-its history with results. Where results are stored is decided in M2. The kernel runs the schedule
-itself (§15), and results reach the record only through the kernel, so there is still one writer.
+its history with results. Results are stored as one JSON file per goal under `claims/`, at the
+goal's own path; that file is not a record, and it is never listed or searched (§16 AW). The
+kernel runs the schedule itself on `BRABEUS_CLAIM_INTERVAL`, and `0` turns it off (§16 AV).
+Results reach the record only through the kernel, so there is still one writer.
 
 The claim carries no code: the adapter is named, the arguments are data, and the kernel
 refuses an adapter the module did not declare.
@@ -826,7 +832,7 @@ The system is accepted when one real deployment passes these, described in the s
 |---|---|---|---|
 | M0 | the public repository seeded; §12's contents present; §13's last clause enforced on every push by CI | CI runs §13's last clause on every push, and the seeded repository passes it | delivered 2026-09-27 |
 | M1 | the two profiles; module contract with `profile`, `budget_bytes` and `audience`; the `memory` module and the one-time migration; `telos` and `identity`; `context` tool with the agenda line; `review`; `SessionStart` injection; the guard made conditional | the existing store migrates and still answers; the 2 KB block renders from real records on all machines; a stale record surfaces as the first line; `reviewed` moves only on `review` | delivered 2026-09-27 |
-| M2 | three-state claims and the `tracker`, `forge`, `date`, `manual` adapters; results written through the kernel; the conversational `/interview` (§9) with lenses, drafts, threads and the register; the `modules` tool; `review` carrying the answer; whether the notebook's search includes the dense leg (§5); reflection by value, through the `reflect` tool; the v1.7 agenda, review, claim and caller changes (§16 AI–AQ, AT and AU) | the first line names a measured contradiction; a revoked credential produces `no-evidence`, not an accusation; a first interview turns the person's own answers into confirmed values and goals, and leaves a thread for anything no module holds | planned |
+| M2 | three-state claims and the `tracker`, `forge`, `date`, `manual` adapters; results written through the kernel; the conversational `/interview` (§9) with lenses, drafts, threads and the register; the `modules` tool; `review` carrying the answer; the notebook's dense leg as a deployment switch (§5); reflection by value, through the `reflect` tool; the v1.7 agenda, review, claim and caller changes (§16 AI–AQ and AT–AW) | the first line names a measured contradiction; a revoked credential produces `no-evidence`, not an accusation; a first interview turns the person's own answers into confirmed values and goals, and leaves a thread for anything no module holds | delivered 2026-09-29 |
 | M3 | the view | read-only, fronted by the deployment's identity layer; shows revision lines, snooze counts and the manual fraction | planned |
 | M4 | `health` and `finance`, `audience: self` | both populated by interview, `manual` claims asked and recorded; absent from a read-only consumer's results | planned |
 | M6 | sharing hygiene | §12 and §13's last item pass — continuously, from M0 onward; a second person installs from the README | ongoing since M0 |
@@ -834,14 +840,10 @@ The system is accepted when one real deployment passes these, described in the s
 M1 is larger than it was, because the profiles and the migration have to exist before any
 record is written under the new rules. It is still one milestone: nothing in it is optional.
 
-`/done` (§8.2) is a skill and can land with any milestone; it depends on nothing in the kernel.
+`/done` (§8.2) is a skill that depends on nothing in the kernel; it shipped with M2.
 
 ## 15. Open
 
-- **Who runs the claims: decided in M2.** The kernel runs them on `BRABEUS_CLAIM_INTERVAL`, and
-  setting it to `0` turns the kernel's schedule off. A sibling scheduler is not designed: the
-  claim-result operation accepts only a manual claim's answer, and a pass is judged stale against
-  the kernel's own last run, so a sibling would need a kernel change to write results (§8.1).
 - Whether the outbox (writes queued while the kernel is unreachable) needs schema validation at
   drain time or only at write time. A rejection at drain is one of the four faults `/health`
   reports (§4.2).
@@ -868,6 +870,10 @@ record is written under the new rules. It is still one milestone: nothing in it 
 - **Portability.** The kernel is an MCP server and works with any client that speaks MCP; the
   plugin — the two hooks, the skills — is Claude Code's. Other harnesses would need their own
   thin client. Nothing here prevents that and nothing here provides it.
+- **Which preferences the block shows.** `identity` renders one preference, the most recently
+  confirmed, because its 450-byte budget has room for no more. A person with several confirmed
+  preferences has no say in which one every session sees, and §9's ordering ranks preferences
+  last for review, not for rendering.
 - **Habituation.** A person reliably behind on one goal is reliably greeted with it. Whether the
   agenda needs a rotation rule is unknown until a deployment runs; the snooze count is the
   measurement.
@@ -999,6 +1005,7 @@ behaviour it left undefined, and rules it stated without a reason.
 | AT | a `manual` claim's answer is recorded with the claim-result operation, not through `review`, so whether the evidence is in stays separate from whether the goal is still right | §8.1 |
 | AU | once reviewed, a record governed by a `ratified-record` module is refused `write` and `delete`: its content changes only through a `corrected` review and it leaves only through `retired`, because otherwise the assistant could reword what the person confirmed and it would still render as confirmed; a draft may still be rewritten or deleted, and a confirmed crossing preference is frozen like the rest | §5, §9 |
 | AV | the kernel runs the claim schedule itself on `BRABEUS_CLAIM_INTERVAL`, and `0` turns it off, closing §15's question; a sibling scheduler would need a kernel change, because the claim-result operation accepts only manual answers and freshness is judged against the kernel's own last run | §8.1, §15 |
+| AW | the notebook is searched lexically unless `BRABEUS_NOTEBOOK_EMBED=1` adds the dense leg, because it is much larger than the record and its first embedding pass takes minutes; claim results are one JSON file per goal under `claims/`, not a record, so a result never touches the goal it measures and is never listed or searched. These close the two questions AF and §8.1 left to M2 | §5, §8.1 |
 
 ## Sources
 
