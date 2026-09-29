@@ -178,8 +178,9 @@ The Interview owns the conversation that writes and keeps the record: its two wa
 the check-in — lenses, intros, drafts in the making, threads, the person's register, labelled
 inferences, challenges, and reflection by value.
 
-It lives in the plugin's `interview` skill. As built in M1, the skill reads the agenda's question
-aloud and files one answer per record; the conversation is M2 (§14).
+It lives in the plugin's `interview` skill, which holds the conversation (built in M2): it starts
+from the top agenda item, drafts what the person says across modules, and confirms each
+draft through `review`.
 
 Its rules are the model's to follow, not the kernel's to enforce: a cue addressed to the model is
 advisory (§3.3). What it may change is limited by the contexts it calls. It writes drafts through
@@ -296,8 +297,10 @@ flowchart LR
 ```
 
 Core contexts are dark, supporting and generic ones lighter, and external systems grey with dashed
-borders. Dashed arrows are M2. The Interview's arrows are solid because the M1 skill already reads
-the agenda and calls `review`, even though the conversation itself is M2.
+borders. Dashed arrows arrived in M2. The Interview's arrows are solid because the skill has read
+the agenda and called `review` since M1. A milestone in brackets, such as (M2), names the
+milestone a context or arrow arrived in; §14 of the specification says which milestones are
+delivered.
 
 ## Where the code and the contexts disagree
 

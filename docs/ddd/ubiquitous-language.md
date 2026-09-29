@@ -6,7 +6,8 @@ the notes after each table separate a term from the ordinary words it could be m
 [plain-language description](../personal-context-system-plain.md) says it, for a reader who uses
 the system rather than builds it. **Also called** lists every other name the same concept goes by
 in the spec, the code, the tools or the plugin, including names the code still uses where this
-glossary has settled on another.
+glossary has settled on another. A milestone in brackets, such as (M2), names the milestone a
+term arrived in; §14 of the specification says which milestones are delivered.
 
 ## People and parts
 

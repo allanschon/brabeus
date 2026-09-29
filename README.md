@@ -3,17 +3,20 @@
 Brabeus keeps a private record of who you are and what you're aiming at, and gives it to your AI
 assistant at the start of every session. It checks your goals against real evidence and shows you
 the gap between what you said matters and what the record shows. You never have to remember to
-maintain it, because the system raises what needs your attention at the start of a session. It is
+maintain it, because what needs your attention is the first line of every session's context. It is
 one small server, a plugin for the assistant, and a set of modules. It is named for the umpire at
 the Greek games.
 
 ## Status
 
-The specification is at v1.7 (`docs/personal-context-system-v1.md`). Milestones M0 and M1 are
-built: modules load and validate, every write names a module and a kind, and the context block
-renders from the person's records with the agenda's question as its first line. M2 adds evidence
-checks on goals and the conversational interview. Section 14 of the specification lists what each
-milestone delivers.
+The specification is at v1.7 (`docs/personal-context-system-v1.md`). Milestones M0, M1 and M2
+are built. Modules load and validate, and every write names a module and a kind. The context
+block renders from the person's records with the agenda's question as its first line. Goals carry
+claims, which the kernel checks against a task tracker, a git forge or a date, or asks the person
+to answer. The interview is a
+conversation: it drafts the record in the person's words, confirms each draft through `review`,
+and closes with a reflection by value. M3, a read-only view, and M4, the `health` and `finance`
+modules, are planned. Section 14 of the specification lists what each milestone delivers.
 
 ## What is here
 
@@ -21,8 +24,8 @@ milestone delivers.
   repository and serves it over MCP, with retrieval that combines keyword and meaning-based
   search.
 - **The plugin**, in `plugins/brabeus/`: a Claude Code plugin with a write guard, a drain for
-  writes queued while the kernel was unreachable, the MCP server registration, and two skills,
-  `/health` and `/interview`.
+  writes queued while the kernel was unreachable, the MCP server registration, and three skills,
+  `/interview`, `/done` and `/health`.
 - **The modules**, in `modules/`: `module.json` manifests for the five modules the specification
   ships, `memory`, `identity`, `telos`, `health` and `finance`. The kernel loads and validates the
   enabled set when it starts, enforces each module's kinds on every write, and renders the
@@ -64,9 +67,17 @@ The tools call a record a memory, a name that predates modules.
 - `review` answers one agenda question by confirming, correcting, retiring or snoozing a
   ratified record. It is the only operation that moves a record's `reviewed` date, so a
   `reviewed` date always means the person was asked and answered.
+- `modules` returns the enabled modules the caller may read, with each kind's fields and
+  interview questions.
+- `claims` lists the claims on the person's goals with their latest results, and marks a pass
+  that is older than two check intervals as stale.
+- `claim_result` records the person's answer to a `manual` claim. It refuses a claim that an
+  adapter checks, because that result comes from the kernel's own run.
+- `reflect` returns the gap by value: each value, the goals that serve it with their claim states
+  and days since they were confirmed, and the goals that serve no value.
 
 `read` and `search` reach the notebook with the argument `repo: notebook` (`repo: projects` still
-works, the name it used before this milestone).
+works, the name it used before M2).
 
 ## The context block
 
@@ -198,10 +209,11 @@ where the kernel reports a working-memory module enabled for this session. When 
 unreachable or reports none, scratch is allowed, so that a session is never left with neither the
 shared store nor a local fallback.
 
-The plugin ships two skills. `/health` reports whether the kernel and the guard are working on
-this machine. `/interview` asks the top item on the kernel's agenda and records the person's
-answer through `review`; section 9 of the specification describes the conversation that replaces
-it in M2.
+The plugin ships three skills. `/interview` holds the conversation in section 9 of the
+specification: it gets to know the person or checks in with them, drafts what they say, confirms
+each draft through `review` in their own words, and closes with a reflection by value. `/done`
+writes a done-statement for a piece of work before it starts (section 8.2). `/health` reports
+whether the kernel and the guard are working on this machine.
 
 ## Documents
 
