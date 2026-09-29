@@ -132,7 +132,8 @@ Each deployment configures its backends with these variables:
 
 - `BRABEUS_TRACKER`: `vikunja`, or empty for no tracker.
 - `BRABEUS_TRACKER_URL`: the tracker's base URL. It is required when a tracker is named.
-- `BRABEUS_TRACKER_TOKEN`: an API token that can read the person's tasks.
+- `BRABEUS_TRACKER_TOKEN`: a Vikunja API token with the Tasks -> Read All permission, which is
+  what the adapter's listing query needs.
 - `BRABEUS_FORGE`: `gitea`, `github`, or empty for no forge.
 - `BRABEUS_FORGE_URL`: the forge's base URL. It is required for Gitea. For GitHub it defaults to
   `https://api.github.com`.
