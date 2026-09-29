@@ -34,8 +34,9 @@ type Runner struct {
 }
 
 // Report counts one run: the goals with claims, their claims, the claims
-// whose state changed, and the claims that got no evidence.
-type Report struct{ Goals, Claims, Changed, NoEvidence int }
+// whose state changed, the claims that got no evidence, and the goals whose
+// store write failed and so kept whatever result they carried before.
+type Report struct{ Goals, Claims, Changed, NoEvidence, Errors int }
 
 func (r *Runner) now() time.Time {
 	if r.Now == nil {
@@ -58,6 +59,7 @@ func (r *Runner) Run(ctx context.Context) (Report, error) {
 		return Report{}, err
 	}
 	var rep Report
+	var errs []error
 	for _, rec := range records {
 		block := rec.Fields[store.ClaimsField]
 		if rec.Module == "" || !rec.Retired.IsZero() || strings.TrimSpace(block) == "" {
@@ -109,10 +111,27 @@ func (r *Runner) Run(ctx context.Context) (Report, error) {
 			}
 			return joined
 		}, "kernel"); err != nil {
-			return rep, fmt.Errorf("%s: %w", rec.Path, err)
+			// One goal's store write failing (a results file that no longer
+			// parses, a detail credentialShape refuses, a goal deleted on
+			// another machine between Records and the merge) must not stop
+			// the goals after it: they would otherwise keep whatever state
+			// they last recorded, including a fail that may no longer hold,
+			// which is the stale accusation spec §8.1 exists to prevent.
+			// Log it, count it against this goal, and move on to the next
+			// one; the joined error returned below is for Start's log line,
+			// never a reason to stop the run.
+			log.Printf("claims: %s: recording results: %v", rec.Path, err)
+			rep.Errors++
+			errs = append(errs, fmt.Errorf("%s: %w", rec.Path, err))
+			continue
 		}
 		rep.Changed += changed
 	}
+	// The stamp below is written even when a goal's write failed above: it is
+	// what /healthz and staleness read (spec §8.1), and one broken goal is
+	// not the same fact as the schedule having stopped. Withholding it would
+	// make every other goal's fresh, successfully recorded result look
+	// stale too, on the strength of one unrelated write failure.
 	r.mu.Lock()
 	r.last, r.ran, r.read = now, true, true
 	r.mu.Unlock()
@@ -121,7 +140,7 @@ func (r *Runner) Run(ctx context.Context) (Report, error) {
 			log.Printf("claims: saving the last run to %s: %v; a restart will report never until the next run", r.StatePath, err)
 		}
 	}
-	return rep, nil
+	return rep, errors.Join(errs...)
 }
 
 // check asks one adapter. A missing adapter or a state an adapter may not
