@@ -47,7 +47,7 @@ type listOut struct {
 
 type readIn struct {
 	Path             string `json:"path" jsonschema:"path relative to the repository root, e.g. personal/style.md"`
-	Repo             string `json:"repo,omitempty" jsonschema:"memory (default) or projects for the read-only mirror"`
+	Repo             string `json:"repo,omitempty" jsonschema:"memory (default), or notebook (also accepted as projects) for the person's own notes"`
 	IncludeAllScopes bool   `json:"include_all_scopes,omitempty" jsonschema:"read a memory scoped to another machine anyway"`
 }
 type readOut struct {
@@ -57,7 +57,7 @@ type readOut struct {
 
 type searchIn struct {
 	Query            string `json:"query" jsonschema:"what to look for, in your own words; matching is by relevance, not exact text. Wrap a phrase in double quotes to require it literally, e.g. \"grub.cfg\""`
-	Repo             string `json:"repo,omitempty" jsonschema:"memory (default) or projects"`
+	Repo             string `json:"repo,omitempty" jsonschema:"memory (default), or notebook (also accepted as projects) for the person's own notes"`
 	Limit            int    `json:"limit,omitempty" jsonschema:"maximum memories to return, default 50"`
 	Scope            string `json:"scope,omitempty" jsonschema:"only this scope, e.g. global or machine/desk; a scope belonging to another machine needs include_all_scopes to return anything"`
 	Module           string `json:"module,omitempty" jsonschema:"only this module"`
@@ -132,7 +132,7 @@ func registerReadTools(s *mcp.Server, d Deps, caller string, consumer bool, audi
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "read",
-		Description: "Read one memory in full. Set repo=projects to read the read-only mirror instead.",
+		Description: "Read one memory in full. Set repo=notebook (also accepted as projects) to read the person's own notes instead.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in readIn) (*mcp.CallToolResult, readOut, error) {
 		st, err := pickRepo(in.Repo, d.Memory, d.Projects, consumer)
 		if err != nil {
@@ -160,8 +160,8 @@ func registerReadTools(s *mcp.Server, d Deps, caller string, consumer bool, audi
 			"Ask in your own words and in your own wording - it matches MEANING as well as keywords, so a memory " +
 			"that says \"terse\" is found by asking for \"brief\". Wrap a phrase in double quotes to require it " +
 			"literally, e.g. \"grub.cfg\". Narrow with scope, module, kind or prefix. By default only working-memory " +
-			"modules are searched; pass profile: ratified-record or all, or name a module, to widen. Set repo=projects " +
-			"to search the read-only mirror. An empty result can mean the scope you asked for is not visible to you; " +
+			"modules are searched; pass profile: ratified-record or all, or name a module, to widen. Set repo=notebook " +
+			"(also accepted as projects) to search the person's own notes. An empty result can mean the scope you asked for is not visible to you; " +
 			"include_all_scopes will include it. Check the `dense` field: anything but \"on\" means these results " +
 			"are keyword-only and a paraphrase may have missed.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in searchIn) (*mcp.CallToolResult, searchOut, error) {

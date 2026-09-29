@@ -42,6 +42,24 @@ func env(key, def string) string {
 	return def
 }
 
+// envEither reads the notebook's new name first and its old one second, so
+// a deployment configured before the rename keeps working unchanged.
+func envEither(newKey, oldKey, def string) string {
+	if v := os.Getenv(newKey); v != "" {
+		return v
+	}
+	return env(oldKey, def)
+}
+
+// notebookEmbedder gives the notebook the record's embedder only when the
+// deployment asked for it.
+func notebookEmbedder(e retrieval.Embedder) retrieval.Embedder {
+	if os.Getenv("BRABEUS_NOTEBOOK_EMBED") != "1" {
+		return nil
+	}
+	return e
+}
+
 func main() {
 	branch := env("BRABEUS_BRANCH", "main")
 	// Beside the working copies, on the data volume, so a host key accepted
@@ -129,26 +147,38 @@ func main() {
 	}
 	log.Printf("memory store ready at %s", memory.Dir)
 
-	// The mirror is optional: the server is useful without it, and failing to
-	// clone it must not take the memory store down too.
+	// The notebook is optional: the server is useful without it, and failing
+	// to clone it must not take the memory store down too. BRABEUS_NOTEBOOK_*
+	// is read first and BRABEUS_MIRROR_* second, so a deployment configured
+	// under the older name keeps working unchanged (envEither).
 	var projects *store.Store
-	if url := env("BRABEUS_MIRROR_REPO", ""); url != "" {
+	if url := envEither("BRABEUS_NOTEBOOK_REPO", "BRABEUS_MIRROR_REPO", ""); url != "" {
 		projects = &store.Store{
-			Dir:       env("BRABEUS_MIRROR_DIR", "/var/lib/brabeus/projects"),
+			// The notebook shares the record's embedder only when
+			// BRABEUS_NOTEBOOK_EMBED=1: its cold pass runs minutes, not
+			// seconds (227 s for 467 files, measured 2026-09-28), and it
+			// builds in the background exactly as the record's own corpus
+			// does, so it never delays startup or an answer in flight.
+			Embedder:  notebookEmbedder(embedder),
+			Dir:       envEither("BRABEUS_NOTEBOOK_DIR", "BRABEUS_MIRROR_DIR", "/var/lib/brabeus/projects"),
 			RemoteURL: url,
 			Branch:    branch,
-			// A DIFFERENT key, read-only on the mirror repository. Reusing
+			// A DIFFERENT key, read-only on the notebook repository. Reusing
 			// the memory key here would have to mean widening it, and the
 			// whole design rests on the writer being unable to reach the
 			// publishable tree.
-			SSHCommand: store.SSHCommandFor(env("BRABEUS_MIRROR_SSH_KEY", "/etc/brabeus/projects_key"), knownHosts),
+			SSHCommand: store.SSHCommandFor(envEither("BRABEUS_NOTEBOOK_SSH_KEY", "BRABEUS_MIRROR_SSH_KEY", "/etc/brabeus/projects_key"), knownHosts),
 			ReadOnly:   true,
 		}
 		if err := projects.Ensure(); err != nil {
-			log.Printf("projects mirror unavailable, continuing without it: %v", err)
+			log.Printf("notebook unavailable, continuing without it: %v", err)
 			projects = nil
 		} else {
-			log.Printf("projects mirror ready at %s (read-only)", projects.Dir)
+			dense := "keyword-only"
+			if projects.Embedder != nil {
+				dense = "dense on"
+			}
+			log.Printf("notebook ready at %s (read-only, %s)", projects.Dir, dense)
 		}
 	}
 
@@ -266,9 +296,11 @@ func newIdentity(listen string) (identity.Identity, error) {
 // here cached queries too, which made a dead sidecar keep reporting `on` for
 // any question already asked.
 //
-// The projects mirror deliberately gets NO embedder. It is a read-only
-// mirror of a much larger tree, embedding it would multiply the startup cost
-// for a corpus nobody writes, and its lexical search already works.
+// The notebook gets this embedder too, but only when BRABEUS_NOTEBOOK_EMBED=1
+// (notebookEmbedder). It is a read-only mirror of a much larger tree, and its
+// cold embedding pass runs minutes rather than seconds; the default is off so
+// a deployment that never searches it by meaning does not pay that cost on
+// every change, and its lexical search already works without it.
 func newEmbedder() retrieval.Embedder {
 	base := os.Getenv("BRABEUS_EMBED_URL")
 	if base == "" {
