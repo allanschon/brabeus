@@ -99,6 +99,16 @@ interval the stamp is judged against.
   claim runner at all, so it cannot say, even where `/healthz` reads `off`.
   Report it as unknown, not as passing.
 
+An `errors=<n>` after `claims=` is a separate failure from a stopped schedule:
+the schedule is running on time, but on the last run `n` goals' results could
+not be recorded — a results file that no longer parses, a detail an adapter
+refuses, a goal deleted mid-run — and the kernel logged each one and carried
+on rather than stopping the rest. Their results are stale by however long the
+count has stood, and the kernel's log is the only place that says why; report
+it as a silent-failure finding even where the stamp itself is fresh, with the
+count and a pointer to the log. Its absence (`claims=<stamp>` with no
+`errors=` at all) means every goal recorded cleanly on the last run.
+
 ## 5. Can every adapter answer?
 
 In the same `claims` output, list every claim whose state is `no-evidence`,
@@ -127,10 +137,11 @@ delete or rewrite anything from this check.
 Say plainly which of the checks passed. If all pass, one line is enough.
 
 A kernel that does not answer (check 0) is the headline, because it makes the
-rest moot. After that, the silent failures lead: a stopped claim schedule
-(check 4) above everything else they report, because it leaves every goal's
-state quietly out of date; then adapter faults, a module over budget and
-rejected outbox writes. Checks 2 and 3's queued count are only meaningful once
+rest moot. After that, the silent failures lead: a stopped claim schedule or a
+non-zero `errors=` count (check 4) above everything else they report, because
+each leaves some goal's state quietly out of date; then adapter faults, a
+module over budget and rejected outbox writes. Checks 2 and 3's queued count
+are only meaningful once
 check 1 says the guard is live *and* check 0 says the kernel is up: both read
 zero on a machine where nothing is happening at all, and a guard that is off
 because the kernel is down is expected, not a fault. Check 6 is a list to

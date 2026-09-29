@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +32,7 @@ type Runner struct {
 	last time.Time
 	ran  bool
 	read bool
+	errs int
 }
 
 // Report counts one run: the goals with claims, their claims, the claims
@@ -133,10 +135,18 @@ func (r *Runner) Run(ctx context.Context) (Report, error) {
 	// make every other goal's fresh, successfully recorded result look
 	// stale too, on the strength of one unrelated write failure.
 	r.mu.Lock()
-	r.last, r.ran, r.read = now, true, true
+	r.last, r.ran, r.read, r.errs = now, true, true, rep.Errors
 	r.mu.Unlock()
 	if r.StatePath != "" {
-		if err := os.WriteFile(r.StatePath, []byte(now.Format(time.RFC3339)+"\n"), 0o640); err != nil {
+		// The error count rides on the same line as the stamp, as a second,
+		// space-separated field, so a restart recovers both from one read
+		// instead of a stamp that resets the count to zero until the next
+		// run (spec §8.1: one broken goal's failure must stay visible).
+		line := now.Format(time.RFC3339)
+		if rep.Errors > 0 {
+			line += " " + strconv.Itoa(rep.Errors)
+		}
+		if err := os.WriteFile(r.StatePath, []byte(line+"\n"), 0o640); err != nil {
 			log.Printf("claims: saving the last run to %s: %v; a restart will report never until the next run", r.StatePath, err)
 		}
 	}
@@ -167,15 +177,46 @@ func (r *Runner) check(ctx context.Context, c store.Claim, now time.Time) (Outco
 func (r *Runner) LastRun() (time.Time, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if !r.read {
-		r.read = true
-		if b, err := os.ReadFile(r.StatePath); err == nil {
-			if t, err := time.Parse(time.RFC3339, strings.TrimSpace(string(b))); err == nil {
-				r.last, r.ran = t, true
-			}
+	r.load()
+	return r.last, r.ran
+}
+
+// Errors is the failing-goal count from the last run, 0 before the first run
+// or after one with no failures. Like LastRun, it survives a restart because
+// it is read from the same state file, not reset to zero by one.
+func (r *Runner) Errors() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.load()
+	return r.errs
+}
+
+// load reads the state file once, at whichever of LastRun or Errors is
+// called first, and fills in both the stamp and the error count it carries.
+// Callers hold r.mu.
+func (r *Runner) load() {
+	if r.read {
+		return
+	}
+	r.read = true
+	b, err := os.ReadFile(r.StatePath)
+	if err != nil {
+		return
+	}
+	fields := strings.Fields(string(b))
+	if len(fields) == 0 {
+		return
+	}
+	t, err := time.Parse(time.RFC3339, fields[0])
+	if err != nil {
+		return
+	}
+	r.last, r.ran = t, true
+	if len(fields) > 1 {
+		if n, err := strconv.Atoi(fields[1]); err == nil {
+			r.errs = n
 		}
 	}
-	return r.last, r.ran
 }
 
 // Start runs now and then every Interval until ctx ends. It returns at once
@@ -219,4 +260,15 @@ func Status(r *Runner) string {
 		return last.UTC().Format(time.RFC3339)
 	}
 	return "never"
+}
+
+// StatusErrors is the errors= field of /healthz: the last run's count of
+// goals whose store write failed, so a goal that fails on every run is
+// visible on the one endpoint every monitor already reads, not only in the
+// kernel's log. It is 0 before a run and after one that recorded everything.
+func StatusErrors(r *Runner) int {
+	if r == nil {
+		return 0
+	}
+	return r.Errors()
 }
