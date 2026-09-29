@@ -259,6 +259,49 @@ func TestAManualAnswerRecordedDuringARunSurvivesIt(t *testing.T) {
 	}
 }
 
+// One goal's results file failing to parse must not stop the goals after it:
+// their claims still get checked and recorded, the broken goal is counted
+// and logged rather than aborting the run, and the run is still stamped so
+// /healthz reads the one broken goal, not a schedule that stopped.
+func TestOneGoalsBrokenResultsFileDoesNotStopTheRun(t *testing.T) {
+	st := newClaimsStore(t)
+	writeGoal(t, st, "telos/goal/g1.md", "- text: \"x\"\n  check: {adapter: tracker, label: a, since: -7d, min: 1}")
+	writeGoal(t, st, "telos/goal/g2.md", "- text: \"y\"\n  check: {adapter: tracker, label: b, since: -7d, min: 1}")
+	// The broken file must survive the runner's own sync (a fetch, a hard
+	// reset and a clean of anything untracked), so it is committed and
+	// pushed like any other result, not just written to the worktree.
+	broken := filepath.Join(st.Dir, "claims", "telos", "goal", "g1.json")
+	if err := os.MkdirAll(filepath.Dir(broken), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(broken, []byte("not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, st.Dir, "add", "-A")
+	gitRun(t, st.Dir, "commit", "-q", "-m", "a hand-edited results file that no longer parses")
+	gitRun(t, st.Dir, "push", "-q", "origin", "main")
+	tracker := &fake{name: "tracker", out: Outcome{State: store.Pass, Detail: "1 found"}}
+	statePath := filepath.Join(t.TempDir(), "last-run")
+	r := &Runner{Store: st, Adapters: map[string]Adapter{"tracker": tracker}, Now: time.Now, StatePath: statePath}
+	rep, err := r.Run(context.Background())
+	if err == nil {
+		t.Fatal("expected a joined error naming the broken goal")
+	}
+	if rep.Goals != 2 || rep.Errors != 1 || rep.Changed != 1 {
+		t.Fatalf("report %+v", rep)
+	}
+	all, _ := st.ClaimResults()
+	if got := all["telos/goal/g2.md"]; len(got) != 1 || got[0].State != store.Pass {
+		t.Errorf("the goal after the broken one was not recorded: %+v", got)
+	}
+	if _, ok := r.LastRun(); !ok {
+		t.Error("a run with one broken goal must still stamp the last run")
+	}
+	if _, err := os.ReadFile(statePath); err != nil {
+		t.Errorf("the stamp file was not written: %v", err)
+	}
+}
+
 // A run cut short by shutdown records nothing for the goal it was on and
 // does not stamp a last run: "context canceled" is not evidence of anything.
 func TestACancelledRunRecordsNothingAndIsNotALastRun(t *testing.T) {

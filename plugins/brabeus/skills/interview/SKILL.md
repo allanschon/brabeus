@@ -232,6 +232,13 @@ that matched no value. Keep it short and say the gap without judgement: *"You sa
 matters most; the two goals that serve it have not been confirmed in three months, and the
 three that serve craft are all on track."* The person draws the conclusion.
 
+A claim in `no-evidence` is a fault in the deployment — a revoked token, an unreachable
+host — never the person falling behind (spec §8.1). Do not fold it into the gap as if it
+were a `fail`, and do not phrase it as a shortfall in their work. Leave it out of the
+reflection, or name it as something to fix in the setup: *"the check on G3 couldn't run —
+worth looking at the connection, not at G3 itself."* Use the claim's detail, when `reflect`
+gives one, to say what is broken rather than guessing.
+
 The reflection says only what the person said or confirmed as theirs. Anything of yours
 that is on file stays labelled as yours when you mention it: "G1, by 31 December — the date
 I suggested", not "G1, by 31 December". Quote a value or a goal in the words on file, not in
