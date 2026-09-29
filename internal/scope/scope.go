@@ -36,6 +36,52 @@ func Visible(scope, caller string, includeAll bool) bool {
 	return host == NormaliseHost(caller)
 }
 
+// VisibleIn is Visible with a project half added, for the one place that
+// needs it: the session block. Everywhere else (search, list, read, claims,
+// reflect) answers about the whole record and keeps Visible, because those
+// answer a question, not render a project's view.
+//
+// A machine-scoped memory is judged exactly as Visible judges it. A
+// project-scoped memory is judged the other way around from Visible: Visible
+// treats every project as visible everywhere, because the pre-M2 server had
+// no notion of "the current project" to compare against. Here there is one,
+// so a project-scoped memory renders only when it matches the caller's own
+// project, and an empty project (no git repository, or one with no origin)
+// matches none.
+func VisibleIn(sc, caller, project string, includeAll bool) bool {
+	if includeAll {
+		return true
+	}
+	rest, isProjectScoped := strings.CutPrefix(NormaliseHost(sc), "project/")
+	if !isProjectScoped {
+		return Visible(sc, caller, false)
+	}
+	if rest == "" || project == "" {
+		return false
+	}
+	return rest == NormaliseHost(project)
+}
+
+// CheckProjectKey validates a project value arriving over the network — the
+// context tool's `project` argument, or GET /context's `?project=` query
+// parameter — before it reaches VisibleIn as a filter. Spec §5 fixes scope's
+// project half as <owner>--<repo>, the shape the SessionStart hook computes
+// from a git remote; anything else is refused here rather than let through
+// unchecked. An empty project is not an error: it means no project, exactly
+// as an empty query parameter or a missing argument does.
+func CheckProjectKey(project string) (string, error) {
+	p := NormaliseHost(project)
+	if p == "" {
+		return "", nil
+	}
+	owner, repo, ok := strings.Cut(p, "--")
+	if !ok || owner == "" || repo == "" || strings.Count(p, "--") != 1 ||
+		strings.Contains(p, "/") || strings.ContainsFunc(p, unicode.IsSpace) {
+		return "", fmt.Errorf("project %q is not the <owner>--<repo> scope shape spec §5 describes", project)
+	}
+	return p, nil
+}
+
 // checkScope accepts global, project/<slug> and machine/<host>, and nothing
 // else, and returns the form visible() compares: lowercased and trimmed.
 // Scope is enforced on read, so a scope that does not parse is not an error

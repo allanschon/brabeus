@@ -18,7 +18,14 @@ import (
 // RenderContext is the block for one caller: the records they may see, the
 // agenda over exactly those, the render. Shared by the context tool and GET
 // /context so the two cannot drift.
-func RenderContext(d Deps, caller string, consumer bool) (string, []block.Fault, *agenda.Item, error) {
+//
+// project is the caller's own project scope key, already validated by
+// scope.CheckProjectKey at whichever boundary received it (the tool argument
+// or the query parameter) — empty when the caller is not inside a git
+// repository with an origin. It filters only this render: claims and reflect
+// keep scope.Visible, because they answer about the whole record, not one
+// project's view (spec §10).
+func RenderContext(d Deps, caller, project string, consumer bool) (string, []block.Fault, *agenda.Item, error) {
 	all, err := d.Memory.Records()
 	if err != nil {
 		return "", nil, nil, err
@@ -26,7 +33,7 @@ func RenderContext(d Deps, caller string, consumer bool) (string, []block.Fault,
 	audience := audienceFor(d.Set, consumer)
 	recs := make([]store.Stored, 0, len(all))
 	for _, r := range all {
-		if !r.Retired.IsZero() || audience.Hides(r.Module) || !scope.Visible(r.Scope, caller, false) {
+		if !r.Retired.IsZero() || audience.Hides(r.Module) || !scope.VisibleIn(r.Scope, caller, project, false) {
 			continue
 		}
 		recs = append(recs, r)
@@ -62,7 +69,12 @@ func ContextHandler(d Deps, id identity.Identity, consumers map[string]bool) htt
 			return
 		}
 		caller, consumer, _ := Caller(id, consumers, r)
-		text, _, _, err := RenderContext(d, caller, consumer)
+		project, err := scope.CheckProjectKey(r.URL.Query().Get("project"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		text, _, _, err := RenderContext(d, caller, project, consumer)
 		if err != nil {
 			log.Printf("context for %q: %v", caller, err)
 			http.Error(w, "context unavailable", http.StatusInternalServerError)
@@ -73,7 +85,9 @@ func ContextHandler(d Deps, id identity.Identity, consumers map[string]bool) htt
 	})
 }
 
-type contextIn struct{}
+type contextIn struct {
+	Project string `json:"project,omitempty" jsonschema:"filter the block to one project's scope: <owner>--<repo>, as the SessionStart hook computes it from the cwd's git remote (spec §5). Omit for none"`
+}
 type contextOut struct {
 	Block  string        `json:"block" jsonschema:"the session context block, at most 2048 bytes: the agenda line first, then each enabled ratified-record module's summary in priority order. Scope-filtered to your machine; may be up to one sync interval behind another machine's writes"`
 	Faults []block.Fault `json:"faults,omitempty" jsonschema:"modules whose summary exceeded their budget and were replaced by one line saying so, or agenda when its line had to be cut"`
@@ -87,9 +101,14 @@ func registerContextTool(s *mcp.Server, d Deps, caller string, consumer bool) {
 		Name: "context",
 		Description: "The session context block: the one agenda item to raise first, then the person's confirmed " +
 			"record by module, within 2 KB. Read it at the start of a session; it is your view, scope-filtered, " +
-			"and may lag another machine's writes by up to one sync interval.",
+			"and may lag another machine's writes by up to one sync interval. Pass `project` to also include " +
+			"that project's records; the SessionStart hook already does, from the cwd's git remote.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in contextIn) (*mcp.CallToolResult, contextOut, error) {
-		blockText, faults, top, err := RenderContext(d, caller, consumer)
+		project, err := scope.CheckProjectKey(in.Project)
+		if err != nil {
+			return nil, contextOut{}, err
+		}
+		blockText, faults, top, err := RenderContext(d, caller, project, consumer)
 		if err != nil {
 			return nil, contextOut{}, err
 		}
