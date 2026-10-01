@@ -91,7 +91,7 @@ func TestReflectShowsTodaysClaimStateBesideWhatWasMeasured(t *testing.T) {
 	}
 	p := g[0]
 	if p.State != store.Open || p.Measured != store.Fail || p.Count == nil || *p.Count != 2 || p.Target == nil || *p.Target != 3 ||
-		p.Expected == nil || p.DaysLeft == nil || *p.DaysLeft != 31 || p.Deadline != "2026-10-31" {
+		p.Expected == nil || *p.Expected != 1 || p.DaysLeft == nil || *p.DaysLeft != 31 || p.Deadline != "2026-10-31" {
 		t.Errorf("the paced claim = %+v", p)
 	}
 	y := g[1]

@@ -59,6 +59,10 @@ type ClaimGap struct {
 	Effort     *int   `json:"effort,omitempty"`
 	Since      string `json:"since,omitempty"`
 	Manual     bool   `json:"manual"`
+	// Stale marks an adapter's pass older than two claim intervals: the
+	// scheduler has not run, so the pass is unknown (spec §8.1). The server
+	// sets it, since the schedule is its to know.
+	Stale bool `json:"stale,omitempty"`
 	// Detail carries a no-evidence claim's reason (a revoked token, an
 	// unreachable host), so the interviewer can name the deployment fault
 	// instead of guessing at, or leaving unexplained, why the check did

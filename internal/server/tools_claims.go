@@ -16,6 +16,10 @@ import (
 // manualAdapter names the claims the person answers at interview (§8.1).
 const manualAdapter = "manual"
 
+// goalByField is the goal field that holds its deadline, which a claim without
+// its own deadline reads (spec §8.1).
+const goalByField = "by"
+
 // defaultClaimInterval is spec §8.1's "daily by default": the interval a
 // pass is judged against when the deployment's is off.
 const defaultClaimInterval = 24 * time.Hour
@@ -146,7 +150,7 @@ func claimsFor(d Deps, caller string, audience store.Visibility, goal string) (c
 		}
 		found = true
 		for _, res := range store.JoinResults(claims, results[r.Path]) {
-			rd := store.Read(claims[res.Index], res, r.Fields["by"], nowFor(d))
+			rd := store.Read(claims[res.Index], res, r.Fields[goalByField], nowFor(d))
 			c := claimOut{Goal: r.Path, ID: r.ID, Title: r.Fields["title"], Index: res.Index, Text: res.Text,
 				Adapter: res.Adapter, Manual: res.Adapter == manualAdapter, State: string(rd.State), Measured: string(rd.Measured),
 				Standing: rd.Standing, Deadline: rd.Deadline, Unreadable: rd.Unreadable, DaysLeft: rd.DaysLeft,
@@ -191,7 +195,23 @@ func reflectFor(d Deps, caller string, consumer bool, audience store.Visibility)
 	if err != nil {
 		log.Printf("claim results: %v", err)
 	}
-	return agenda.Reflect(d.Set, recs, results, nowFor(d)), nil
+	ref := agenda.Reflect(d.Set, recs, results, nowFor(d))
+	// Only an adapter's pass can go stale for want of a run (§8.1); the
+	// claims tool marks it the same way.
+	_, _, fresh := runStatus(d, nowFor(d))
+	mark := func(goals []agenda.GoalGap) {
+		for i := range goals {
+			for j := range goals[i].Claims {
+				c := &goals[i].Claims[j]
+				c.Stale = c.Measured == store.Pass && !c.Manual && !fresh
+			}
+		}
+	}
+	for i := range ref.Values {
+		mark(ref.Values[i].Goals)
+	}
+	mark(ref.Unserved)
+	return ref, nil
 }
 
 // registerReflectTool registers reflect: the gap by value, for the
@@ -259,7 +279,9 @@ func recordClaimResult(d Deps, caller string, consumer bool, audience store.Visi
 		return claimResultOut{}, fmt.Errorf("claim %d on %s is checked by the %s adapter; its result comes from the scheduled run, and only a manual claim's answer is recorded here (spec §8.1)", in.Index, rel, c.Adapter)
 	}
 	var count, target *int
-	if of, paced := c.Paced(); paced && !c.IsStanding() {
+	of, paced := c.Paced()
+	switch {
+	case paced && !c.IsStanding():
 		// A manual count's answer is the number; the state is what the count
 		// says against the target, so a session cannot pass a short count.
 		switch {
@@ -277,8 +299,10 @@ func recordClaimResult(d Deps, caller string, consumer bool, audience store.Visi
 		default:
 			count, target = in.Count, &of
 		}
-	} else if in.Count != nil {
-		return claimResultOut{}, fmt.Errorf("claim %d on %s is not a manual count (a manual claim that is not standing, with of); count is refused (spec §8.1)", in.Index, rel)
+	case in.Count != nil && paced:
+		return claimResultOut{}, fmt.Errorf("claim %d on %s is standing, and a standing claim holds or does not: its answer is pass or fail, not a count (spec §8.1)", in.Index, rel)
+	case in.Count != nil:
+		return claimResultOut{}, fmt.Errorf("claim %d on %s has no of in its check, so it is not a count: leave count out, or add of to the claim (spec §8.1)", in.Index, rel)
 	}
 	commit, err := d.Memory.UpdateClaimResults(rel, func(prev []store.ClaimResult) []store.ClaimResult {
 		out := make([]store.ClaimResult, 0, len(prev)+1)

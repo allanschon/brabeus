@@ -953,7 +953,7 @@ func TestTheClaimsToolShowsTodaysStateAndWhatWasMeasured(t *testing.T) {
 	}
 	c := out.Claims
 	if c[0].State != "open" || c[0].Measured != "fail" || c[0].Count == nil || *c[0].Count != 2 || c[0].Target == nil || *c[0].Target != 3 ||
-		c[0].Expected == nil || c[0].DaysLeft == nil || *c[0].DaysLeft != 31 || c[0].Deadline != "2026-10-31" {
+		c[0].Expected == nil || *c[0].Expected != 1 || c[0].Unreadable != "" || c[0].DaysLeft == nil || *c[0].DaysLeft != 31 || c[0].Deadline != "2026-10-31" {
 		t.Errorf("the paced claim = %+v", c[0])
 	}
 	if c[1].State != "behind" || c[1].Measured != "fail" || c[1].Effort == nil || *c[1].Effort != 10 {
@@ -1013,5 +1013,37 @@ func TestClaimResultRecordsAManualCount(t *testing.T) {
 	}
 	if err := rec(0, "no-evidence", nil); err != nil {
 		t.Errorf("no-evidence needs no count: %v", err)
+	}
+}
+
+// §8.1: the reflection marks an adapter's pass older than two claim
+// intervals as stale, so the interviewer can report it as unknown; a manual
+// pass is never stale by the schedule.
+func TestTheReflectionMarksAStaleAdapterPass(t *testing.T) {
+	st := newServerStore(t)
+	set := testSet(t)
+	writeServerGoal(t, st, "telos/goal/g3.md", "G3", "global")
+	t0 := time.Date(2026, 9, 20, 4, 0, 0, 0, time.UTC)
+	if _, err := st.RecordClaimResults("telos/goal/g3.md", []store.ClaimResult{
+		{Index: 0, Text: "three articles", Adapter: "tracker", State: store.Pass, Since: t0, Recorded: t0},
+		{Index: 1, Text: "date holds", Adapter: "manual", State: store.Pass, Since: t0, Recorded: t0},
+	}, "kernel"); err != nil {
+		t.Fatal(err)
+	}
+	now := t0.Add(96 * time.Hour)
+	last := now.Add(-72 * time.Hour)
+	d := Deps{Memory: st, Set: set, Now: func() time.Time { return now },
+		LastRun: func() (time.Time, bool) { return last, true }, ClaimInterval: 24 * time.Hour}
+	ref, err := reflectFor(d, "desk", false, audienceFor(set, false))
+	if err != nil || len(ref.Unserved) != 1 || len(ref.Unserved[0].Claims) != 3 {
+		t.Fatalf("ref=%+v err=%v", ref, err)
+	}
+	c := ref.Unserved[0].Claims
+	if !c[0].Stale || c[1].Stale || c[2].Stale {
+		t.Errorf("only the tracker pass is stale: %+v", c)
+	}
+	last = now.Add(-time.Hour)
+	if ref, _ := reflectFor(d, "desk", false, audienceFor(set, false)); ref.Unserved[0].Claims[0].Stale {
+		t.Error("a pass within two intervals of the last run is not stale")
 	}
 }
