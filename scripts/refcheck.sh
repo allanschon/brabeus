@@ -8,8 +8,12 @@
 #    these references are made of ordinary words.
 #
 # Three rules:
-#   1. no decision cited by label ("decision" followed by a letter and a number);
-#      state the reason, or cite the spec section that records it
+#   1. no reasoning cited by a planning label: "decision D6", a bare label in
+#      brackets ("(K14)") or opening a comment ("// K10:"), "Task 3", "this
+#      task", a ruling, or a fix or review round. State the reason, or cite the
+#      spec section that records it. Milestones (M0, M1, ...) and goal ids (G1,
+#      ...) are defined in the specification and the record, so they pass, and
+#      so do the specification's change rows, which are letters only ("§16 AV")
 #   2. a path under a top-level directory of this repository, ending in a file
 #      extension, names a file that exists. Directories are not checked, so a
 #      package a later milestone will add can be named before it exists
@@ -26,6 +30,14 @@ hits=()
 while IFS= read -r line; do
   hits+=("$line  (a decision cited by label: state the reason instead)")
 done < <(g grep -n -I -E '\bdecisions? [A-Z][0-9]+\b' -- . "$self" "$selftest" || true)
+
+# A label is one letter and one or two digits. M (milestones) and G (goal ids)
+# are left out, because both are defined where a reader can find them.
+label='[A-FH-LN-Z][0-9]{1,2}'
+while IFS= read -r line; do
+  hits+=("$line  (a planning label: state the reason instead)")
+done < <(g grep -n -I -E "\\($label\\)|(//|#)[[:space:]]*$label\\b|\\bTask [0-9]+\\b|\\b[Tt]his task\\b|\\b([Ff]ix|[Rr]eview) rounds?\\b|\\b[Rr]ulings?\\b" -- . "$self" "$selftest" \
+  | grep -v -E '\b[Rr]uling out\b' || true)
 
 dirs='cmd|internal|docs|modules|plugins|scripts'
 exts='md|go|sh|py|json|tmpl|yml|yaml'
