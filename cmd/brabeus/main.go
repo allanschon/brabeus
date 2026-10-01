@@ -23,6 +23,9 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	// TZ must work in a minimal image with no zoneinfo, because claim deadlines
+	// are compared in it (spec §8.1).
+	_ "time/tzdata"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
