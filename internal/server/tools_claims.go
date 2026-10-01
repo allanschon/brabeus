@@ -40,7 +40,7 @@ type claimOut struct {
 	Measured   string `json:"measured" jsonschema:"what the last check found: pass, fail, no-evidence or unchecked"`
 	Standing   bool   `json:"standing,omitempty"`
 	Deadline   string `json:"deadline,omitempty"`
-	Unreadable string `json:"unreadable,omitempty" jsonschema:"the value to fix when behind because a date or effort could not be read: deadline, since, window or effort"`
+	Unreadable string `json:"unreadable,omitempty" jsonschema:"the value to fix when behind because a date or effort could not be read: deadline, since, window, effort or rolling"`
 	DaysLeft   *int   `json:"days_left,omitempty"`
 	Count      *int   `json:"count,omitempty"`
 	Target     *int   `json:"target,omitempty"`

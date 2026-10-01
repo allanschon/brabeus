@@ -13,7 +13,7 @@ and stop when you reach "enough". Whenever you ask me to approve drafts, my answ
 all of those as written.", and that does not use up an item on the list. Write out each question
 you ask me, and my answer under it, as you go, so the conversation can be read afterwards.
 
-1. I want to repaint the porch by 2026-11-30, because I said I would.
+1. I want to repaint the porch by the end of next year, because I said I would.
 2. It'll take me about two weekends of work, so call it fourteen days.
 3. Yes to all of those as written.
 4. enough

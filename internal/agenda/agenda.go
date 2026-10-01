@@ -113,6 +113,8 @@ func behindQuestion(c store.Claim, rd store.Reading) string {
 		return fmt.Sprintf("the claim %q has a since %q that could not be read; fix the date.", c.Text, c.Args["since"])
 	case "effort":
 		return fmt.Sprintf("the claim %q has an effort %q that could not be read; fix it.", c.Text, c.Effort)
+	case "rolling":
+		return fmt.Sprintf("the claim %q counts a rolling window (since %s) but does not say standing: true; should it hold all the time?", c.Text, c.Args["since"])
 	case "window":
 		return fmt.Sprintf("the claim %q starts counting on %s, after its deadline %s; fix the dates.", c.Text, c.Args["since"], rd.Deadline)
 	}

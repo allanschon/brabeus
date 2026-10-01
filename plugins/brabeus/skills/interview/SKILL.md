@@ -19,7 +19,7 @@ follow up, how to sort what the person says — is yours.
 Before the first question, find out what is already known, because asking someone
 something they have already told you says you were not listening.
 
-- `context`, no arguments. `agenda` is the top item: its `reason` (`fail`, `draft`,
+- `context`, no arguments. `agenda` is the top item: its `reason` (`fail`, `behind`, `draft`,
   `stale` or `onboarding`), the record's `path`, the `question` the kernel wrote for it,
   and a `revision` line and `snoozes` count when there are any. It is only the top item;
   the rest of the agenda waits behind it.
@@ -239,9 +239,11 @@ adapter checks, because those results come from the schedule.
 failed and when, plainly, and ask whether the goal is still right. What they say about the
 goal is a `review` of the goal. `claims` and `reflect` give each claim today's state. Say
 `open` as work remaining with its days left, never as failing; say `behind` as a warning with
-its numbers ("2 of 6 done, 4 expected by now, 6 days left"); only `fail` is a miss. A claim
+its numbers ("1 of 6 done, 4 expected by now, 6 days left"); only `fail` is a miss. A claim
 whose `unreadable` is `deadline`, `since`, `effort` or `window` has a value the kernel could
-not read: ask the person to correct it, and do not describe the claim's state.
+not read: ask the person to correct it, and do not describe the claim's state. One whose
+`unreadable` is `rolling` counts a rolling window without saying `standing: true`: ask whether
+it should hold all the time, and do not describe the claim's state.
 
 ## 7. Ending a thread
 

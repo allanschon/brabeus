@@ -566,12 +566,14 @@ func TestTheQuestionNamesWhatWasMeasured(t *testing.T) {
 		"since":    "- text: \"ten chapters\"\n  check: {adapter: manual, of: 10, since: yesterday}",
 		"effort":   "- text: \"ship it\"\n  effort: lots\n  check: {adapter: manual}",
 		"window":   "- text: \"ten chapters\"\n  check: {adapter: manual, of: 10, since: 2026-11-05}",
+		"rolling":  "- text: \"a commit a fortnight\"\n  check: {adapter: forge, repo: side-project, since: -14d, min: 1}",
 	}
 	wants := map[string]string{
 		"deadline": `the claim "ship it" has a deadline "soon" that could not be read; fix the date. `,
 		"since":    `the claim "ten chapters" has a since "yesterday" that could not be read; fix the date. `,
 		"effort":   `the claim "ship it" has an effort "lots" that could not be read; fix it. `,
 		"window":   `the claim "ten chapters" starts counting on 2026-11-05, after its deadline 2026-10-31; fix the dates. `,
+		"rolling":  `the claim "a commit a fortnight" counts a rolling window (since -14d) but does not say standing: true; should it hold all the time? `,
 	}
 	for k, claims := range unreadable {
 		if got, want := ask(claims, nil), wants[k]+followUp; got != want {

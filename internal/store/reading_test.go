@@ -73,6 +73,9 @@ func TestReadDerivesStateFromDeadlineAndSize(t *testing.T) {
 		{name: "26 unparseable since", claim: tracker("soon"), result: res(Fail, n(0)), goalBy: "2026-10-10", now: "2026-10-04", want: Behind, unread: "since"},
 		{name: "27 invalid effort", claim: Claim{Adapter: AdapterManual, Effort: "a week"}, result: res(Unchecked, nil), goalBy: "2026-11-08", now: "2026-10-31", want: Behind, unread: "effort"},
 		{name: "28 empty goal by", claim: Claim{Adapter: AdapterManual}, result: res(Fail, nil), goalBy: "", now: "2026-10-01", want: Behind, unread: "deadline"},
+		{name: "31 rolling since without standing, min 1, measured fail", claim: Claim{Adapter: AdapterForge, Args: map[string]string{"min": "1", "since": "-14d"}}, result: res(Fail, n(0)), goalBy: "2026-12-31", now: "2026-10-01 12:00", want: Behind, unread: "rolling"},
+		{name: "32 rolling since without standing, min 3, measured pass", claim: Claim{Adapter: AdapterForge, Args: map[string]string{"min": "3", "since": "-14d"}}, result: res(Pass, n(3)), goalBy: "2026-12-31", now: "2026-10-01 12:00", want: Behind, unread: "rolling"},
+		{name: "33 rolling since with standing is read as measured", claim: Claim{Adapter: AdapterForge, Standing: true, Args: map[string]string{"min": "1", "since": "-14d"}}, result: res(Fail, n(0)), goalBy: "2026-12-31", now: "2026-10-01 12:00", want: Fail, standing: true},
 		{name: "29 deadline text is trimmed", claim: Claim{Adapter: AdapterManual, By: " 2026-10-05 "}, result: res(Fail, nil), goalBy: "2026-11-08", now: "2026-10-01", want: Open, deadline: "2026-10-05"},
 	}
 	for _, tc := range cases {
@@ -104,6 +107,25 @@ func TestReadDerivesStateFromDeadlineAndSize(t *testing.T) {
 				t.Errorf("Deadline = %q, want %q", got.Deadline, tc.deadline)
 			}
 		})
+	}
+}
+
+// The calendar is the one in now's zone: late evening in New York is already
+// the next day in UTC, and the deadline arithmetic must count from New York's.
+func TestReadCountsFromTheCalendarOfNowsZone(t *testing.T) {
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 1, 22, 0, 0, 0, loc) // 2026-10-02 02:00 UTC
+	c := Claim{Adapter: AdapterManual}
+	got := Read(c, ClaimResult{State: Fail}, "2026-10-10", now)
+	if got.State != Open || got.DaysLeft == nil || *got.DaysLeft != 10 {
+		t.Fatalf("in New York: %+v, want open with 10 days left", got)
+	}
+	got = Read(c, ClaimResult{State: Fail}, "2026-10-10", now.UTC())
+	if got.DaysLeft == nil || *got.DaysLeft != 9 {
+		t.Fatalf("in UTC the same instant counts from the 2nd: %+v, want 9 days left", got)
 	}
 }
 

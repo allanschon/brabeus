@@ -19,8 +19,9 @@ type Reading struct {
 	Standing bool       `json:"standing,omitempty"`
 	Deadline string     `json:"deadline,omitempty"`
 	// Unreadable names what could not be read when State is Behind for that
-	// reason: "deadline", "since", "window" (since on or after the deadline)
-	// or "effort".
+	// reason: "deadline", "since", "window" (since on or after the deadline),
+	// "effort", or "rolling" (a rolling since on a claim that does not say
+	// standing, which cannot be paced and is not read as end-state work).
 	Unreadable string `json:"unreadable,omitempty"`
 	DaysLeft   *int   `json:"days_left,omitempty"`
 	Count      *int   `json:"count,omitempty"`
@@ -59,6 +60,13 @@ func Read(c Claim, res ClaimResult, goalBy string, now time.Time) Reading {
 	r := Reading{Measured: measured, Standing: c.IsStanding(), Count: res.Count, Target: res.Target}
 	if r.Standing {
 		r.State = measured
+		return r
+	}
+	// A rolling window has no start to pace from: a claim on file with one
+	// and no standing is raised whatever it measured, never read as work
+	// remaining (write refuses the shape; this covers records written before).
+	if relativeSince(c.Args["since"]) {
+		r.State, r.Unreadable = Behind, "rolling"
 		return r
 	}
 	switch measured {

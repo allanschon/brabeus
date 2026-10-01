@@ -631,9 +631,11 @@ ignore it. A yes-or-no claim without an `effort` gives no early warning at all a
 its deadline, because a warning computed from an estimate nobody made would be a guess presented
 as a measurement. Where the arithmetic cannot run, the claim is raised rather than hidden: a
 deadline already on file that does not parse reads as `behind`, and its agenda item says the date
-could not be read, so the person corrects the date rather than the work. A result recorded before
-counts were stored has no count, and its claim reads as a yes-or-no claim without an `effort`
-until the next run, or for a manual claim the next answer, measures it.
+could not be read, so the person corrects the date rather than the work. A claim already on file
+with a rolling `since` and no `standing` reads as `behind` too, and its agenda item asks whether it
+should hold all the time, because a rolling window has no start to pace from. A result recorded
+before counts were stored has no count, and its claim reads as a yes-or-no claim without an
+`effort` until the next run, or for a manual claim the next answer, measures it.
 
 Only `fail` is a contradiction, and `behind` is the warning before one; `open` is neither.
 `no-evidence` is a fault in the deployment, reported by `/health` and shown in the view, and it
