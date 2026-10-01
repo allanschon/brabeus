@@ -170,9 +170,11 @@ one unconfirmed.
 Each approval is one `review` per draft:
 
 - `path`: the draft's path;
-- `question`: the question you asked, as you asked it. The kind's `draft` prompt is the
-  natural one ("Is this one of the things you weigh decisions against?"); for several at
-  once, the question you asked of them all;
+- `question`: the question you asked, as you asked it, including what you told them in it
+  about which parts of the draft are yours (§5). The kind's `draft` prompt is the natural
+  ending ("Is this one of the things you weigh decisions against?"), but never cut the
+  question down to the bare prompt: the record has to show they were told. For several
+  drafts at once, the question you asked of them all;
 - `verdict`: `confirmed` if it is right as written; `corrected`, with the new `body` and
   the changed `fields`, if they reword it; `retired` if it should not be there at all;
 - `answer`: the person's reply, exactly as they gave it, and nothing else. It goes into the
@@ -184,8 +186,9 @@ Each approval is one `review` per draft:
 **Never `review` without the person's answer in this conversation.** A confirmation you
 inferred is exactly what the record exists to prevent.
 
-An agenda item in a check-in works the same way: `review` with the item's `path`, its
-`question` exactly as the kernel wrote it, with nothing added before it (no greeting, no
+An agenda item in a check-in works the same way, except for `question`. This applies only
+to the item the kernel put on the agenda, not to drafts you are asking them to approve:
+`review` with the item's `path`, its `question` exactly as the kernel wrote it, with nothing added before it (no greeting, no
 offer to run the interview), followed only by any follow-up question you asked to get
 their answer, the verdict
 their answer amounts to (`confirmed`, `corrected`, `retired`, or `later` if they want to
