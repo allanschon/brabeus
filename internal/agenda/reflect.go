@@ -50,7 +50,8 @@ type ClaimGap struct {
 	Standing bool             `json:"standing,omitempty"`
 	Deadline string           `json:"deadline,omitempty"`
 	// Unreadable names the value that could not be read when State is
-	// behind for that reason: deadline, since, window or effort.
+	// behind for that reason: deadline, since, window or effort, or rolling
+	// for a rolling since on a claim that does not say standing.
 	Unreadable string `json:"unreadable,omitempty"`
 	DaysLeft   *int   `json:"days_left,omitempty"`
 	Count      *int   `json:"count,omitempty"`
