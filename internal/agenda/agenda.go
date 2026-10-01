@@ -126,7 +126,7 @@ func Compute(set *module.Set, records []store.Stored, results map[string][]store
 					index := res.Index
 					item.Reason, item.ClaimText, item.ClaimIndex = Fail, res.Text, &index
 					item.Question = fmt.Sprintf("the claim %q failed on %s%s. %s", res.Text, res.Since.UTC().Format("2006-01-02"),
-						store.Parenthetical(res.Detail), render(orDefault(kind.Interview, DefaultInterview), r))
+						store.Parenthetical(res.Detail), followUp(kind, r))
 					by, byOK := parseDay(r.Fields[byField])
 					fails = append(fails, failCandidate{item, by, byOK, res.Since})
 				}
@@ -231,6 +231,18 @@ func copyFields(m map[string]string) map[string]string {
 		out[k] = v
 	}
 	return out
+}
+
+// followUp is the question asked after a failed claim. A goal the person has
+// confirmed is asked its interview question, whether it is still right. A
+// draft is asked its draft question instead, because it has no review to
+// measure progress from: the interview question would render {reviewed} as
+// "never" and read as "nothing has ever been done" (spec §9).
+func followUp(kind module.Kind, r store.Stored) string {
+	if r.Reviewed.IsZero() {
+		return render(orDefault(kind.Draft, DefaultDraft), r)
+	}
+	return render(orDefault(kind.Interview, DefaultInterview), r)
 }
 
 // orDefault returns prompt, or def when the kind declared none.

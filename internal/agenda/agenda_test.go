@@ -420,4 +420,24 @@ func TestADraftGoalWithAFailedClaimIsAskedAboutTheFailFirst(t *testing.T) {
 	if b, _ := json.Marshal(items[1]); strings.Contains(string(b), "claim_index") {
 		t.Errorf("an item that is not about a claim carries no index: %s", b)
 	}
+	// The goal has never been reviewed, so the fail asks the draft question,
+	// not "progress since never".
+	if want := `the claim "three articles" failed on 2026-09-20 (2 found). Is this right as written?`; items[0].Question != want {
+		t.Errorf("question = %q, want %q", items[0].Question, want)
+	}
+}
+
+// A confirmed goal's fail is followed by its interview question, with the date
+// of its last review.
+func TestAConfirmedGoalsFailAsksWhetherItIsStillRight(t *testing.T) {
+	now := at("2026-10-01T00:00:00Z")
+	r := rec("telos/goal/g.md", "telos", "goal", map[string]string{"id": "G1", "title": "t", "by": "2026-11-01", "claims": "- text: \"three articles\"\n  check: {adapter: tracker, min: 3}"}, "2026-09-25T00:00:00Z", "2026-09-26T00:00:00Z", 0)
+	results := map[string][]store.ClaimResult{"telos/goal/g.md": {result(0, "three articles", store.Fail, "2026-09-27T00:00:00Z", "2 found")}}
+	items := Compute(testSet(), []store.Stored{r}, results, now)
+	if len(items) == 0 || items[0].Reason != Fail {
+		t.Fatalf("items = %+v", items)
+	}
+	if want := `the claim "three articles" failed on 2026-09-27 (2 found). Still right? Progress since 2026-09-26?`; items[0].Question != want {
+		t.Errorf("question = %q, want %q", items[0].Question, want)
+	}
 }
