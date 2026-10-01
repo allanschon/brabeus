@@ -17,6 +17,7 @@ type Reason string
 
 const (
 	Fail       Reason = "fail"
+	Behind     Reason = "behind"
 	Draft      Reason = "draft"
 	Stale      Reason = "stale"
 	Onboarding Reason = "onboarding"
@@ -51,11 +52,79 @@ type Item struct {
 // name in the kernel is product semantics, and §9 names this one.
 const byField = "by"
 
+// deferral is how long a goal reviewed or put off waits before its behind
+// claims rise above the stale tier (spec §9).
+const deferral = 7 * 24 * time.Hour
+
+// failCandidate is a claim item with what orders it: its deadline, when
+// readable, and since when it has failed.
 type failCandidate struct {
 	item  Item
 	by    time.Time
 	byOK  bool
 	since time.Time
+}
+
+func sortByDeadline(l []failCandidate) {
+	sort.SliceStable(l, func(i, j int) bool {
+		if l[i].byOK != l[j].byOK {
+			return l[i].byOK
+		}
+		if l[i].byOK && !l[i].by.Equal(l[j].by) {
+			return l[i].by.Before(l[j].by)
+		}
+		return l[i].since.Before(l[j].since)
+	})
+}
+
+// latest is the later of two times; a zero time means never.
+func latest(a, b time.Time) time.Time {
+	if b.After(a) {
+		return b
+	}
+	return a
+}
+
+func deref(p *int) int {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
+// failQuestion names what failed: a standing claim the day it began failing,
+// an end-state claim the deadline it missed (spec §9).
+func failQuestion(res store.ClaimResult, rd store.Reading) string {
+	if rd.Standing {
+		return fmt.Sprintf("the claim %q failed on %s%s.", res.Text, res.Since.UTC().Format("2006-01-02"), store.Parenthetical(res.Detail))
+	}
+	return fmt.Sprintf("the claim %q was due by %s and is not met%s.", res.Text, rd.Deadline, store.Parenthetical(res.Detail))
+}
+
+// behindQuestion names the numbers the reading was made from, so the person
+// sees why the claim is behind, or which date could not be read (spec §9).
+// It uses the reading's numbers, never the stored result's: an unchecked
+// paced claim reads as zero done.
+func behindQuestion(c store.Claim, rd store.Reading) string {
+	switch rd.Unreadable {
+	case "deadline":
+		return fmt.Sprintf("the claim %q has a deadline %q that could not be read; fix the date.", c.Text, rd.Deadline)
+	case "since":
+		return fmt.Sprintf("the claim %q has a since %q that could not be read; fix the date.", c.Text, c.Args["since"])
+	case "effort":
+		return fmt.Sprintf("the claim %q has an effort %q that could not be read; fix it.", c.Text, c.Effort)
+	case "window":
+		return fmt.Sprintf("the claim %q starts counting on %s, after its deadline %s; fix the dates.", c.Text, c.Args["since"], rd.Deadline)
+	}
+	if rd.Target != nil && rd.Expected != nil {
+		unit := "found"
+		if c.Adapter == store.AdapterManual {
+			unit = "done"
+		}
+		return fmt.Sprintf("the claim %q is behind: %d of %d %s, %d expected by now, %d days left.",
+			c.Text, deref(rd.Count), *rd.Target, unit, *rd.Expected, deref(rd.DaysLeft))
+	}
+	return fmt.Sprintf("the claim %q is behind: %d days left, about %d days of work.", c.Text, deref(rd.DaysLeft), deref(rd.Effort))
 }
 
 func parseDay(s string) (time.Time, bool) {
@@ -70,21 +139,24 @@ type candidate struct {
 	pref     bool // preferences sort last within each reason (§9)
 }
 
-// Compute orders the agenda (spec §9): claims in fail first, by the goal's
-// by date then by how long each has failed, then drafts — records never
+// Compute orders the agenda (spec §9): claims in fail first, by the claim's
+// own deadline then by how long each has failed, then claims behind schedule
+// by deadline, then drafts — records never
 // reviewed — oldest first, then records past their kind's freshness or
-// due_field by module priority then age, then the onboarding gaps — kinds a
+// due_field by module priority then age, then the behind claims of goals
+// reviewed or put off within a week (deferred), then the onboarding gaps — kinds a
 // module wants on file and has none of. Within the drafts and stale tiers,
 // preferences sort last, native and crossing alike. results are the claim
 // results keyed by goal path (store.ClaimResults); nil means none.
 //
-// A record with a failed claim is still eligible for the draft and stale
-// tiers: the same goal can appear twice, once per reason, the fail first.
+// A record with a failed or behind claim is still eligible for the draft and
+// stale tiers: the same goal can appear twice, once per reason, the claim
+// first (or, when deferred, after stale). An open claim is never on the agenda.
 // no-evidence never reaches the agenda (§8.1): it is a fault, not the
 // person being behind.
 func Compute(set *module.Set, records []store.Stored, results map[string][]store.ClaimResult, now time.Time) []Item {
 	var drafts, stale []candidate
-	var fails []failCandidate
+	var fails, behind, deferred []failCandidate
 	present := map[string]bool{} // module/kind with at least one live record
 
 	for _, r := range records {
@@ -114,21 +186,40 @@ func Compute(set *module.Set, records []store.Stored, results map[string][]store
 		_, pref := module.Crossing[r.Kind]
 
 		// Before the draft check, which ends this record's turn: a draft
-		// goal's failed claim is still a fail.
+		// goal's failed or behind claim still counts.
 		if block := r.Fields[store.ClaimsField]; block != "" {
 			if claims, err := store.ParseClaims(block); err == nil {
+				// A goal put off or reviewed within a week keeps its behind
+				// claims below the stale tier; the clock is the later of the
+				// two stamps (§9). A failed claim is never deferred.
+				recent := now.Sub(latest(r.Reviewed, r.Snoozed)) < deferral
 				for _, res := range store.JoinResults(claims, results[r.Path]) {
-					if res.State != store.Fail {
+					reading := store.Read(claims[res.Index], res, r.Fields[byField], now)
+					if reading.State != store.Fail && reading.State != store.Behind {
 						continue
 					}
 					item := base
 					item.Fields = copyFields(r.Fields) // its own copy, as the draft or stale item has
 					index := res.Index
-					item.Reason, item.ClaimText, item.ClaimIndex = Fail, res.Text, &index
-					item.Question = fmt.Sprintf("the claim %q failed on %s%s. %s", res.Text, res.Since.UTC().Format("2006-01-02"),
-						store.Parenthetical(res.Detail), followUp(kind, r))
-					by, byOK := parseDay(r.Fields[byField])
-					fails = append(fails, failCandidate{item, by, byOK, res.Since})
+					item.ClaimText, item.ClaimIndex = res.Text, &index
+					deadline, deadlineOK := parseDay(reading.Deadline)
+					if reading.Standing {
+						deadline, deadlineOK = parseDay(r.Fields[byField])
+					}
+					cand := failCandidate{item: item, by: deadline, byOK: deadlineOK, since: res.Since}
+					if reading.State == store.Fail {
+						cand.item.Reason = Fail
+						cand.item.Question = failQuestion(res, reading) + " " + followUp(kind, r)
+						fails = append(fails, cand)
+						continue
+					}
+					cand.item.Reason = Behind
+					cand.item.Question = behindQuestion(claims[res.Index], reading) + " " + followUp(kind, r)
+					if recent {
+						deferred = append(deferred, cand)
+					} else {
+						behind = append(behind, cand)
+					}
 				}
 			}
 		}
@@ -154,17 +245,12 @@ func Compute(set *module.Set, records []store.Stored, results map[string][]store
 		stale = append(stale, candidate{base, man.Priority, now.Sub(r.Reviewed), pref})
 	}
 
-	// Fails: nearest by first; a by that does not parse sorts after every one
-	// that does rather than breaking the order; then longest failing first.
-	sort.SliceStable(fails, func(i, j int) bool {
-		if fails[i].byOK != fails[j].byOK {
-			return fails[i].byOK
-		}
-		if fails[i].byOK && !fails[i].by.Equal(fails[j].by) {
-			return fails[i].by.Before(fails[j].by)
-		}
-		return fails[i].since.Before(fails[j].since)
-	})
+	// Fails and behind: the claim's own deadline, nearest first; a deadline
+	// that does not parse sorts after every one that does rather than
+	// breaking the order; then longest failing first (§9).
+	for _, list := range [][]failCandidate{fails, behind, deferred} {
+		sortByDeadline(list)
+	}
 	// Drafts: oldest first, preferences last. Stale: priority, then age, preferences last.
 	sort.SliceStable(drafts, func(i, j int) bool {
 		if drafts[i].pref != drafts[j].pref {
@@ -186,10 +272,16 @@ func Compute(set *module.Set, records []store.Stored, results map[string][]store
 	for _, c := range fails {
 		out = append(out, c.item)
 	}
+	for _, c := range behind {
+		out = append(out, c.item)
+	}
 	for _, c := range drafts {
 		out = append(out, c.item)
 	}
 	for _, c := range stale {
+		out = append(out, c.item)
+	}
+	for _, c := range deferred {
 		out = append(out, c.item)
 	}
 	for _, man := range set.Modules {

@@ -698,7 +698,9 @@ func TestNewRegistersTheToolsForBothCallerClasses(t *testing.T) {
 	}
 }
 
-const serverGoalClaims = "- text: \"three articles\"\n  check: {adapter: tracker, label: article, since: 2026-07-01, min: 3}\n- text: \"date holds\"\n  check: {adapter: manual}\n- text: \"a commit\"\n  standing: true\n  check: {adapter: forge, repo: a/b, since: -14d, min: 1}"
+// "date holds" is standing: an end-state claim with its deadline ahead reads
+// open and never reaches the agenda (§8.1), and a test below needs it to fail.
+const serverGoalClaims = "- text: \"three articles\"\n  check: {adapter: tracker, label: article, since: 2026-07-01, min: 3}\n- text: \"date holds\"\n  standing: true\n  check: {adapter: manual}\n- text: \"a commit\"\n  standing: true\n  check: {adapter: forge, repo: a/b, since: -14d, min: 1}"
 
 func writeServerGoal(t *testing.T, st *store.Store, rel, id, sc string) {
 	t.Helper()
