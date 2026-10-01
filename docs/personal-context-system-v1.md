@@ -1,8 +1,8 @@
-# A personal AI context system — v1.7 specification
+# A personal AI context system — v1.8 specification
 
 **Working name: Brabeus.** See §16.
 
-**Status: v1.7. M0, M1 and M2 are built; see §14.**
+**Status: v1.8. M0, M1 and M2 are built; see §14.**
 
 This document describes a system built on the kernel this repository already contains: a
 private store with hybrid retrieval, a Claude Code plugin, and a Dockerfile that builds the
@@ -10,7 +10,7 @@ kernel. How that image is deployed and updated is each deployment's own concern.
 opinions about content. Everything it stores belongs to a module, and every module runs under one
 of a small set of profiles the kernel defines (§1.1).
 
-C4 diagrams of the system at v1.7 — context, containers, kernel components, and the interview
+C4 diagrams of the system at v1.8 — context, containers, kernel components, and the interview
 as a sequence — are in [`personal-context-system-c4.md`](personal-context-system-c4.md). A
 plain-language description for someone who might use it rather than build it is
 [`personal-context-system-plain.md`](personal-context-system-plain.md).
@@ -561,7 +561,9 @@ A `pass` older than two intervals is shown as stale, not as passing, so one miss
 change every goal's state but a scheduler that has stopped shows within two days.
 
 A `manual` claim is asked at interview, and its answer is recorded with the kernel's
-claim-result operation, like an adapter's result. A review of the goal happens only if the person
+claim-result operation, like an adapter's result. The answer's note is written to make sense on
+its own, quoting the person where their reply needs the question beside it, because the agenda
+line and the reflection show the note without the question that drew it. A review of the goal happens only if the person
 also confirms or corrects the goal itself, so whether the evidence is in stays separate from
 whether the goal is still right. A manual `fail` ranks equally with an adapter `fail`, so modules
 without adapters are not second-class.
@@ -630,7 +632,9 @@ themselves. Onboarding keeps `identity`'s own order, because the first conversat
 preferences are set.
 
 Each item carries its reason — `fail`, `draft`, `stale` or `onboarding` — and the question for
-it: the kind's `draft`, `interview` or `first` prompt (§6). `no-evidence` claims are not on the
+it: the kind's `draft`, `interview` or `first` prompt (§6). A failed claim's item names the
+failure and then asks the goal's `interview` question, or its `draft` question if the goal has
+never been reviewed, because a draft has no review to measure progress from. `no-evidence` claims are not on the
 agenda; they are faults (§8.1). A record the person has snoozed stays on the agenda with its snooze
 count, so a "later" is visible rather than silent.
 
@@ -642,14 +646,19 @@ item, never a list: a single question is something the assistant can raise and t
 answer in a sentence, while a list is a backlog the person has to sort; the rest of the agenda
 waits behind it for the interview, and one item fits the line's 256-byte reservation outside the
 modules' budgets (§10). That line is what
-bounds staleness to "the next session" without anyone remembering anything (§1). There is no
+bounds staleness to "the next session" without anyone remembering anything (§1), so the
+assistant raises its question once, early in the session, waiting for a natural break if the
+person opened with a task. It does not raise it again in that session once the person has
+answered, put it off or passed over it: a line nobody raises bounds nothing, and a line raised
+over and over is a nag the person learns to ignore. There is no
 daemon, no status indicator and no notification, and this specification keeps refusing them,
 because each is a cue the person would have to notice.
 
 **The `review` operation** takes a record id, the question that was asked, a verdict — confirmed,
 corrected (with the new content), retired, or later — and the person's answer in their own words.
 It writes the question, the verdict and the answer into the commit, and it is the only path that
-moves `reviewed`. A plain `write` never does. So a `reviewed` date in history is, by construction,
+moves `reviewed`. The question is the one the person was asked, with nothing the assistant said
+around it, and for an agenda item it is the item's question as the kernel wrote it. A plain `write` never does. So a `reviewed` date in history is, by construction,
 a question that was asked and answered, and the answer can be read back. `review` accepts only a
 record whose governing module is `ratified-record` (§1.1).
 
@@ -691,9 +700,12 @@ confirmed without one.
 **Manner.** The interview speaks in the person's register (`identity/register`, §7), or in a plain
 default — warm, direct, short turns — until one is on file. It asks one question at a time and
 never asks one whose answer is on file. It is exempt from any preference that asks for terse
-answers in working sessions: probing and follow-up are its purpose. "Enough", "stop" and "later"
-end it at once, and nothing is lost: every draft is already in the record, and the next session's
-agenda opens on it.
+answers in working sessions: probing and follow-up are its purpose. "Enough", "stop" and any other
+plain request to finish end it at once, and nothing is lost: every draft is already in the record,
+and the next session's agenda opens on it. A bare "later" does not end it. In answer to an agenda
+item it puts off that item, recorded as a `later` review, and the conversation goes on, because
+"later" is the verdict for a deferral and cannot also mean "stop". When the interviewer cannot
+tell which the person means, it asks once.
 
 **Reflect back.** When the person stops, or asks for it, the interview closes with the gap
 grouped by value, computed by the kernel's `reflect` tool (§4.1) and phrased by the interviewer,
@@ -1006,6 +1018,17 @@ behaviour it left undefined, and rules it stated without a reason.
 | AU | once reviewed, a record governed by a `ratified-record` module is refused `write` and `delete`: its content changes only through a `corrected` review and it leaves only through `retired`, because otherwise the assistant could reword what the person confirmed and it would still render as confirmed; a draft may still be rewritten or deleted, and a confirmed crossing preference is frozen like the rest | §5, §9 |
 | AV | the kernel runs the claim schedule itself on `BRABEUS_CLAIM_INTERVAL`, and `0` turns it off, closing §15's question; a sibling scheduler would need a kernel change, because the claim-result operation accepts only manual answers and freshness is judged against the kernel's own last run | §8.1, §15 |
 | AW | the notebook is searched lexically unless `BRABEUS_NOTEBOOK_EMBED=1` adds the dense leg, because it is much larger than the record and its first embedding pass takes minutes; claim results are one JSON file per goal under `claims/`, not a record, so a result never touches the goal it measures and is never listed or searched. These close the two questions AF and §8.1 left to M2 | §5, §8.1 |
+
+### Changes in v1.8
+
+Decided 2026-10-01, from what the M2 acceptance run showed on the live system.
+
+| | change | sections |
+|---|---|---|
+| AX | a bare "later" in answer to an agenda item puts off that item and the interview goes on; only "enough", "stop" or another plain request to finish ends it, because "later" is also the verdict for a deferral, and one word cannot mean both | §9 |
+| AY | the assistant raises the first line's question once a session, early, and not again once it is answered, put off or passed over, because the line bounds staleness only if someone raises it, and raising it repeatedly would teach the person to ignore it | §9 |
+| AZ | a failed claim on a goal that has never been reviewed is followed by the goal's `draft` question, not its `interview` question, because the interview question asks about progress since a review that never happened | §9 |
+| BA | a review's question is the question the person was asked, with nothing the assistant said around it; a manual claim's note is written to make sense without its question, because the agenda line and the reflection show it on its own | §8.1, §9 |
 
 ## Sources
 

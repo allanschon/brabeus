@@ -1,7 +1,7 @@
 # The personal context system — C4 diagrams
 
 These diagrams accompany [`personal-context-system-v1.md`](personal-context-system-v1.md) at
-v1.7. They describe the same system as the specification at four levels of detail, and where they
+v1.8. They describe the same system as the specification at four levels of detail, and where they
 disagree, the specification is correct. Components carry the specification's descriptive names.
 
 The diagrams show the whole design, not only what is built. An element tagged with a milestone,
@@ -229,13 +229,13 @@ sequenceDiagram
     A->>K: context
     K->>K: compute agenda: fails, drafts, stale by priority and age, onboarding, with preferences last in each
     K-->>A: 2 KB block, first line is the top agenda item with its question and, if revised since last reviewed, its revision line
-    A-->>P: the line is in context, and the assistant may voice it
+    A-->>P: the assistant raises the line's question once, early, and not again that session
 
     Note over P,K: /interview, or the person picks up the first line
     A->>K: context, modules (M2)
     K-->>A: the agenda, and every enabled module's kinds, fields, lenses and intro
     A->>A: getting to know the person when the top agenda item is onboarding, else a check-in
-    loop until the person says enough, stop, or later
+    loop until the person says enough or stop (a "later" puts off one item, and the loop goes on)
         A->>P: a topic's lens, or the top agenda item, in the person's register
         P-->>A: an answer, as long and as wandering as they like
         A->>K: write a draft for each thing the answer holds, in any module, and a thread for what no module holds

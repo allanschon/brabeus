@@ -170,9 +170,11 @@ one unconfirmed.
 Each approval is one `review` per draft:
 
 - `path`: the draft's path;
-- `question`: the question you asked, as you asked it. The kind's `draft` prompt is the
-  natural one ("Is this one of the things you weigh decisions against?"); for several at
-  once, the question you asked of them all;
+- `question`: the question you asked, as you asked it, including what you told them in it
+  about which parts of the draft are yours (§5). The kind's `draft` prompt is the natural
+  ending ("Is this one of the things you weigh decisions against?"), but never cut the
+  question down to the bare prompt: the record has to show they were told. For several
+  drafts at once, the question you asked of them all;
 - `verdict`: `confirmed` if it is right as written; `corrected`, with the new `body` and
   the changed `fields`, if they reword it; `retired` if it should not be there at all;
 - `answer`: the person's reply, exactly as they gave it, and nothing else. It goes into the
@@ -184,10 +186,15 @@ Each approval is one `review` per draft:
 **Never `review` without the person's answer in this conversation.** A confirmation you
 inferred is exactly what the record exists to prevent.
 
-An agenda item in a check-in works the same way: `review` with the item's `path`, its
-`question`, the verdict their answer amounts to (`confirmed`, `corrected`, `retired`, or
-`later` if they want to leave it for now, which the kernel counts as a snooze), and their
-answer.
+An agenda item in a check-in works the same way, except for `question`. This applies only
+to the item the kernel put on the agenda, not to drafts you are asking them to approve:
+`review` with the item's `path`, its `question` exactly as the kernel wrote it, with nothing added before it (no greeting, no
+offer to run the interview), followed only by any follow-up question you asked to get
+their answer, the verdict
+their answer amounts to (`confirmed`, `corrected`, `retired`, or `later` if they want to
+leave it for now, which the kernel counts as a snooze), and their answer. A bare "later"
+in reply to an item puts off that item and nothing else: record the `later` review and
+carry on with the next item (§8).
 
 Once a record is confirmed, it changes only through `review`. The kernel refuses `write`
 and `delete` on it, so do not try either: a change is a `corrected` review carrying their
@@ -200,7 +207,13 @@ means there is nothing to ask, so carry on. For each claim with `manual: true` t
 have not already recorded in this conversation, ask the person
 about it ("is the first draft finished?") and record the answer with `claim_result`: the
 goal, the claim's `index` as `claims` lists it, a `state` of `pass`, `fail` or
-`no-evidence` (they cannot say yet), and a one-line `note` in their words. That records
+`no-evidence` (they cannot say yet), and a one-line `note`. The note is shown again without your question, on the agenda
+line and in the reflection, so it has to make sense on its own. If their reply does ("two
+chapters still to draft"), use it as it is. If it only makes sense beside your question
+("yes", "your guess is right"), state the fact plainly and quote their reply:
+`The first draft is not finished ("Your guess is right.")`. The unquoted words are then
+plainly yours and the quoted ones theirs. If a note already on file only makes sense beside
+its question, write the new one so that it stands alone. That records
 whether the evidence is in; it does not confirm the goal. Review the goal only if the
 person also confirms or corrects the goal itself. `claim_result` refuses a claim another
 adapter checks, because those results come from the schedule.
@@ -217,11 +230,17 @@ covers stays on file.
 
 ## 8. Stopping, and the reflection
 
-"Enough", "stop", "later", or anything that means the same, ends the interview at once.
-Ask nothing more. Stopping is not a snooze: leave the item you were on unanswered, and it
-stays on the agenda. Only if the person asked to put that item itself off ("ask me about
-that later") record it as a `later` review with their words; never snooze anything else. Nothing is lost:
-every draft is already written, and the next session's first line will open on it.
+"Stop", "enough", "that's all for now", "let's do this later", or anything else that
+plainly means the interview is over, ends it at once. Ask nothing more. Stopping is not a
+snooze: leave the item you were on unanswered, and it stays on the agenda. Never snooze
+anything because the person stopped. Nothing is lost: every draft is already written, and
+the next session's first line will open on it.
+
+A bare "later" is not a stop. In reply to an agenda item's question it puts off that item
+(§6), and the interview carries on. In reply to a getting-to-know-you question there is
+nothing to put off, so leave that question and move to the next. If you cannot tell whether
+the person means the item or the whole interview, ask once, briefly: "Put this one off, or
+stop for now?"
 
 Then close — or answer, whenever the person asks how things stand — with the reflection.
 Call `reflect` and phrase what it returns in their register. Do not recount or recompute

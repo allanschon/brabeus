@@ -13,20 +13,22 @@ grader fails its case and the run exits 1.
 | case                                             | what it proves                                                                                                                                                                                                                                                                |
 | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `first-interview`                                | A first interview on an empty record turns the person's answers into a confirmed register, value and goal, and leaves a thread for sleep, which no module holds. The goal's draft labels what the interviewer added, and every review's answer is the person's words exactly. |
-| `check-in-opens-with-the-contradiction`          | A confirmed goal with a failed claim changes only through a `corrected` review whose answer is the person's words and nothing else.                                                                                                                                           |
+| `check-in-opens-with-the-contradiction`          | A confirmed goal with a failed claim changes only through a `corrected` review whose answer is the person's words and nothing else, and whose question starts with the kernel's agenda question, word for word, with no offer of the interview in it.                         |
 | `a-thread-for-a-topic-no-module-holds`           | Once a module covers a thread's topic, the interview takes it up, writes the draft there, and deletes the thread.                                                                                                                                                             |
 | `stop-loses-nothing`                             | "stop" ends the interview. The drafts are already in the record, and nothing is confirmed or snoozed.                                                                                                                                                                         |
+| `later-puts-off-one-item`                        | A bare "later" in reply to a check-in item records a `later` review carrying "later" as the answer, and the interview carries on to another question instead of ending.                                                                                                       |
 | `review-carries-the-persons-words`               | A value is drafted in the person's words, and its review carries their answer verbatim.                                                                                                                                                                                       |
 | `judged-approval-names-the-guesses`              | Judged. When the person approves their goal, the question tells them which parts of it are the interviewer's.                                                                                                                                                                 |
 | `judged-reflection-says-only-what-was-confirmed` | Judged. The closing reflection gives nothing of the interviewer's as the person's own.                                                                                                                                                                                        |
 | `judged-check-in-raises-the-failure-first`       | Judged. A check-in raises the failed claim before anything else.                                                                                                                                                                                                              |
 | `judged-stop-asks-nothing-more`                  | Judged. Nothing is asked or put up for approval after "stop".                                                                                                                                                                                                                 |
+| `judged-session-raises-the-first-line`           | Judged. An ordinary session, not an interview, raises the failed claim on the first line once, and not again after the person says "later".                                                                                                                                   |
 
 ## When to run it, and what it costs
 
 Run it when the `interview` skill changes and before a release, not in CI: every case is a real
-model conversation on your account. One run of each of the nine cases cost $2.66 and took six
-minutes on 2026-09-29, with the default model and a Sonnet judge. `--runs 2` doubles both and
+model conversation on your account. One run of each of the eleven cases cost $2.97 and took seven
+minutes on 2026-10-01, with the default model and a Sonnet judge. `--runs 2` doubles both and
 shows whether a judged verdict holds. Pass `--max-cost-usd` to cap a run.
 
 ## How to run it
@@ -92,15 +94,18 @@ ignore.
 
 **Never export `EVAL_BRABEUS_URL` or `EVAL_BRABEUS_TOKEN` in an ordinary shell.** Both are read
 next to their production names, so with either set, every MCP tool call fails, while the
-SessionStart hook, which reads only `BRABEUS_URL`, still reports the kernel reachable. If `/health`
+SessionStart hook, which prefers `BRABEUS_URL` and falls back to the eval names only when it is
+unset, still reports the kernel reachable. If `/health`
 says the kernel answers but the tools fail to connect, check for these two variables first.
 
 **The tool names.** A plugin's server is registered as `plugin:brabeus:brabeus`, so its tools are
 `mcp__plugin_brabeus_brabeus__<tool>`. Every `tool_used` grader uses that spelling.
 
-**What the plugin's hooks see.** The SessionStart hook reads only `BRABEUS_URL`, so every eval
-session starts with the note "kernel unreachable" and the routing guard off. The interview does not
-depend on either: it calls `context` itself.
+**What the plugin's hooks see.** The SessionStart hook falls back to `EVAL_BRABEUS_URL` and
+`EVAL_BRABEUS_TOKEN` when the production names are unset, so every eval session starts with the
+case's block and routing text, as a real session does, and
+`judged-session-raises-the-first-line` depends on that. The fallback is applied after the outbox
+drain, so an eval never drains the machine's real outbox into a throwaway kernel.
 
 ## How a case is graded
 

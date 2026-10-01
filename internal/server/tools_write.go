@@ -46,7 +46,7 @@ type writeOut struct {
 
 type reviewIn struct {
 	Path     string            `json:"path" jsonschema:"the record's path, as list or context give it"`
-	Question string            `json:"question" jsonschema:"the question that was asked, verbatim; it goes into the commit"`
+	Question string            `json:"question" jsonschema:"the question that was asked, verbatim, and nothing else: no offer, lead-in or commentary around it; for an agenda item, the item's question exactly as the kernel wrote it. It goes into the commit"`
 	Verdict  string            `json:"verdict" jsonschema:"confirmed, corrected, retired or later"`
 	Answer   string            `json:"answer" jsonschema:"the person's answer, in their own words; it goes into the commit and is required"`
 	Body     string            `json:"body,omitempty" jsonschema:"corrected only: the new body; empty keeps the old"`

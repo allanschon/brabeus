@@ -97,6 +97,13 @@ drop_profiles() {
   [ -n "$sid" ] && files+=("$RUNTIME/profiles-$sid")
   rm -f "${files[@]}" 2>/dev/null || true
 }
+# An eval case names its kernel with EVAL_BRABEUS_URL and EVAL_BRABEUS_TOKEN,
+# the only variables its environment passes through (evals/README.md), so the
+# session it tests starts with the block a real one would. Production never
+# sets them. This comes after the outbox drain on purpose: the drain reads the
+# machine's real outbox, and must never empty it into a throwaway eval kernel.
+BRABEUS_URL="${BRABEUS_URL:-${EVAL_BRABEUS_URL:-}}"
+BRABEUS_TOKEN="${BRABEUS_TOKEN:-${EVAL_BRABEUS_TOKEN:-}}"
 auth=()
 [ -n "${BRABEUS_TOKEN:-}" ] && auth=(-H "Authorization: Bearer $BRABEUS_TOKEN")
 # ${auth[@]+"${auth[@]}"}, not "${auth[@]}": with auth=() and `set -u`, a bare
@@ -131,7 +138,7 @@ else
 fi
 
 read -r -d '' ROUTING <<CTX || true
-Durable facts go to the brabeus MCP server's \`write\` tool (module, kind, scope, path), never to a file under ~/.claude/projects/*/memory/. $SCOPE_KEYS \`context\` is the block above, and its first line is what the person's record is asking; \`/interview\` works through it, confirming with \`review\` and recording a manual claim's answer with \`claim_result\`. If the server is unreachable, queue a frontmattered file in ~/.claude/memory-outbox/ and the next session drains it.
+Durable facts go to the brabeus MCP server's \`write\` tool (module, kind, scope, path), never to a file under ~/.claude/projects/*/memory/. $SCOPE_KEYS \`context\` is the block above, and its first line is what the person's record is asking. Unless it says nothing is due, raise that question with the person once, briefly: early in your first reply, or at the first natural break if they opened with a task. Do not raise it again this session once they have answered it, put it off or passed over it. An answer to that first line given outside \`/interview\` is recorded with \`review\`, whose \`question\` is the first line's question exactly as the block gives it, with nothing added; this rule is for the first line only, and \`/interview\` sets its own for drafts. \`/interview\` works through the rest of the agenda, confirming with \`review\` and recording a manual claim's answer with \`claim_result\`. If the server is unreachable, queue a frontmattered file in ~/.claude/memory-outbox/ and the next session drains it.
 CTX
 
 CONTEXT="$block"

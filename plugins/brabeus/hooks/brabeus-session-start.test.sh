@@ -53,6 +53,8 @@ check "emits valid SessionStart JSON"         '[ "$(printf "%s" "$out" | jq -r .
 check "the block is the first context"       '[ "$(printf "%s" "$ctx" | head -1)" = "agenda: [identity/value family] Still one of the things you weigh decisions against?" ]'
 check "the routing reminder follows"         'printf "%s" "$ctx" | grep -q "brabeus.*write"'
 check "the routing names the interview"      'printf "%s" "$ctx" | grep -q "/interview.*claim_result"'
+check "the routing says to raise the first line once" 'printf "%s" "$ctx" | grep -q "raise that question with the person once"'
+check "the routing keeps the review question verbatim" 'printf "%s" "$ctx" | grep -q "exactly as the block gives it, with nothing added"'
 check "profiles read up to claims=, ignoring errors= after it" '[ "$(cat "$PROFILES")" = "$(printf "working-memory\nratified-record")" ]'
 check "per-session profiles file written"    '[ "$(cat "$PROFILES-s1")" = "$(cat "$PROFILES")" ]'
 check "no project outside a git repository"  'printf "%s" "$ctx" | grep -q "cwd names no project"'
@@ -95,6 +97,11 @@ check "still emits valid JSON when down"     '[ "$(printf "%s" "$out" | jq -r .h
 check "says the kernel is unreachable"       'printf "%s" "$ctx" | grep -qi "unreachable"'
 check "routing text still present when down" 'printf "%s" "$ctx" | grep -q "brabeus.*write"'
 check "profiles files removed when down"     '[ ! -e "$PROFILES" ] && [ ! -e "$PROFILES-s1" ]'
+
+# ── an eval case: only the EVAL_* names are set ───────────────────────────────────────────────
+out=$(cd "$WORKDIR" && printf '{"session_id":"s6"}' | env -u BRABEUS_URL -u BRABEUS_TOKEN EVAL_BRABEUS_URL="http://127.0.0.1:$port" EVAL_BRABEUS_TOKEN="$(printf 't%.0s' $(seq 12))" bash "$HOOK")
+ctx=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')
+check "an eval case's kernel serves the block" '[ "$(printf "%s" "$ctx" | head -1)" = "agenda: [identity/value family] Still one of the things you weigh decisions against?" ]'
 
 # ── no URL configured ────────────────────────────────────────────────────────────────────────
 out=$(cd "$WORKDIR" && printf '' | env -u BRABEUS_URL bash "$HOOK")
