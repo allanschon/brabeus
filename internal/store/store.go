@@ -806,7 +806,7 @@ func (s *Store) Write(rel string, r Record, caller string) (string, error) {
 	case err == nil:
 		oldRecord, meta = ParseRecord(string(old))
 		// A kernel-owned key that failed to parse must stop the write rather
-		// than be silently dropped: compose only emits reviewed/retired/snoozes
+		// than be silently dropped: compose only emits reviewed/retired/snoozes/snoozed
 		// when they're non-zero, so composing anyway would erase whichever one
 		// did not parse — and only a review may move them (§9).
 		if len(meta.Malformed) > 0 {

@@ -65,6 +65,27 @@ func TestLaterCountsASnoozeAndLeavesReviewedAlone(t *testing.T) {
 	}
 }
 
+func TestLaterStampsSnoozedAndLeavesReviewedAlone(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	writeValue(t, s, "identity/value/craft.md", "craft")
+	setClock(t, "2026-09-01T09:00:00Z")
+	if _, err := s.Review("identity/value/craft.md", ReviewInput{Question: "Still?", Verdict: Confirmed, Answer: "yes"}, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	reviewed := metaOf(t, s, "identity/value/craft.md").Reviewed
+	setClock(t, "2026-10-01T09:00:00Z")
+	if _, err := s.Review("identity/value/craft.md", ReviewInput{Question: "Still?", Verdict: Later, Answer: "not yet"}, "test-machine"); err != nil {
+		t.Fatal(err)
+	}
+	m := metaOf(t, s, "identity/value/craft.md")
+	if want, _ := time.Parse(time.RFC3339, "2026-10-01T09:00:00Z"); !m.Snoozed.Equal(want) || m.Snoozes != 1 || !m.Reviewed.Equal(reviewed) {
+		t.Errorf("meta = %+v, want snoozed %v, snoozes 1, reviewed %v", m, want, reviewed)
+	}
+	if got := mustRead(t, filepath.Join(s.Dir, "identity/value/craft.md")); !strings.Contains(got, "snoozed: 2026-10-01T09:00:00Z\n") {
+		t.Errorf("file lacks the snoozed stamp:\n%s", got)
+	}
+}
+
 func TestRetiredStampsRetiredAndReviewed(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
 	writeValue(t, s, "identity/value/old.md", "an old value")
