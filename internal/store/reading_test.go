@@ -6,7 +6,10 @@ import (
 )
 
 func TestReadDerivesStateFromDeadlineAndSize(t *testing.T) {
-	loc, _ := time.LoadLocation("America/New_York")
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
 	at := func(s string) time.Time {
 		layout := "2006-01-02 15:04"
 		if len(s) == 10 {
@@ -32,7 +35,8 @@ func TestReadDerivesStateFromDeadlineAndSize(t *testing.T) {
 		goalBy   string
 		now      string
 		want     ClaimState
-		unread   bool
+		unread   string
+		measured ClaimState
 		daysLeft *int
 		expected *int
 		deadline string
@@ -57,11 +61,19 @@ func TestReadDerivesStateFromDeadlineAndSize(t *testing.T) {
 		{name: "15 standing fail", claim: Claim{Adapter: AdapterManual, Standing: true}, result: res(Fail, nil), goalBy: "2026-11-08", now: "2026-10-01", want: Fail, standing: true},
 		{name: "16 date claim is standing", claim: Claim{Adapter: AdapterDate, Args: map[string]string{"before": "2026-12-01"}}, result: res(Pass, nil), goalBy: "2026-11-08", now: "2026-10-01", want: Pass, standing: true},
 		{name: "17 the claim's own deadline", claim: Claim{Adapter: AdapterManual, By: "2026-10-05"}, result: res(Fail, nil), goalBy: "2026-11-08", now: "2026-10-06", want: Fail, deadline: "2026-10-05"},
-		{name: "18 unreadable deadline", claim: Claim{Adapter: AdapterManual}, result: res(Fail, nil), goalBy: "October", now: "2026-10-01", want: Behind, unread: true},
+		{name: "18 unreadable deadline", claim: Claim{Adapter: AdapterManual}, result: res(Fail, nil), goalBy: "October", now: "2026-10-01", want: Behind, unread: "deadline"},
 		{name: "19 manual of 1200", claim: manual(Claim{Args: map[string]string{"of": "1200", "since": "2026-09-01"}}), result: res(Fail, n(100)), goalBy: "2026-12-31", now: "2026-10-31", want: Behind, expected: n(590)},
-		{name: "20 since after deadline", claim: tracker("2026-10-20"), result: res(Fail, n(0)), goalBy: "2026-10-10", now: "2026-10-04", want: Behind},
+		{name: "20 since after deadline", claim: tracker("2026-10-20"), result: res(Fail, n(0)), goalBy: "2026-10-10", now: "2026-10-04", want: Behind, unread: "window"},
 		{name: "21 today before since", claim: tracker("2026-10-06"), result: res(Fail, n(0)), goalBy: "2026-10-10", now: "2026-10-04", want: Open, expected: n(0)},
 		{name: "22 yes-or-no tracker without effort", claim: Claim{Adapter: AdapterTracker, Args: map[string]string{"done": "false", "min": "3", "since": "2026-09-28"}}, result: res(Fail, n(1)), goalBy: "2026-10-10", now: "2026-10-09", want: Open},
+		{name: "23 manual count never measured, behind", claim: manual(Claim{Args: map[string]string{"of": "1200", "since": "2026-09-01"}}), result: res(Unchecked, nil), goalBy: "2026-12-31", now: "2026-10-31", want: Behind, expected: n(590)},
+		{name: "24 manual count never measured, first day, nothing due", claim: manual(Claim{Args: map[string]string{"of": "1200", "since": "2026-09-01"}}), result: res(Unchecked, nil), goalBy: "2026-12-31", now: "2026-09-01", want: Open, expected: n(0)},
+		{name: "30 manual count never measured, half an item due", claim: manual(Claim{Args: map[string]string{"of": "1200", "since": "2026-09-01"}}), result: res(Unchecked, nil), goalBy: "2026-12-31", now: "2026-09-02", want: Behind, expected: n(9)},
+		{name: "25 zero-value result reads as unchecked", claim: Claim{Adapter: AdapterManual}, result: ClaimResult{}, goalBy: "2026-11-08", now: "2026-11-09", want: Fail, measured: Unchecked},
+		{name: "26 unparseable since", claim: tracker("soon"), result: res(Fail, n(0)), goalBy: "2026-10-10", now: "2026-10-04", want: Behind, unread: "since"},
+		{name: "27 invalid effort", claim: Claim{Adapter: AdapterManual, Effort: "a week"}, result: res(Unchecked, nil), goalBy: "2026-11-08", now: "2026-10-31", want: Behind, unread: "effort"},
+		{name: "28 empty goal by", claim: Claim{Adapter: AdapterManual}, result: res(Fail, nil), goalBy: "", now: "2026-10-01", want: Behind, unread: "deadline"},
+		{name: "29 deadline text is trimmed", claim: Claim{Adapter: AdapterManual, By: " 2026-10-05 "}, result: res(Fail, nil), goalBy: "2026-11-08", now: "2026-10-01", want: Open, deadline: "2026-10-05"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -69,8 +81,15 @@ func TestReadDerivesStateFromDeadlineAndSize(t *testing.T) {
 			if got.State != tc.want {
 				t.Fatalf("state = %q, want %q (%+v)", got.State, tc.want, got)
 			}
-			if got.DateUnreadable != tc.unread {
-				t.Errorf("DateUnreadable = %v, want %v", got.DateUnreadable, tc.unread)
+			if got.Unreadable != tc.unread {
+				t.Errorf("Unreadable = %q, want %q", got.Unreadable, tc.unread)
+			}
+			wantMeasured := tc.measured
+			if wantMeasured == "" {
+				wantMeasured = tc.result.State
+			}
+			if got.Measured != wantMeasured {
+				t.Errorf("Measured = %q, want %q", got.Measured, wantMeasured)
 			}
 			if got.Standing != tc.standing {
 				t.Errorf("Standing = %v, want %v", got.Standing, tc.standing)
@@ -91,7 +110,10 @@ func TestReadDerivesStateFromDeadlineAndSize(t *testing.T) {
 // Calendar days are exact across a daylight-saving change and for a span that
 // runs backwards, where rounding the hours toward zero would be off by one.
 func TestDaysIsWholeCalendarDays(t *testing.T) {
-	loc, _ := time.LoadLocation("America/New_York")
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
 	d := func(s string) time.Time { tm, _ := ParseDay(s, loc); return tm }
 	for _, c := range []struct {
 		a, b string
