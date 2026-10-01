@@ -618,14 +618,14 @@ with nothing measured yet is `unchecked` until it is.
 |---|---|
 | `pass` | the evidence holds |
 | `open` | an end-state claim not met yet, with its deadline ahead and its work on pace |
-| `behind` | an end-state claim not met yet whose pace says it may miss its deadline: a counting claim whose count is below half the whole items its window so far would expect, or a yes-or-no claim with an `effort` and no more days left than that effort, counting the deadline day as one |
+| `behind` | an end-state claim not met yet whose pace says it may miss its deadline: a paced claim whose count is below half the work its window so far would expect, counted in whole items: the expected work and its half are each rounded down, or a yes-or-no claim with an `effort` and no more days left than that effort, counting the deadline day as one |
 | `fail` | a standing claim not met, or an end-state claim still not met after its deadline day |
 | `no-evidence` | as measured: a fault in the deployment |
 | `unchecked` | a standing claim with nothing measured yet |
 
-A counting claim's expected work assumes the work is spread evenly over its window and is rounded
-down to whole items, because a claim cannot be behind on a fraction of an item: nothing is
-`behind` before a whole item is due. Half the expected work is a deliberately loose test, because
+A counting claim's expected work assumes the work is spread evenly over its window and is counted
+in whole items, rounded down, and so is its half, because a claim cannot be behind on a fraction of
+an item: nothing is `behind` until a whole item of that half is due. Half the expected work is a deliberately loose test, because
 work arrives unevenly, and a test that fired at the first quiet week would teach the person to
 ignore it. A yes-or-no claim without an `effort` gives no early warning at all and fails only on
 its deadline, because a warning computed from an estimate nobody made would be a guess presented
@@ -1148,7 +1148,7 @@ agenda and by the reflection.
 | BB | a claim is end-state, true by a deadline, or standing, true all the time; it is standing only when it says `standing: true`, or always when its adapter is `date`, and a claim with a rolling `since` must say so, because before a deadline only a standing claim that does not hold is a contradiction, and a reader should not have to infer which a claim is from its arguments; `standing`, `by` and `effort` are keys of the claim, and `of` and `since` are arguments of its `check` | §8.1 |
 | BC | an end-state claim's deadline is its own `by`, no later than the goal's, or the goal's `by`, so a goal can set milestones; dates are compared in the kernel's `TZ`, UTC when unset | §8.1 |
 | BD | an end-state claim may say how big it is: a counting claim of completed work with a `min` of 2 or more names `since` and measures progress against `min`, a manual counting claim names `of` and `since` and its answers carry a count, and a yes-or-no claim may carry `effort` in calendar days; there is no default effort, because a warning from an estimate nobody made is a guess presented as a measurement | §8.1 |
-| BE | the stored result is what was measured, and the state it means today (`pass`, `open`, `behind`, `fail`) is derived whenever it is read, so a claim moves with the calendar and not only at a run; `behind` is a count below half the whole items its window so far would expect, or no more days left than the `effort`, loose on purpose because work arrives unevenly; an end-state claim never answered counts as not met, a standing one is `unchecked`, and where the arithmetic cannot run the claim is raised rather than hidden | §8.1 |
+| BE | the stored result is what was measured, and the state it means today (`pass`, `open`, `behind`, `fail`) is derived whenever it is read, so a claim moves with the calendar and not only at a run; `behind` is a count below half its expected work, in whole items rounded down, or no more days left than the `effort`, loose on purpose because work arrives unevenly; an end-state claim never answered counts as not met, a standing one is `unchecked`, and where the arithmetic cannot run the claim is raised rather than hidden | §8.1 |
 | BF | the agenda gains `behind` after `fail`, nearest deadline first, and orders `fail` by the claim's deadline; a `behind` claim whose goal was reviewed or put off in the last 7 days waits between the stale records and onboarding, so a slow goal cannot hold the first line every session, and the kernel records when a record was last put off to make that possible; an `open` claim is never on the agenda; the reflection counts only `fail` and `behind` as the gap, reports `open` claims as work remaining and unmeasured ones as unknown | §9, §10, §13, §15 |
 
 ## Sources
