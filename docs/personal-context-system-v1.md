@@ -427,9 +427,7 @@ drafts, through a failed claim, or through its `due_field`, because some kinds a
 about on a date than by age. `due_field` names a date field that makes a record due once the date
 has passed and the record has not been reviewed since; the agenda lists it as `stale`, with the
 kind's `interview` question. `first` is the question asked when nothing of the kind is on file
-(§9); `timeless` exempts the kind from the freshness lint (§1.1); `effort_days` is the work a
-yes-or-no claim on the kind's records is assumed to need when the claim names no `effort` (§8.1),
-7 days if the kind declares none. A `ratified-record` module's
+(§9); `timeless` exempts the kind from the freshness lint (§1.1). A `ratified-record` module's
 `onboarding` lists the kinds to ask for, in order, when none of that kind is on file; each named
 kind must carry `first`, because onboarding asks exactly that question. `id` is the one reserved
 record field a kind may also declare, so that a kind whose records are referred to across edits
@@ -560,47 +558,60 @@ for a counting adapter the count and the target it was compared with.
 **End-state and standing claims.** Most claims say what will be true by a date: "the six tasks
 are done", "every photo has been reviewed". Before that date, a claim that does not hold yet is
 work still open, not a contradiction. Some claims say what should hold all the time: "a commit in
-the last fortnight". One of those not holding is a contradiction now. A claim is *standing* when
-its `since` is a rolling window (`-14d`), because it then measures a rate; when its adapter is
-`date`, whose `before` and `after` are already its dates; or when it says `standing: true`. Every
-other claim is *end-state*. An end-state claim's deadline is its own `by`, which may not be later
-than the goal's, or else the goal's `by`, so a goal can set milestones ahead of its own date.
+the last fortnight". One of those not holding is a contradiction now. A claim is *standing* when it
+says `standing: true`, or when its adapter is `date`, whose `before` and `after` are already its
+dates. Every other claim is *end-state*. Standing is said, never inferred from how a claim is
+written: a reader years later should not have to know that a rolling `since` changes what a claim
+means. So a claim with a rolling `since` (`-14d`) must say `standing: true`, and the kernel
+refuses one that does not, because a rolling window cannot be paced toward a date.
+
+An end-state claim's deadline is its own `by`, which may not be later than the goal's, or else the
+goal's `by`, so a goal can set milestones ahead of its own date. Dates are compared in the
+deployment's timezone, so a deadline ends when the person's day ends, not when UTC's does.
 
 **Size.** How soon an unmet end-state claim needs attention depends on how much work it is, so
-each has a size:
+each may say how big it is:
 
-- a *counting* claim — `tracker` or `forge`, with a `min` of 2 or more — measures its own
-  progress: the count against `min`, over the window from `since` to the deadline;
-- a manual counting claim names its total with `of` and the start of its window with `since`,
-  and each answer carries the count so far;
-- a *yes-or-no* claim — a manual claim without `of`, or a counting claim whose `min` is 1, which
-  is done or not done — may carry `effort`, the person's estimate of the work in days
-  (`effort: 3d`). Without one it takes its kind's `effort_days` (§6).
+- a *counting* claim — `tracker` with `done: true`, or `forge` — counts completed work. With a
+  `min` of 2 or more it measures its own progress: the count against `min`, over the window from
+  `since` to the deadline;
+- a manual counting claim names its total with `of` and the start of its window with `since`, and
+  each answer carries the count so far;
+- every other end-state claim is *yes-or-no*: a manual claim without `of`, a counting claim whose
+  `min` is 1, which is done or not done, and a tracker claim counting open tasks, whose count can
+  fall as well as rise and so is not progress. It may carry `effort`: the person's estimate, in
+  calendar days, of how long the work will take them to get done, given the rest of their life
+  (`effort: 3d` for a job that needs three weekends is `effort: 21d`).
 
 A standing claim takes no `by` and no `effort`, `effort` belongs only to a yes-or-no claim, and
-`of` only to a manual one; the kernel refuses a claim that mixes them when the goal is written,
-naming the claim by its position, as it refuses any other bad claim.
+`of` only to a manual one; the kernel refuses a claim that mixes them, or a deadline that is not a
+date, when the goal is written, naming the claim by its position, as it refuses any other bad
+claim.
 
 **What a result means today** is derived whenever it is read, from what was measured, the
 claim's keys and the date. So a claim moves from open to behind, or to failed, on the day the
 arithmetic says so, not at the next run, and a manual claim, measured only when the person
-answers, moves with the calendar like the rest.
+answers, moves with the calendar like the rest. An end-state claim with nothing measured yet
+counts as not met, so a manual claim nobody has answered is raised by its deadline like any other;
+a standing claim with nothing measured yet is `unchecked` until it is.
 
 | state | when |
 |---|---|
 | `pass` | the evidence holds |
 | `open` | an end-state claim not met yet, with its deadline ahead and its work on pace |
-| `behind` | an end-state claim not met yet whose pace says it may miss its deadline: a counting claim whose share done trails the share of its window gone by more than a tenth, or a yes-or-no claim with no more days left than twice its effort |
+| `behind` | an end-state claim not met yet whose pace says it may miss its deadline: a counting claim that has done less than half the work its window so far would expect, or a yes-or-no claim with an `effort` and no more days left than that effort |
 | `fail` | a standing claim not met, or an end-state claim still not met after its deadline day |
 | `no-evidence` | as measured: a fault in the deployment |
-| `unchecked` | nothing measured yet |
+| `unchecked` | a standing claim with nothing measured yet |
 
-The two constants are the specification's, not the person's: a tenth leaves room for the uneven
-way work gets done, and twice the estimate leaves room for the rest of a life. Where the
-arithmetic cannot run, the claim is raised rather than hidden: a deadline that does not parse
-keeps the measured state, and a counting claim whose window has no length is `behind`. A result
-recorded before counts were stored carries its count only in its detail ("3 found"), and the count
-is read from there.
+Half the expected work is a deliberately loose test: work arrives unevenly, and a test that fired
+at the first quiet week would teach the person to ignore it. A yes-or-no claim without an `effort`
+gives no early warning at all and fails only on its deadline, because a warning computed from an
+estimate nobody made would be a guess presented as a measurement. Where the arithmetic cannot run,
+the claim is raised rather than hidden: a deadline already on file that does not parse, and a
+counting claim whose window has no length, both read as `behind`. A result recorded before counts
+were stored has no count, and its claim reads as a yes-or-no claim without an `effort` until the
+next run measures it.
 
 Only `fail` is a contradiction, and `behind` is the warning before one; `open` is neither.
 `no-evidence` is a fault in the deployment, reported by `/health` and shown in the view, and it
@@ -665,8 +676,12 @@ after what they mean as well as what they said.
    adapter and manual alike — ordered by the goal's `by` date, nearest first, and then by how long
    the claim has been failing, because a goal due soon still has time to act on;
 2. claims `behind` (§8.1), ordered by the claim's deadline, nearest first, because a warning is
-   worth most while there is time to act on it. An `open` claim is never on the agenda: work with
-   its time still ahead of it is not something to ask about;
+   worth most while there is time to act on it — except a claim whose goal was reviewed in the
+   last 7 days, which waits below the stale records (4) instead. The person has just been asked
+   about that goal; a warning kept on the first line after they have answered it would hold the
+   one slot every session for as long as the work is slow, and teach them to ignore the slot. An
+   `open` claim is never on the agenda: work with its time still ahead of it is not something to
+   ask about;
 3. drafts: records governed by a `ratified-record` module that have never been reviewed, oldest
    first — approvals left over from an earlier conversation, and preferences the model wrote in
    `memory`, which are due as soon as they are written;
@@ -1093,11 +1108,11 @@ were still ahead, and the reflection read them as the person being behind.
 
 | | change | sections |
 |---|---|---|
-| BB | a claim is end-state, true by a deadline, or standing, true all the time; it is standing when its `since` is a rolling window, its adapter is `date`, or it says `standing: true`, because only a standing claim that does not hold is a contradiction before its date | §8.1 |
-| BC | an end-state claim's deadline is its own `by`, no later than the goal's, or the goal's `by`, so a goal can set milestones | §8.1 |
-| BD | an end-state claim has a size: a counting claim measures progress against `min`, a manual counting claim names `of` and `since` and its answers carry a count, and a yes-or-no claim carries `effort` or its kind's `effort_days`, 7 days by default; because how soon unmet work needs attention depends on how much work it is | §6, §8.1 |
-| BE | the stored result is what was measured, and the state it means today (`pass`, `open`, `behind`, `fail`) is derived whenever it is read, with `behind` at more than a tenth off pace or within twice the effort, so a claim moves with the calendar and not only at a run; where the arithmetic cannot run, the claim is raised rather than hidden | §8.1 |
-| BF | the agenda gains `behind` after `fail`, nearest deadline first, and never shows an `open` claim; the reflection counts only `fail` and `behind` as the gap and reports `open` claims as work remaining | §9 |
+| BB | a claim is end-state, true by a deadline, or standing, true all the time; it is standing only when it says `standing: true` or its adapter is `date`, and a claim with a rolling `since` must say so, because only a standing claim that does not hold is a contradiction before its date, and a reader should not have to infer which a claim is from how it is written | §8.1 |
+| BC | an end-state claim's deadline is its own `by`, no later than the goal's, or the goal's `by`, so a goal can set milestones; dates are compared in the deployment's timezone | §8.1 |
+| BD | an end-state claim may say how big it is: a counting claim of completed work measures progress against `min`, a manual counting claim names `of` and `since` and its answers carry a count, and a yes-or-no claim may carry `effort` in calendar days; there is no default effort, because a warning from an estimate nobody made is a guess presented as a measurement | §8.1 |
+| BE | the stored result is what was measured, and the state it means today (`pass`, `open`, `behind`, `fail`) is derived whenever it is read, so a claim moves with the calendar and not only at a run; `behind` is less than half the expected work done, or no more days left than the `effort`, loose on purpose because work arrives unevenly; an end-state claim never answered counts as not met, and where the arithmetic cannot run the claim is raised rather than hidden | §8.1 |
+| BF | the agenda gains `behind` after `fail`, nearest deadline first, except that a claim whose goal was reviewed in the last 7 days waits below the stale records, so a slow goal cannot hold the first line every session; an `open` claim is never on the agenda; the reflection counts only `fail` and `behind` as the gap and reports `open` claims as work remaining | §9 |
 
 ## Sources
 
