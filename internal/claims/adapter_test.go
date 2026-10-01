@@ -205,3 +205,18 @@ func TestTheSpecsExampleClaimsParseAndValidate(t *testing.T) {
 		t.Errorf("claim-level keys: %+v %+v %+v", got[1], got[3], got[4])
 	}
 }
+
+func intp(n int) *int { return &n }
+
+func TestCountedCarriesItsCountAndExhaustedDoesNotCountALowerBound(t *testing.T) {
+	if got, want := counted(3, 6), (Outcome{State: store.Fail, Detail: "3 found", Count: intp(3)}); !reflect.DeepEqual(got, want) {
+		t.Errorf("counted(3, 6) = %+v, want %+v", got, want)
+	}
+	got := exhausted(3, 6, 200)
+	if got.State != store.NoEvidence || got.Count != nil {
+		t.Errorf("exhausted(3, 6, 200) = %+v: a lower bound is not a count", got)
+	}
+	if got := exhausted(7, 6, 200); got.State != store.Pass || got.Count == nil || *got.Count != 7 {
+		t.Errorf("exhausted(7, 6, 200) = %+v", got)
+	}
+}

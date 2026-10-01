@@ -65,6 +65,8 @@ type ClaimResult struct {
 	Adapter  string     `json:"adapter"`
 	State    ClaimState `json:"state"`
 	Detail   string     `json:"detail,omitempty"`
+	Count    *int       `json:"count,omitempty"`  // what the claim was measured at, which pace reads (spec §8.1)
+	Target   *int       `json:"target,omitempty"` // the count a paced claim is pacing toward; unset for a standing or unpaced claim
 	Since    time.Time  `json:"since"`
 	Recorded time.Time  `json:"recorded"`
 }
@@ -298,7 +300,7 @@ func (s *Store) RecordClaimResults(goal string, results []ClaimResult, caller st
 //
 // It never opens the goal for writing, so the goal's content, its updated
 // stamp and its history stay what the person made them. It commits only when
-// a claim's state or its detail changed: a run that finds what the last
+// a claim's state, detail or count changed: a run that finds what the last
 // one found writes nothing, and a new answer from the person in the same
 // state is recorded. Since is kept whenever the state is, because it means
 // when the state was entered, whoever wrote the entry.
@@ -374,7 +376,7 @@ func (s *Store) UpdateClaimResults(goal string, merge func(prev []ClaimResult) [
 			n.Since = p.Since
 			fallthrough
 		default:
-			if n.Detail == p.Detail {
+			if n.Detail == p.Detail && sameCount(n.Count, p.Count) && sameCount(n.Target, p.Target) {
 				if had {
 					n.Recorded = p.Recorded
 				}
@@ -423,4 +425,12 @@ func (s *Store) UpdateClaimResults(goal string, merge func(prev []ClaimResult) [
 	msg := fmt.Sprintf("claims %s/%s %s: %s\n\n%s\n\nRecorded through the kernel at %s.",
 		r.Module, r.Kind, r.Name, counts, strings.Join(lines, "\n"), time.Now().UTC().Format(time.RFC3339))
 	return s.commitAndPush(msg, caller)
+}
+
+// sameCount reports whether two optional counts are both absent or equal.
+func sameCount(a, b *int) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }

@@ -21,6 +21,7 @@ import (
 type Outcome struct {
 	State  store.ClaimState
 	Detail string // "2 found", "credential refused (HTTP 401)", "label \"article\" unknown to the tracker"
+	Count  *int   // the count compared with min; nil when the adapter did not count, or counted only a lower bound
 }
 
 // Adapter is one evidence source (spec §8.1). An error from Check is a fault
@@ -264,9 +265,9 @@ func get(ctx context.Context, client *http.Client, endpoint string, headers map[
 
 func counted(count, min int) Outcome {
 	if count >= min {
-		return Outcome{State: store.Pass, Detail: fmt.Sprintf("%d found", count)}
+		return Outcome{State: store.Pass, Detail: fmt.Sprintf("%d found", count), Count: &count}
 	}
-	return Outcome{State: store.Fail, Detail: fmt.Sprintf("%d found", count)}
+	return Outcome{State: store.Fail, Detail: fmt.Sprintf("%d found", count), Count: &count}
 }
 
 // pageLimit bounds every backend's paging, so a runaway source cannot hold a

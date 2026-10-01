@@ -436,3 +436,27 @@ func TestStartRunsNowStopsOnCancelAndIsOffAtZero(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestTheRunnerStoresTheCountAndTargetAndUpdatesThemWithinOneState(t *testing.T) {
+	st := newClaimsStore(t)
+	writeGoal(t, st, "telos/goal/g.md", "- text: \"six articles\"\n  check: {adapter: tracker, label: article, since: 2026-07-01, min: 6}")
+	tracker := &fake{name: "tracker", out: Outcome{State: store.Fail, Detail: "2 found", Count: intp(2)}}
+	first := time.Date(2026, 9, 20, 4, 0, 0, 0, time.UTC)
+	r := &Runner{Store: st, Adapters: map[string]Adapter{"tracker": tracker}, Now: func() time.Time { return first }, StatePath: filepath.Join(t.TempDir(), "last-run")}
+	if _, err := r.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	r.Now = func() time.Time { return first.Add(24 * time.Hour) }
+	tracker.out = Outcome{State: store.Fail, Detail: "3 found", Count: intp(3)}
+	if _, err := r.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	all, _ := st.ClaimResults()
+	got := all["telos/goal/g.md"][0]
+	if got.Count == nil || *got.Count != 3 || got.Target == nil || *got.Target != 6 || got.Detail != "3 found" {
+		t.Errorf("stored %+v", got)
+	}
+	if !got.Since.Equal(first) {
+		t.Errorf("since moved to %v although the state did not", got.Since)
+	}
+}

@@ -408,3 +408,26 @@ func TestTheClaimLevelKeysAreRefusedWhenTheyBreakTheRules(t *testing.T) {
 		t.Errorf("a goal with only a standing claim needs no date: %v", err)
 	}
 }
+
+func TestACountMovingWithinOneStateIsRecordedAndAnUnchangedOneIsNot(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	writeGoal(t, s, "telos/goal/g3.md", goalClaims)
+	when := at("2026-09-20T04:00:00Z")
+	two, three, six := 2, 3, 6
+	rec := func(detail string, count *int) []ClaimResult {
+		return []ClaimResult{{Index: 0, Text: "t", State: Fail, Detail: detail, Count: count, Target: &six, Since: when, Recorded: when}}
+	}
+	if c, err := s.RecordClaimResults("telos/goal/g3.md", rec("2 found", &two), "desk"); err != nil || c == "no change" {
+		t.Fatalf("first: %q %v", c, err)
+	}
+	if c, err := s.RecordClaimResults("telos/goal/g3.md", rec("3 found", &three), "desk"); err != nil || c == "no change" {
+		t.Fatalf("a moved count must commit: %q %v", c, err)
+	}
+	got, _ := s.ClaimResults()
+	if r := got["telos/goal/g3.md"]; len(r) != 1 || r[0].Count == nil || *r[0].Count != 3 || r[0].Target == nil || *r[0].Target != 6 {
+		t.Errorf("the file holds %+v", r)
+	}
+	if c, err := s.RecordClaimResults("telos/goal/g3.md", rec("3 found", &three), "desk"); err != nil || c != "no change" {
+		t.Errorf("an identical record must not commit: %q %v", c, err)
+	}
+}
