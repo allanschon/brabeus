@@ -1,7 +1,7 @@
 # The personal context system, in plain language
 
 This describes the system specified in [`personal-context-system-v1.md`](personal-context-system-v1.md)
-at version 1.7, for someone who might use it rather than build it. It assumes you have used an
+at version 1.8, for someone who might use it rather than build it. It assumes you have used an
 AI assistant and know it forgets you between conversations.
 
 It describes the whole design, and not all of it is built yet. What works today is the record

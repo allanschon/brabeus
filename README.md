@@ -3,13 +3,13 @@
 Brabeus keeps a private record of who you are and what you're aiming at, and gives it to your AI
 assistant at the start of every session. It checks your goals against real evidence and shows you
 the gap between what you said matters and what the record shows. You never have to remember to
-maintain it, because what needs your attention is the first line of every session's context. It is
+maintain it, because your assistant raises what needs your attention at the start of a session. It is
 one small server, a plugin for the assistant, and a set of modules. It is named for the umpire at
 the Greek games.
 
 ## Status
 
-The specification is at v1.7 (`docs/personal-context-system-v1.md`). Milestones M0, M1 and M2
+The specification is at v1.8 (`docs/personal-context-system-v1.md`). Milestones M0, M1 and M2
 are built. Modules load and validate, and every write names a module and a kind. The context
 block renders from the person's records with the agenda's question as its first line. Goals carry
 claims, which the kernel checks against a task tracker, a git forge or a date, or asks the person
