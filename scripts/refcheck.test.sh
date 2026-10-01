@@ -40,5 +40,22 @@ repo "$tmp/link"
 printf '# Guide\n\nSee [the plan](plans/missing.md).\n' > "$tmp/link/docs/guide.md"
 expect fail "a markdown link to a file not in the tree" "$tmp/link" "plans/missing.md"
 
+# Planning labels in their other forms: each fails on its own.
+n=0
+for text in '// Scope is checked without a project (K14).' '// K10: commit only on a change.' \
+            '// Task 3'"'"'s review found this.' '// The finding this task fixes.' \
+            '// Only claims is a block (ruling on the plan).' '// Settled in the second review round.'; do
+  n=$((n+1)); repo "$tmp/plan$n"
+  printf 'package pkg\n%s\n' "$text" > "$tmp/plan$n/internal/pkg/pkg.go"
+  expect fail "a planning label: $text" "$tmp/plan$n" "internal/pkg/pkg.go:2"
+done
+
+# What a reader can follow passes: milestones, goal ids, spec change rows, and
+# "ruling out" as ordinary English.
+repo "$tmp/defined"
+printf 'package pkg\n// The block (M2) renders G1 (G1) as spec §16 AV says.\n// M1: enforced since then.\n// Ruling out a stale pass is the point.\n' > "$tmp/defined/internal/pkg/pkg.go"
+printf '# Intent (M2)\n\nRow AX of §16 changed it.\n' > "$tmp/defined/docs/guide.md"
+expect pass "milestones, goal ids, change rows and ordinary words" "$tmp/defined"
+
 echo; echo "$failed failed"
 [ "$failed" -eq 0 ]

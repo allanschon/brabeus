@@ -113,7 +113,7 @@ func TestAMultiLineFieldRoundTripsThroughComposeAndParse(t *testing.T) {
 	}
 }
 
-// Only claims is a block (ruling on the plan): every other field keeps its
+// Only claims is a block: every other field keeps its
 // one-line encoding, because the summary templates, the agenda's prompts and
 // the revision line all put field values on a single line.
 func TestOnlyTheClaimsFieldIsWrittenAsABlock(t *testing.T) {
