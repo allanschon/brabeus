@@ -10,7 +10,7 @@ import (
 
 func TestReflectGroupsGoalsByTheValuesTheyServeAndListsTheRest(t *testing.T) {
 	now := at("2026-10-01T00:00:00Z")
-	claims := "- text: \"three articles\"\n  check: {adapter: tracker, label: a, since: -30d, min: 3}\n- text: \"date holds\"\n  check: {adapter: manual}"
+	claims := "- text: \"three articles\"\n  standing: true\n  check: {adapter: tracker, label: a, since: -30d, min: 3}\n- text: \"date holds\"\n  check: {adapter: manual}"
 	records := []store.Stored{
 		rec("identity/value/family-time.md", "identity", "value", map[string]string{"statement": "family time matters most"}, "2026-06-01T00:00:00Z", "2026-06-01T00:00:00Z", 0),
 		rec("identity/value/craft.md", "identity", "value", map[string]string{"statement": "craft"}, "2026-06-01T00:00:00Z", "", 0),

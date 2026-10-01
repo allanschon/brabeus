@@ -348,7 +348,7 @@ func result(idx int, text string, state store.ClaimState, since string, detail s
 // by date does not parse sorts last among fails rather than breaking them.
 func TestFailedClaimsHeadTheAgendaByTheGoalsDateThenByHowLongTheyHaveFailed(t *testing.T) {
 	now := at("2026-10-01T00:00:00Z")
-	claims := "- text: \"three articles\"\n  check: {adapter: tracker, min: 3}\n- text: \"a commit a fortnight\"\n  check: {adapter: forge, repo: a/b, since: -14d, min: 1}"
+	claims := "- text: \"three articles\"\n  check: {adapter: tracker, min: 3}\n- text: \"a commit a fortnight\"\n  standing: true\n  check: {adapter: forge, repo: a/b, since: -14d, min: 1}"
 	g := func(path, id, by string) store.Stored {
 		return rec(path, "telos", "goal", map[string]string{"id": id, "title": "t", "by": by, "claims": claims}, "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 0)
 	}

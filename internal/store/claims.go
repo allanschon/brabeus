@@ -26,9 +26,12 @@ const claimsDir = "claims"
 // Claim is one entry of a claims block: what true would look like, and the
 // adapter that gathers the evidence with its arguments as data (§8.1).
 type Claim struct {
-	Text    string
-	Adapter string
-	Args    map[string]string
+	Text     string
+	Adapter  string
+	Args     map[string]string
+	Standing bool   // standing: true (§8.1); a date claim is standing without it
+	By       string // the claim's own deadline, YYYY-MM-DD, as written
+	Effort   string // <n>d, as written; only on a yes-or-no claim
 }
 
 // ClaimState is a claim's result (spec §8.1): pass and fail are evidence,
@@ -143,8 +146,9 @@ func ParseClaims(block string) ([]Claim, error) {
 		}
 		value = strings.TrimSpace(value)
 		key = strings.TrimSpace(key)
-		if (key == "text" && cur.Text != "") || (key == "check" && cur.Adapter != "") {
-			return nil, fmt.Errorf("claim %d has %s twice; an item has one text and one check", len(out), key)
+		if (key == "text" && cur.Text != "") || (key == "check" && cur.Adapter != "") ||
+			(key == "by" && cur.By != "") || (key == "effort" && cur.Effort != "") || (key == "standing" && cur.Standing) {
+			return nil, fmt.Errorf("claim %d has %s twice", len(out), key)
 		}
 		switch key {
 		case "text":
@@ -166,8 +170,17 @@ func ParseClaims(block string) ([]Claim, error) {
 					cur.Args[k] = v
 				}
 			}
+		case "standing":
+			if retrieval.Unquote(value) != "true" {
+				return nil, fmt.Errorf("claim %d: standing is %q; it takes only true (spec §8.1)", len(out), value)
+			}
+			cur.Standing = true
+		case "by":
+			cur.By = retrieval.Unquote(value)
+		case "effort":
+			cur.Effort = retrieval.Unquote(value)
 		default:
-			return nil, fmt.Errorf("claim %d has a key %q; an item has text and check only", len(out), key)
+			return nil, fmt.Errorf("claim %d has a key %q; an item has text, check, standing, by and effort only", len(out), key)
 		}
 	}
 	if err := finish(); err != nil {
@@ -196,6 +209,9 @@ func (s *Store) checkClaims(man module.Manifest, fields map[string]string) error
 	for i, c := range claims {
 		if !declared[c.Adapter] {
 			return fmt.Errorf("claim %d (%q) names adapter %q, which module %s does not declare (spec §8.1)", i+1, c.Text, c.Adapter, man.Name)
+		}
+		if err := checkClaimKeys(c, fields["by"]); err != nil {
+			return fmt.Errorf("claim %d (%q): %w (spec §8.1)", i+1, c.Text, err)
 		}
 		if s.ValidateClaim != nil {
 			if err := s.ValidateClaim(c.Adapter, c.Args); err != nil {

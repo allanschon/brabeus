@@ -109,7 +109,7 @@ func (f *fake) Check(context.Context, map[string]string, time.Time) (Outcome, er
 	return f.out, f.err
 }
 
-const g3Claims = "- text: \"three articles\"\n  check: {adapter: tracker, label: article, since: 2026-07-01, min: 3}\n- text: \"date holds\"\n  check: {adapter: manual}\n- text: \"a commit\"\n  check: {adapter: forge, repo: a/b, since: -14d, min: 1}"
+const g3Claims = "- text: \"three articles\"\n  check: {adapter: tracker, label: article, since: 2026-07-01, min: 3}\n- text: \"date holds\"\n  check: {adapter: manual}\n- text: \"a commit\"\n  standing: true\n  check: {adapter: forge, repo: a/b, since: -14d, min: 1}"
 
 func TestRunRecordsEveryNonManualClaimAndLeavesManualOnesAlone(t *testing.T) {
 	st := newClaimsStore(t)
@@ -179,7 +179,7 @@ func TestRunRecordsEveryNonManualClaimAndLeavesManualOnesAlone(t *testing.T) {
 // never fail (§8.1), and the run goes on to the next claim.
 func TestAnErroringAdapterIsNoEvidenceNotFail(t *testing.T) {
 	st := newClaimsStore(t)
-	writeGoal(t, st, "telos/goal/g.md", "- text: \"x\"\n  check: {adapter: tracker, label: a, since: -7d, min: 1}\n- text: \"y\"\n  check: {adapter: date, before: 2027-01-01}")
+	writeGoal(t, st, "telos/goal/g.md", "- text: \"x\"\n  standing: true\n  check: {adapter: tracker, label: a, since: -7d, min: 1}\n- text: \"y\"\n  check: {adapter: date, before: 2027-01-01}")
 	r := &Runner{Store: st, Adapters: map[string]Adapter{"tracker": &fake{name: "tracker", err: fmt.Errorf("HTTP 502 from tracker.example")}, "date": Date{}}, Now: time.Now, StatePath: filepath.Join(t.TempDir(), "last-run")}
 	rep, err := r.Run(context.Background())
 	if err != nil || rep.NoEvidence != 1 {
@@ -203,7 +203,7 @@ func TestATrackerThatAnswers500OrIsDownIsNoEvidence(t *testing.T) {
 	down.Close()
 	for name, url := range map[string]string{"500": srv.URL, "unreachable": down.URL} {
 		st := newClaimsStore(t)
-		writeGoal(t, st, "telos/goal/g.md", "- text: \"x\"\n  check: {adapter: tracker, label: a, since: -7d, min: 1}")
+		writeGoal(t, st, "telos/goal/g.md", "- text: \"x\"\n  standing: true\n  check: {adapter: tracker, label: a, since: -7d, min: 1}")
 		adapters, err := New(Config{Tracker: "vikunja", TrackerURL: url, TrackerToken: "synthetic"}, nil)
 		if err != nil {
 			t.Fatal(err)
@@ -223,7 +223,7 @@ func TestATrackerThatAnswers500OrIsDownIsNoEvidence(t *testing.T) {
 // as no-evidence rather than refused by the store, which would stop the run.
 func TestAnAdapterAnsweringAStateItMayNotIsNoEvidence(t *testing.T) {
 	st := newClaimsStore(t)
-	writeGoal(t, st, "telos/goal/g.md", "- text: \"x\"\n  check: {adapter: tracker, label: a, since: -7d, min: 1}")
+	writeGoal(t, st, "telos/goal/g.md", "- text: \"x\"\n  standing: true\n  check: {adapter: tracker, label: a, since: -7d, min: 1}")
 	r := &Runner{Store: st, Adapters: map[string]Adapter{"tracker": &fake{name: "tracker", out: Outcome{State: "maybe"}}}, Now: time.Now}
 	if _, err := r.Run(context.Background()); err != nil {
 		t.Fatal(err)
@@ -265,8 +265,8 @@ func TestAManualAnswerRecordedDuringARunSurvivesIt(t *testing.T) {
 // /healthz reads the one broken goal, not a schedule that stopped.
 func TestOneGoalsBrokenResultsFileDoesNotStopTheRun(t *testing.T) {
 	st := newClaimsStore(t)
-	writeGoal(t, st, "telos/goal/g1.md", "- text: \"x\"\n  check: {adapter: tracker, label: a, since: -7d, min: 1}")
-	writeGoal(t, st, "telos/goal/g2.md", "- text: \"y\"\n  check: {adapter: tracker, label: b, since: -7d, min: 1}")
+	writeGoal(t, st, "telos/goal/g1.md", "- text: \"x\"\n  standing: true\n  check: {adapter: tracker, label: a, since: -7d, min: 1}")
+	writeGoal(t, st, "telos/goal/g2.md", "- text: \"y\"\n  standing: true\n  check: {adapter: tracker, label: b, since: -7d, min: 1}")
 	// The broken file must survive the runner's own sync (a fetch, a hard
 	// reset and a clean of anything untracked), so it is committed and
 	// pushed like any other result, not just written to the worktree.
@@ -336,7 +336,7 @@ func TestOneGoalsBrokenResultsFileDoesNotStopTheRun(t *testing.T) {
 // does not stamp a last run: "context canceled" is not evidence of anything.
 func TestACancelledRunRecordsNothingAndIsNotALastRun(t *testing.T) {
 	st := newClaimsStore(t)
-	writeGoal(t, st, "telos/goal/g.md", "- text: \"x\"\n  check: {adapter: tracker, label: a, since: -7d, min: 1}")
+	writeGoal(t, st, "telos/goal/g.md", "- text: \"x\"\n  standing: true\n  check: {adapter: tracker, label: a, since: -7d, min: 1}")
 	ctx, cancel := context.WithCancel(context.Background())
 	tracker := &fake{name: "tracker", during: cancel, err: context.Canceled}
 	r := &Runner{Store: st, Adapters: map[string]Adapter{"tracker": tracker}, Interval: time.Hour, Now: time.Now, StatePath: filepath.Join(t.TempDir(), "last-run")}

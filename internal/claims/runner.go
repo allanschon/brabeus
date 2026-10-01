@@ -76,7 +76,7 @@ func (r *Runner) Run(ctx context.Context) (Report, error) {
 		rep.Claims += len(claims)
 		outcomes := make([]Outcome, len(claims))
 		for i, c := range claims {
-			if c.Adapter == "manual" {
+			if c.Adapter == store.AdapterManual {
 				continue
 			}
 			if err := ctx.Err(); err != nil {
@@ -101,7 +101,7 @@ func (r *Runner) Run(ctx context.Context) (Report, error) {
 			changed = 0
 			joined := store.JoinResults(claims, prev)
 			for i, c := range claims {
-				if c.Adapter == "manual" || joined[i].State == outcomes[i].State {
+				if c.Adapter == store.AdapterManual || joined[i].State == outcomes[i].State {
 					// An unchanged state keeps its detail as well as its
 					// since, so the count inside "2 found" moving within
 					// one state does not churn the results file.
