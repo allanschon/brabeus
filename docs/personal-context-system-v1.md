@@ -2,7 +2,7 @@
 
 **Working name: Brabeus.** See §16.
 
-**Status: v1.9. M0, M1 and M2 are built; v1.9's claim dates are not yet built; see §14.**
+**Status: v1.9. M0, M1 and M2 are built, and v1.9's claim dates; see §14.**
 
 This document describes a system built on the kernel this repository already contains: a
 private store with hybrid retrieval, a Claude Code plugin, and a Dockerfile that builds the
@@ -959,7 +959,7 @@ record is written under the new rules. It is still one milestone: nothing in it 
 
 `/done` (§8.2) is a skill that depends on nothing in the kernel; it shipped with M2.
 
-v1.9's claim dates (§16 BB–BF) are built before M3, because the view shows claim states and
+v1.9's claim dates (§16 BB–BF) are built, ahead of M3, because the view shows claim states and
 should not show work that is merely open as failing.
 
 ## 15. Open

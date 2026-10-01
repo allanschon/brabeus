@@ -79,6 +79,8 @@ claim is a small, testable statement — "at least three articles published this
 named source of evidence, like your task tracker or your code repositories. Each check comes
 back as one of three things: it held, it didn't, or the evidence couldn't be reached. That third
 state matters: if a password expires, the system says "I couldn't check", not "you failed".
+Work whose deadline is still ahead is shown as open, not as failed. The assistant warns you when a
+goal is falling behind its pace, and a missed deadline is a miss.
 
 **When you have a few minutes**, you run the interview. It isn't a questionnaire; it's a
 conversation, in whatever manner you've said you like to be spoken to. The first time, it gets to

@@ -30,7 +30,7 @@ either condition stays implicit in its commit, where it costs nothing to keep.
 | module enabled                                  | nothing in the store; the `/healthz` line names the enabled modules and modes                                                                       | the write guard, which reads the modes at session start; the interview, which opens a newly enabled module with the threads whose topic it covers (M2) | no: the guard reads state once per session, and the interview finds threads by reading the store |
 | block rendered                                  | nothing                                                                                                                                             | nothing; a fault is reported in the `context` tool's reply and read by `/health`                                                                       | no: a fault travels with the block it describes                                                  |
 | consumer refused                                | nothing; an unresolved caller is logged                                                                                                             | nothing                                                                                                                                                | no: nothing reacts to it                                                                         |
-| claim checked (M2)                              | a commit, `claims <module>/<kind> <name>: <n> changed`, to one JSON file per goal under `claims/`, made only when a claim's state or detail changes | the agenda (a `fail` heads it), `/health` (a `no-evidence` is a fault), the view (M3)                                                                  | no: see below                                                                                    |
+| claim checked (M2)                              | a commit, `claims <module>/<kind> <name>: <n> changed`, to one JSON file per goal under `claims/`, made only when a claim's state, detail or count changes | the agenda (a `fail` heads it, a `behind` follows), `/health` (a `no-evidence` is a fault), the view (M3)                                                                  | no: see below                                                                                    |
 | work done (`/done`)                             | nothing in the store; the `/done` skill writes the done-statement into the working repository                                                       | nothing in Brabeus                                                                                                                                     | no, but see below                                                                                |
 
 ## Claim results (M2)
@@ -45,9 +45,11 @@ What it has instead of an event is its own operation. Spec §8.1 has results wri
 claim-result operation, with a commit subject of its own, which never changes the goal's content or
 its `updated` stamp. A plain write would have moved `updated`, and the revision line would then have
 reported every scheduled run as a revision of the goal (see [`aggregates.md`](aggregates.md)). To
-keep the history readable, a result is committed only when a claim's state or its detail changes,
-such as a new answer from the person, into a JSON file per goal under `claims/`. The record of when claims last ran
-belongs to the scheduled run, not to the results files.
+keep the history readable, a result is committed only when a claim's state, its detail or its count
+changes, such as a new answer from the person, into a JSON file per goal under `claims/`. The record of when claims last ran
+belongs to the scheduled run, not to the results files. A result carries the count and target
+it was measured against, so what a claim means on a given day, `open` or `behind`, is derived on
+read from the stored measurement and is never written.
 
 ## The done-statement
 

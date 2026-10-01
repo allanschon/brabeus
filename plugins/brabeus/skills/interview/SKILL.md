@@ -223,8 +223,9 @@ about it ("is the first draft finished?") and record the answer with `claim_resu
 goal, the claim's `index` as `claims` lists it, a `state` of `pass`, `fail` or
 `no-evidence` (they cannot say yet), and a one-line `note`. For a manual count (the claim has
 `of`), pass `count` with the number so far; its state follows from it: `pass` when the count
-reaches `of`, `fail` otherwise, and a count with `no-evidence` is refused. The note is shown again without your question, on the agenda
-line and in the reflection, so it has to make sense on its own. If their reply does ("two
+reaches `of`, `fail` otherwise, and a count with `no-evidence` is refused. The note is shown
+again without your question, on the agenda line and in the reflection, so it has to make
+sense on its own. If their reply does ("two
 chapters still to draft"), use it as it is. If it only makes sense beside your question
 ("yes", "your guess is right"), state the fact plainly and quote their reply:
 `The first draft is not finished ("Your guess is right.")`. The unquoted words are then

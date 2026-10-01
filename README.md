@@ -106,11 +106,19 @@ that would show it (spec §8.1).
 
 ```yaml
 claims:
-  - text: "At least three articles published since the quarter began"
+  - text: "At least three articles published this quarter"
     check: { adapter: tracker, done: true, label: article, since: 2026-07-01, min: 3 }
+  - text: "The first draft of the guide is written"
+    by: 2026-11-15
+    effort: 21d
+    check: { adapter: manual }
+  - text: "Every photo from 2025 has been reviewed"
+    check: { adapter: manual, of: 1200, since: 2026-09-01 }
   - text: "The side project has a commit in the last fortnight"
+    standing: true
     check: { adapter: forge, repo: side-project, since: -14d, min: 1 }
   - text: "The target date still holds"
+    standing: true
     check: { adapter: manual }
 ```
 
@@ -122,21 +130,46 @@ when the goal is written, so a goal never carries a claim that no run could eval
 | `tracker` | `label`, `since`, `min` | `done`: `true` (default) counts done tasks, `false` counts open ones | `since` is `YYYY-MM-DD` or `-Nd` with N of at least 1; `min` is an integer of at least 1; no other key |
 | `forge` | `repo`, `since`, `min` | `merged`: `true` counts merged pull requests instead of commits | `repo` is `owner/name`, or a bare `name` that resolves against `BRABEUS_FORGE_OWNER`; `since` and `min` as above |
 | `date` | one or both of `before`, `after` | — | each `YYYY-MM-DD`; `after` earlier than `before` when both are given |
-| `manual` | — | — | no arguments; it is asked at interview |
+| `manual` | — | `of` and `since` together: `of` is the total, an integer of at least 1, and `since` is `YYYY-MM-DD` | without them it is a yes-or-no claim, asked at interview; with them each answer carries a count |
 
 No argument value may contain a comma, because the check map is split on commas.
 
-A result is one of three states:
+These keys sit beside `text` in the claim, because they say what the claim means:
 
-| state | means |
+| key | value | rule |
+|---|---|---|
+| `standing` | `true` | the claim should hold all the time, so one that does not hold is a contradiction now. A `date` claim is always standing. A claim with a rolling `since` (`-14d`) must say `standing: true`. A standing claim takes no `by` and no `effort` |
+| `by` | `YYYY-MM-DD` | the claim's deadline, no later than the goal's `by`. Without it an end-state claim takes the goal's `by` |
+| `effort` | `<n>d`, n of at least 1 | the person's estimate of the calendar days the work will take, for a yes-or-no claim only. There is no default: without it a yes-or-no claim gives no early warning |
+
+A claim without `standing` is an end-state claim, true by its deadline. Deadlines are calendar dates
+in the kernel's `TZ`, UTC when unset.
+
+A result is stored as what was measured, one of three states, and for a counting claim the count and
+the target it was compared with:
+
+| measured | means |
 |---|---|
 | `pass` | the adapter returned evidence and the claim held |
 | `fail` | the adapter returned evidence and the claim did not hold |
 | `no-evidence` | the adapter could not answer |
 
-Only `fail` is a contradiction. A refused credential, a repository or tracker the backend does
-not have, an unreachable host and an unreadable answer are all `no-evidence`, with the reason as
-the detail. The same applies to a tracker label that appears on no task at all. A claim naming an
+What a claim means today is derived whenever it is read, from the measurement, the claim's keys and
+the date, so a claim moves with the calendar and not only at a run. `open` and `behind` are
+derived and never written to a results file.
+
+| state | when |
+|---|---|
+| `pass` | the evidence holds |
+| `open` | an end-state claim not met yet, with its deadline ahead and its work on pace |
+| `behind` | an end-state claim not met yet whose pace says it may miss its deadline: a paced claim whose count is below half the work its window so far would expect, counted in whole items, with the expected work and its half each rounded down, or a yes-or-no claim with an `effort` and no more days left than that effort, counting the deadline day as one |
+| `fail` | a standing claim not met, or an end-state claim still not met after its deadline day |
+| `no-evidence` | as measured: a fault in the deployment |
+| `unchecked` | a standing claim with nothing measured yet |
+
+Only `fail` is a contradiction, and `behind` is the warning before one. A refused credential, a
+repository or tracker the backend does not have, an unreachable host and an unreadable answer are
+all `no-evidence`, with the reason as the detail. The same applies to a tracker label that appears on no task at all. A claim naming an
 adapter this deployment has not configured also reads `no-evidence`, and the detail says why.
 
 Each deployment configures its backends with these variables:
