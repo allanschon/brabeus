@@ -31,10 +31,20 @@ type claimOut struct {
 	Text    string `json:"text"`
 	Adapter string `json:"adapter"`
 	Manual  bool   `json:"manual"`
-	State   string `json:"state" jsonschema:"pass, fail, no-evidence or unchecked"`
-	Detail  string `json:"detail,omitempty"`
-	Since   string `json:"since,omitempty" jsonschema:"when this state was entered"`
-	Stale   bool   `json:"stale,omitempty" jsonschema:"an adapter's pass older than two claim intervals: the scheduler has not run"`
+	State   string `json:"state" jsonschema:"today's state: pass, open, behind, fail, no-evidence or unchecked (spec §8.1)"`
+	// Measured is the stored result State was read from.
+	Measured   string `json:"measured" jsonschema:"what the last check found: pass, fail, no-evidence or unchecked"`
+	Standing   bool   `json:"standing,omitempty"`
+	Deadline   string `json:"deadline,omitempty"`
+	Unreadable string `json:"unreadable,omitempty" jsonschema:"the value to fix when behind because a date or effort could not be read: deadline, since, window or effort"`
+	DaysLeft   *int   `json:"days_left,omitempty"`
+	Count      *int   `json:"count,omitempty"`
+	Target     *int   `json:"target,omitempty"`
+	Expected   *int   `json:"expected,omitempty"`
+	Effort     *int   `json:"effort,omitempty"`
+	Detail     string `json:"detail,omitempty"`
+	Since      string `json:"since,omitempty" jsonschema:"when this state was entered"`
+	Stale      bool   `json:"stale,omitempty" jsonschema:"an adapter's pass older than two claim intervals: the scheduler has not run"`
 }
 type claimsOut struct {
 	LastRun  string     `json:"last_run" jsonschema:"when non-manual claims last ran: an RFC3339 stamp, never, off, or unknown"`
@@ -46,6 +56,7 @@ type claimResultIn struct {
 	Goal  string `json:"goal" jsonschema:"the goal's path"`
 	Index int    `json:"index" jsonschema:"the claim's position on the goal, from 0, as the claims tool lists it"`
 	State string `json:"state" jsonschema:"pass, fail or no-evidence"`
+	Count *int   `json:"count,omitempty" jsonschema:"for a manual count (a claim with of): the count so far; the state follows from it"`
 	Note  string `json:"note,omitempty" jsonschema:"what the person said about the evidence, one line"`
 }
 type claimResultOut struct {
@@ -135,8 +146,11 @@ func claimsFor(d Deps, caller string, audience store.Visibility, goal string) (c
 		}
 		found = true
 		for _, res := range store.JoinResults(claims, results[r.Path]) {
+			rd := store.Read(claims[res.Index], res, r.Fields["by"], nowFor(d))
 			c := claimOut{Goal: r.Path, ID: r.ID, Title: r.Fields["title"], Index: res.Index, Text: res.Text,
-				Adapter: res.Adapter, Manual: res.Adapter == manualAdapter, State: string(res.State), Detail: res.Detail}
+				Adapter: res.Adapter, Manual: res.Adapter == manualAdapter, State: string(rd.State), Measured: string(rd.Measured),
+				Standing: rd.Standing, Deadline: rd.Deadline, Unreadable: rd.Unreadable, DaysLeft: rd.DaysLeft,
+				Count: rd.Count, Target: rd.Target, Expected: rd.Expected, Effort: rd.Effort, Detail: res.Detail}
 			if !res.Since.IsZero() {
 				c.Since = res.Since.UTC().Format(time.RFC3339)
 			}
@@ -189,7 +203,9 @@ func registerReflectTool(s *mcp.Server, d Deps, caller string, consumer bool, au
 		Description: "The gap by value, as facts: each value, the goals that serve it with their claim states and " +
 			"days since confirmed, then goals serving no value. Phrase it in the person's register; do not recount it yourself. " +
 			"no-evidence is a fault in the deployment, not the person being behind (spec §8.1): leave it out of the " +
-			"reflection or say the check could not run, never that the person has not been doing the work.",
+			"reflection or say the check could not run, never that the person has not been doing the work. " +
+			"Only fail and behind are the gap; report open claims as work remaining with their count and days left, " +
+			"and no-evidence, unchecked and stale passes as unknown.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in reflectIn) (*mcp.CallToolResult, agenda.Reflection, error) {
 		out, err := reflectFor(d, caller, consumer, audience)
 		if err != nil {
@@ -242,6 +258,28 @@ func recordClaimResult(d Deps, caller string, consumer bool, audience store.Visi
 	if c.Adapter != manualAdapter {
 		return claimResultOut{}, fmt.Errorf("claim %d on %s is checked by the %s adapter; its result comes from the scheduled run, and only a manual claim's answer is recorded here (spec §8.1)", in.Index, rel, c.Adapter)
 	}
+	var count, target *int
+	if of, paced := c.Paced(); paced && !c.IsStanding() {
+		// A manual count's answer is the number; the state is what the count
+		// says against the target, so a session cannot pass a short count.
+		switch {
+		case in.Count == nil && state == store.NoEvidence:
+		case in.Count == nil:
+			return claimResultOut{}, fmt.Errorf("a manual count's answer is a number: pass count (claim %d on %s counts toward %d)", in.Index, rel, of)
+		case state == store.NoEvidence:
+			return claimResultOut{}, fmt.Errorf("no-evidence is no answer, so it takes no count; leave count out")
+		case *in.Count < 0:
+			return claimResultOut{}, fmt.Errorf("a count is zero or more, not %d", *in.Count)
+		case *in.Count >= of && state != store.Pass:
+			return claimResultOut{}, fmt.Errorf("a count of %d meets the target of %d, so the state is pass, not %s", *in.Count, of, state)
+		case *in.Count < of && state != store.Fail:
+			return claimResultOut{}, fmt.Errorf("a count of %d is short of the target of %d, so the state is fail, not %s", *in.Count, of, state)
+		default:
+			count, target = in.Count, &of
+		}
+	} else if in.Count != nil {
+		return claimResultOut{}, fmt.Errorf("claim %d on %s is not a manual count (a manual claim that is not standing, with of); count is refused (spec §8.1)", in.Index, rel)
+	}
 	commit, err := d.Memory.UpdateClaimResults(rel, func(prev []store.ClaimResult) []store.ClaimResult {
 		out := make([]store.ClaimResult, 0, len(prev)+1)
 		for _, p := range prev {
@@ -250,7 +288,7 @@ func recordClaimResult(d Deps, caller string, consumer bool, audience store.Visi
 			}
 		}
 		// Since is kept by the store when the state is unchanged.
-		return append(out, store.ClaimResult{Index: in.Index, Text: c.Text, Adapter: c.Adapter, State: state, Detail: in.Note, Since: stamp, Recorded: stamp})
+		return append(out, store.ClaimResult{Index: in.Index, Text: c.Text, Adapter: c.Adapter, State: state, Detail: in.Note, Count: count, Target: target, Since: stamp, Recorded: stamp})
 	}, caller)
 	if err != nil {
 		return claimResultOut{}, err
@@ -264,9 +302,10 @@ func registerClaimTools(s *mcp.Server, d Deps, caller string, consumer bool, aud
 	registerReflectTool(s, d, caller, consumer, audience)
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "claims",
-		Description: "The claims on the person's goals, each with its state: pass, fail, no-evidence or unchecked, " +
-			"and when the scheduled checks last ran. A pass older than two intervals is marked stale. " +
-			"no-evidence is a fault in the deployment, not the person being behind (spec §8.1).",
+		Description: "The claims on the person's goals, each with today's state (spec §8.1): pass, open (not met yet, on pace, " +
+			"deadline ahead), behind (may miss its deadline), fail (a standing claim not met, or a deadline passed), " +
+			"no-evidence or unchecked, and what was last measured. When the scheduled checks last ran is given too, and a " +
+			"pass older than two intervals is marked stale. open is never a shortfall; no-evidence is a fault in the deployment.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in claimsIn) (*mcp.CallToolResult, claimsOut, error) {
 		out, err := claimsFor(d, caller, audience, in.Goal)
 		if err != nil {
@@ -280,7 +319,7 @@ func registerClaimTools(s *mcp.Server, d Deps, caller string, consumer bool, aud
 		Description: "Record what the person said about a manual claim's evidence — pass, fail or no-evidence — " +
 			"without reviewing the goal (spec §8.1). Only manual claims: an adapter's result comes from the " +
 			"scheduled run and is refused here. A review of the goal happens only if the person also confirmed " +
-			"or corrected the goal itself.",
+			"or corrected the goal itself. For a manual count (a claim with of), pass the count so far.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in claimResultIn) (*mcp.CallToolResult, claimResultOut, error) {
 		out, err := recordClaimResult(d, caller, consumer, audience, in)
 		if err != nil {

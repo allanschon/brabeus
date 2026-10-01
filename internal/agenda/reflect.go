@@ -40,10 +40,25 @@ type GoalGap struct {
 	Claims             []ClaimGap `json:"claims,omitempty"`
 }
 type ClaimGap struct {
-	Text   string           `json:"text"`
-	State  store.ClaimState `json:"state"`
-	Since  string           `json:"since,omitempty"`
-	Manual bool             `json:"manual"`
+	Text string `json:"text"`
+	// State is the claim's state today (spec §8.1), derived from what was
+	// measured, the claim's deadline and pace, and the date. Only fail and
+	// behind are the gap; open is work remaining.
+	State store.ClaimState `json:"state"`
+	// Measured is what the last check found, which State reads.
+	Measured store.ClaimState `json:"measured"`
+	Standing bool             `json:"standing,omitempty"`
+	Deadline string           `json:"deadline,omitempty"`
+	// Unreadable names the value that could not be read when State is
+	// behind for that reason: deadline, since, window or effort.
+	Unreadable string `json:"unreadable,omitempty"`
+	DaysLeft   *int   `json:"days_left,omitempty"`
+	Count      *int   `json:"count,omitempty"`
+	Target     *int   `json:"target,omitempty"`
+	Expected   *int   `json:"expected,omitempty"`
+	Effort     *int   `json:"effort,omitempty"`
+	Since      string `json:"since,omitempty"`
+	Manual     bool   `json:"manual"`
 	// Detail carries a no-evidence claim's reason (a revoked token, an
 	// unreachable host), so the interviewer can name the deployment fault
 	// instead of guessing at, or leaving unexplained, why the check did
@@ -75,7 +90,7 @@ func daysSince(now time.Time, reviewed time.Time) int {
 // claimGaps joins a goal's claims block to its results (store.JoinResults,
 // the one join the agenda, the claims tool and the runner all share) and
 // renders each as a fact the interviewer can phrase.
-func claimGaps(fields map[string]string, results []store.ClaimResult) []ClaimGap {
+func claimGaps(fields map[string]string, results []store.ClaimResult, now time.Time) []ClaimGap {
 	block := fields[store.ClaimsField]
 	if block == "" {
 		return nil
@@ -89,7 +104,10 @@ func claimGaps(fields map[string]string, results []store.ClaimResult) []ClaimGap
 		// "manual" names the claims the person answers at interview (§8.1);
 		// the server package holds the same constant, unreachable here
 		// because agenda cannot import server.
-		g := ClaimGap{Text: res.Text, State: res.State, Manual: res.Adapter == "manual", Detail: res.Detail}
+		rd := store.Read(claims[res.Index], res, fields[byField], now)
+		g := ClaimGap{Text: res.Text, State: rd.State, Measured: rd.Measured, Standing: rd.Standing, Deadline: rd.Deadline,
+			Unreadable: rd.Unreadable, DaysLeft: rd.DaysLeft, Count: rd.Count, Target: rd.Target, Expected: rd.Expected, Effort: rd.Effort,
+			Manual: res.Adapter == "manual", Detail: res.Detail}
 		if !res.Since.IsZero() {
 			g.Since = res.Since.UTC().Format(time.RFC3339)
 		}
@@ -103,7 +121,7 @@ func goalGap(r store.Stored, now time.Time, results []store.ClaimResult) GoalGap
 	return GoalGap{
 		Path: r.Path, ID: r.ID, Title: r.Fields[titleField], By: r.Fields[byField],
 		DaysSinceConfirmed: daysSince(now, r.Reviewed),
-		Claims:             claimGaps(r.Fields, results),
+		Claims:             claimGaps(r.Fields, results, now),
 	}
 }
 
