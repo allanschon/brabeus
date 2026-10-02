@@ -185,7 +185,12 @@ func AgendaLine(items []agenda.Item) (string, *Fault) {
 	// that identifies it. A malformed record still carries its module and
 	// kind (agenda.fixByHand keeps them) and renders tagged as usual.
 	who := top.Path
-	if top.Module != "" {
+	switch {
+	case top.Module != "" && top.Kind == "":
+		// A module-only item, such as instructions over their budget,
+		// concerns the module and no record.
+		who = top.Module
+	case top.Module != "":
 		who = top.Module + "/" + top.Kind
 		if top.ID != "" {
 			who += " " + top.ID

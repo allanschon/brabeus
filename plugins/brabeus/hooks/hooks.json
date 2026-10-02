@@ -25,6 +25,18 @@
           }
         ]
       }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/brabeus-subagent-start.sh\"",
+            "shell": "bash",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/allanschon/brabeus/internal/agenda"
 	"github.com/allanschon/brabeus/internal/block"
+	"github.com/allanschon/brabeus/internal/instructions"
 	"github.com/allanschon/brabeus/internal/module"
 	"github.com/allanschon/brabeus/internal/store"
 )
@@ -1045,5 +1047,177 @@ func TestTheReflectionMarksAStaleAdapterPass(t *testing.T) {
 	last = now.Add(-time.Hour)
 	if ref, _ := reflectFor(d, "desk", false, audienceFor(set, false)); ref.Unserved[0].Claims[0].Stale {
 		t.Error("a pass within two intervals of the last run is not stale")
+	}
+}
+
+// writeConfirmed writes a record and confirms it, as the person's review does.
+func writeConfirmed(t *testing.T, st *store.Store, path, mod, kind, sc, body string) {
+	t.Helper()
+	rec := store.Record{Name: strings.TrimSuffix(filepath.Base(path), ".md"), Description: body, Module: mod, Kind: kind, Scope: sc, Body: body}
+	if mod != "memory" { // working memory declares no fields; the ratified kinds require a statement
+		rec.Fields = map[string]string{"statement": body}
+	}
+	if _, err := st.Write(path, rec, "desk"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Review(path, store.ReviewInput{Question: "Still how you want to work?", Verdict: store.Confirmed, Answer: "yes"}, "desk"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type instructionsBody struct {
+	Opening string                `json:"opening"`
+	Records []instructions.Record `json:"records"`
+	Sizes   []instructions.Size   `json:"sizes"`
+}
+
+func getInstructions(t *testing.T, d Deps, consumers map[string]bool, query string) instructionsBody {
+	t.Helper()
+	h := InstructionsHandler(d, fakeIdentity{name: "desk"}, consumers)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/instructions"+query, nil))
+	if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "application/json" {
+		t.Fatalf("status=%d type=%q body=%q", w.Code, w.Header().Get("Content-Type"), w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), `"records":null`) {
+		t.Errorf("records must be [], never null: %s", w.Body.String())
+	}
+	var got instructionsBody
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+func instructionsDeps(t *testing.T, st *store.Store, set *module.Set) Deps {
+	t.Helper()
+	renderer, err := block.New(set)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return Deps{Memory: st, Set: set, Block: renderer, Now: time.Now}
+}
+
+func TestInstructionsEndpointServesConfirmedInstructions(t *testing.T) {
+	st := newServerStore(t)
+	d := instructionsDeps(t, st, testSet(t))
+	writeConfirmed(t, st, "identity/preference/answer.md", "identity", "preference", "global", "Answer the ask, then stop.")
+
+	got := getInstructions(t, d, nil, "")
+	if len(got.Records) != 1 || got.Records[0].Text != "Answer the ask, then stop." || got.Records[0].Module != "identity" {
+		t.Errorf("records = %+v", got.Records)
+	}
+	if got.Opening != instructions.Opening {
+		t.Errorf("opening = %q", got.Opening)
+	}
+	if len(got.Sizes) != 1 || got.Sizes[0].Module != "identity" || got.Sizes[0].Budget != 4096 {
+		t.Errorf("sizes = %+v", got.Sizes)
+	}
+}
+
+func TestInstructionsEndpointFollowsScope(t *testing.T) {
+	st := newServerStore(t)
+	d := instructionsDeps(t, st, testSet(t))
+	writeConfirmed(t, st, "identity/preference/scoped.md", "identity", "preference", "project/a--b", "Only in a--b.")
+
+	if got := getInstructions(t, d, nil, "?project=a--b"); len(got.Records) != 1 {
+		t.Errorf("inside its project: %+v", got.Records)
+	}
+	if got := getInstructions(t, d, nil, ""); len(got.Records) != 0 {
+		t.Errorf("outside any project: %+v", got.Records)
+	}
+	h := InstructionsHandler(d, fakeIdentity{name: "desk"}, nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/instructions?project=not/a/slug", nil))
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("a malformed project is 400, got %d", w.Code)
+	}
+}
+
+func TestInstructionsAreHiddenFromAConsumer(t *testing.T) {
+	st := newServerStore(t)
+	d := instructionsDeps(t, st, testSet(t))
+	writeConfirmed(t, st, "identity/preference/answer.md", "identity", "preference", "global", "Answer the ask, then stop.")
+
+	got := getInstructions(t, d, map[string]bool{"desk": true}, "")
+	if len(got.Records) != 0 || len(got.Sizes) != 0 {
+		t.Errorf("identity is self: a consumer gets nothing, got %+v", got)
+	}
+}
+
+// A working-memory preference crosses into identity and is governed there. A
+// deployment that declares memory audience any lets a consumer see the record
+// itself, but not as an instruction, because identity is self.
+func TestACrossingPreferenceIsNotServedToAConsumerWhenMemoryIsAny(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.CopyFS(dir, os.DirFS(filepath.Join("..", "..", "modules"))); err != nil {
+		t.Fatal(err)
+	}
+	mf := filepath.Join(dir, "memory", "module.json")
+	raw, err := os.ReadFile(mf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patched := strings.Replace(string(raw), `"profile": "working-memory",`, `"profile": "working-memory", "audience": "any",`, 1)
+	if patched == string(raw) {
+		t.Fatal("memory manifest no longer has the line this test patches")
+	}
+	if err := os.WriteFile(mf, []byte(patched), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	set, err := module.Load(dir, []string{"memory", "identity", "telos", "health"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if audienceFor(set, true).Hides("memory") {
+		t.Fatal("fixture: memory should be visible to a consumer")
+	}
+	st := newServerStore(t)
+	st.SetModules(set)
+	d := instructionsDeps(t, st, set)
+	writeConfirmed(t, st, "memory/preference/crossing.md", "memory", "preference", "global", "Never force-push.")
+
+	own := getInstructions(t, d, nil, "")
+	if len(own.Records) != 1 || own.Records[0].Path != "memory/preference/crossing.md" || own.Records[0].Module != "identity" {
+		t.Fatalf("the person's own call must carry the crossing preference: %+v", own.Records)
+	}
+	if got := getInstructions(t, d, map[string]bool{"desk": true}, ""); len(got.Records) != 0 || len(got.Sizes) != 0 {
+		t.Errorf("a consumer must not receive an identity instruction: %+v", got)
+	}
+}
+
+func TestContextToolReportsInstructionSizes(t *testing.T) {
+	st := newServerStore(t)
+	d := instructionsDeps(t, st, testSet(t))
+	writeConfirmed(t, st, "identity/preference/answer.md", "identity", "preference", "global", "Answer the ask, then stop.")
+
+	ctx := context.Background()
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	serverSession, err := New(d, "desk", false).Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serverSession.Close()
+	clientSession, err := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "v0"}, nil).Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clientSession.Close()
+
+	res, err := clientSession.CallTool(ctx, &mcp.CallToolParams{Name: "context", Arguments: map[string]any{}})
+	if err != nil || res.IsError {
+		t.Fatalf("err=%v res=%+v", err, res)
+	}
+	raw, err := json.Marshal(res.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out contextOut
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	want := []instructions.Size{{Module: "identity", Bytes: len("Answer the ask, then stop."), Budget: 4096}}
+	if !reflect.DeepEqual(out.Instructions, want) {
+		t.Errorf("instructions = %+v, want %+v", out.Instructions, want)
 	}
 }

@@ -6,17 +6,20 @@
 set -uo pipefail
 HOOK="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/brabeus-session-start.sh"
 export HOME="$(mktemp -d)"                 # an empty outbox, nothing drained
+unset CLAUDE_PLUGIN_DATA                   # saved copies go to the default path under HOME
 export XDG_RUNTIME_DIR="$(mktemp -d)"
 # WORKDIR is not, and is not inside, a git repository: every test below that
 # does not set up its own repo runs from here, so PROJECT stays empty
 # regardless of where this test happens to be checked out.
 WORKDIR="$(mktemp -d)"
 REQLOG="$(mktemp)"
-trap 'rm -rf "$HOME" "$XDG_RUNTIME_DIR" "$WORKDIR" "$REQLOG" "${REPO:-}" "${REPO2:-}"; kill "$srv" 2>/dev/null' EXIT
+trap 'rm -rf "$HOME" "$XDG_RUNTIME_DIR" "$WORKDIR" "$REQLOG" "$INSTR_BODY" "${REPO:-}" "${REPO2:-}"; kill "$srv" 2>/dev/null' EXIT
 PROFILES="$XDG_RUNTIME_DIR/brabeus/profiles"
 
 port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
-python3 - "$port" "$REQLOG" <<'PY' &
+INSTR_BODY="$(mktemp)"
+printf '%s' '{"opening":"OPEN","records":[{"module":"identity","path":"identity/preference/a.md","text":"Rule A."}],"sizes":[]}' > "$INSTR_BODY"
+python3 - "$port" "$REQLOG" "$INSTR_BODY" <<'PY' &
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 class H(BaseHTTPRequestHandler):
@@ -35,6 +38,10 @@ class H(BaseHTTPRequestHandler):
             if self.headers.get("Authorization") != "Bearer " + "t" * 12:
                 self.send_response(401); self.end_headers(); return
             body = b"agenda: [identity/value family] Still one of the things you weigh decisions against?\nidentity:\n- value: family first\n"
+        elif base == "/instructions":
+            if self.headers.get("Authorization") != "Bearer " + "t" * 12:
+                self.send_response(401); self.end_headers(); return
+            body = open(sys.argv[3], "rb").read()
         else:
             self.send_response(404); self.end_headers(); return
         self.send_response(200); self.send_header("Content-Type", "text/plain; charset=utf-8"); self.end_headers(); self.wfile.write(body)
@@ -49,6 +56,7 @@ check() { if eval "$2"; then pass=$((pass+1)); printf 'ok   %s\n' "$1"; else fai
 # ── reachable kernel, no project (cwd is not a git repository) ─────────────────────────────────
 out=$(cd "$WORKDIR" && printf '{"session_id":"s1","hook_event_name":"SessionStart"}' | BRABEUS_URL="http://127.0.0.1:$port" BRABEUS_TOKEN="$(printf 't%.0s' $(seq 12))" bash "$HOOK")
 ctx=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')
+ctx0="$ctx"
 check "emits valid SessionStart JSON"         '[ "$(printf "%s" "$out" | jq -r .hookSpecificOutput.hookEventName)" = SessionStart ]'
 check "the block is the first context"       '[ "$(printf "%s" "$ctx" | head -1)" = "agenda: [identity/value family] Still one of the things you weigh decisions against?" ]'
 check "the routing reminder follows"         'printf "%s" "$ctx" | grep -q "brabeus.*write"'
@@ -59,6 +67,57 @@ check "profiles read up to claims=, ignoring errors= after it" '[ "$(cat "$PROFI
 check "per-session profiles file written"    '[ "$(cat "$PROFILES-s1")" = "$(cat "$PROFILES")" ]'
 check "no project outside a git repository"  'printf "%s" "$ctx" | grep -q "cwd names no project"'
 check "no project query sent to /context"    '! tail -1 "$REQLOG" | grep -q "project="'
+
+# ── the person's instructions ──────────────────────────────────────────────────────────────────
+DATA="$HOME/.claude/plugins/data/brabeus/instructions"
+check "the instructions follow the block's first line" '[ "$(printf "%s" "$ctx0" | grep -n "Rule A\." | cut -d: -f1)" -gt 1 ]'
+check "the instructions come before the routing text" '[ "$(printf "%s" "$ctx0" | grep -n "Rule A\." | cut -d: -f1)" -lt "$(printf "%s" "$ctx0" | grep -n "Durable facts" | cut -d: -f1)" ]'
+check "the saved copy exists, mode 600"     '[ "$(stat -c %a "$DATA/s1.json")" = 600 ]'
+check "the saved copy is scoped and whole"  '[ "$(jq -r .records[0].text "$DATA/s1.json")" = "Rule A." ] && [ "$(jq -r .scope "$DATA/s1.json")" != null ]'
+check "/instructions was requested"         'grep -q "^/instructions$" "$REQLOG"'
+
+# A fallback uses only copies made from the same kernel. The stub's own copy does not
+# qualify for an unreachable URL, so first no copy matches, then one made from that URL does.
+out=$(cd "$WORKDIR" && printf '{"session_id":"s1b0"}' | BRABEUS_URL="http://127.0.0.1:1" bash "$HOOK")
+ctx=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')
+check "offline: a copy from another kernel does not stand in" '! printf "%s" "$ctx" | grep -q "Rule A\."'
+jq '.kernel = "http://127.0.0.1:1"' "$DATA/s1.json" > "$DATA/s1a.json"
+out=$(cd "$WORKDIR" && printf '{"session_id":"s1b"}' | BRABEUS_URL="http://127.0.0.1:1" bash "$HOOK")
+ctx=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')
+check "offline: the newest saved copy stands in, labelled" 'printf "%s" "$ctx" | grep -q "Instructions from the saved copy of" && printf "%s" "$ctx" | grep -q "Rule A\."'
+check "offline: the session gets its own copy" '[ -f "$DATA/s1b.json" ] && [ "$(jq -r .fallback "$DATA/s1b.json")" = true ]'
+
+SAVED_HOME="$HOME"; export HOME="$(mktemp -d)"
+out=$(cd "$WORKDIR" && printf '{"session_id":"s1c"}' | BRABEUS_URL="http://127.0.0.1:1" bash "$HOOK")
+ctx=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')
+check "offline, no copy: no instructions, no unavailable line" '! printf "%s" "$ctx" | grep -q "Rule A\." && ! printf "%s" "$ctx" | grep -q "unavailable to this agent"'
+rm -rf "$HOME"; export HOME="$SAVED_HOME"
+
+# ── a reply that is not JSON still leaves the session a copy to fall back on ──────────────────
+printf 'oops' > "$INSTR_BODY"
+out=$(cd "$WORKDIR" && printf '{"session_id":"s1d"}' | BRABEUS_URL="http://127.0.0.1:$port" BRABEUS_TOKEN="$(printf 't%.0s' $(seq 12))" bash "$HOOK")
+ctx=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')
+check "a bad /instructions reply falls back to the saved copy" 'printf "%s" "$ctx" | grep -q "Instructions from the saved copy of" && printf "%s" "$ctx" | grep -q "Rule A\."'
+
+# ── a corrupt copy gives the main session nothing, not the subagent's line ─────────────────────
+printf '{broken' > "$DATA/s1e.json"
+out=$(cd "$WORKDIR" && printf '{"session_id":"s1e"}' | BRABEUS_URL="http://127.0.0.1:1" bash "$HOOK")
+ctx=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')
+check "a corrupt copy: no unavailable line in the main session" '! printf "%s" "$ctx" | grep -q "unavailable to this agent"'
+
+# ── three records of 4,000 characters: whole records, within the cap ───────────────────────────
+python3 - "$INSTR_BODY" <<'PY'
+import json, sys
+recs = [{"module": "identity", "path": "identity/preference/r%d.md" % i, "text": c * 4000} for i, c in enumerate("xyz")]
+open(sys.argv[1], "w").write(json.dumps({"opening": "OPEN", "records": recs, "sizes": []}))
+PY
+out=$(cd "$WORKDIR" && printf '{"session_id":"s1f"}' | BRABEUS_URL="http://127.0.0.1:$port" BRABEUS_TOKEN="$(printf 't%.0s' $(seq 12))" bash "$HOOK")
+ctx=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')
+check "over the cap: the whole context is within 9,800 characters" '[ "$(printf "%s" "$ctx" | python3 -c "import sys; print(len(sys.stdin.read()))")" -le 9800 ]'
+check "over the cap: the first record is whole"   'printf "%s" "$ctx" | grep -q "$(printf "x%.0s" $(seq 4000))"'
+check "over the cap: the last record is dropped and named" 'printf "%s" "$ctx" | grep -q "^Not delivered, over the hook.s limit: identity/preference/r2.md\.$" && ! printf "%s" "$ctx" | grep -q "zzz"'
+check "over the cap: no record is cut" 'printf "%s" "$ctx" | python3 -c "import re,sys; t=sys.stdin.read(); sys.exit(0 if [len(m) for m in re.findall(r\"x+|y+\", t) if len(m) > 50] == [4000, 4000] else 1)"'
+check "over the cap: the routing text still follows" '[ "$(printf "%s" "$ctx" | grep -n "^Not delivered" | cut -d: -f1)" -lt "$(printf "%s" "$ctx" | grep -n "Durable facts" | cut -d: -f1)" ]'
 
 # ── the project key: cwd is a git repository with an ssh origin ────────────────────────────────
 REPO="$(mktemp -d)"

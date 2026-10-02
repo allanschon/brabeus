@@ -9,14 +9,15 @@ the Greek games.
 
 ## Status
 
-The specification is at v1.8 (`docs/personal-context-system-v1.md`). Milestones M0, M1 and M2
-are built. Modules load and validate, and every write names a module and a kind. The context
-block renders from the person's records with the agenda's question as its first line. Goals carry
-claims, which the kernel checks against a task tracker, a git forge or a date, or asks the person
-to answer. The interview is a
-conversation: it drafts the record in the person's words, confirms each draft through `review`,
-and closes with a reflection by value. M3, a read-only view, and M4, the `health` and `finance`
-modules, are planned. Section 14 of the specification lists what each milestone delivers.
+The specification is at v1.10 (`docs/personal-context-system-v1.md`). Milestones M0, M1 and M2 are
+built. Modules load and validate, and every write names a module and a kind. The context block
+renders from the person's records with the agenda's question as its first line. Goals carry claims,
+which the kernel checks against a task tracker, a git forge or a date, or asks the person to answer.
+The person's confirmed preferences and register reach every session and every subagent it starts as
+standing instructions. The interview is a conversation: it drafts the record in the person's words,
+confirms each draft through `review`, and closes with a reflection by value. M3, a read-only view,
+and M4, the `health` and `finance` modules, are planned. Section 14 of the specification lists what
+each milestone delivers.
 
 ## What is here
 
@@ -98,6 +99,58 @@ vocabulary and the block. A consumer is refused the notebook entirely, because t
 modules and so no audience of its own. A consumer never writes, deletes or reviews. A caller the
 kernel cannot identify at all is not a consumer — it is refused outright, with a 403, before any
 tool runs (spec §11).
+
+## Instructions
+
+A ratified-record kind marked as instructions makes the confirmed records of that kind the
+person's standing instructions for how to work with them. The shipped `identity` module marks
+`preference` and `register`. Two manifest keys declare it (spec §6):
+
+- A kind sets `"instructions": true`. It must list `"source"` among its `optional` fields, which
+  is where the interviewer's label goes, because the record's body is delivered word for word.
+- The module sets `"instructions_budget_bytes"`, the size its instructions should stay within.
+  `identity` sets 4096.
+
+Only a `ratified-record` module may declare either key. A module that marks a kind must declare a
+positive budget, and a module that marks none must not declare one. A deployment with no marked
+kind delivers nothing.
+
+Every session receives the confirmed, unretired records of those kinds, scope-filtered as the
+block is, in module priority and then by path. Each record contributes its body, trimmed, or the
+value of the kind's first field when the body is empty. The text opens with a line saying that
+where the task an agent was given conflicts with an instruction, the instruction wins on anything
+that cannot be undone or reaches beyond the working copy, and the task wins on anything else.
+Drafts are not delivered. A consumer receives only the instructions of modules whose audience is
+`any`, so `identity`'s reach only the person's own sessions.
+
+The kernel serves them at `GET /instructions`, behind the same identity and authentication as
+`/context`; the `context` tool reports each module's instructions size against its budget.
+
+Over its budget, a module's instructions are still delivered in full. The excess is a `budget`
+item, the last on the agenda, after onboarding: "The identity instructions every session receives
+are 5120 of 4096 bytes. Which can be merged or retired?" A `later` on it is not recorded, and
+`/health` reports it. Confirming or correcting an instruction records the delivered text in the
+review's commit, under `Delivered:`.
+
+The plugin's `SessionStart` hook fetches the instructions after it drains the outbox and puts
+them in the session's context after the block. It saves them as that session's copy in the
+plugin's data directory, which the harness sets for hooks:
+`~/.claude/plugins/data/<plugin>-<marketplace>/instructions/<session id>.json`, mode 600. The
+`SubagentStart` hook gives every subagent that session's copy, with no network call; a subagent
+whose session has no copy is told the instructions are unavailable. If the kernel is unreachable
+at start, the newest copy for the same machine and project, made from the same kernel, stands in,
+labelled with its date and saved as the session's own. Copies older than 30 days are deleted,
+except the newest for each machine and project.
+
+The harness replaces a hook's text of more than 10,000 characters with a path to a file the model
+is not asked to read, so the plugin keeps each injection under 9,800 characters. Past that it
+drops whole records from the end and names them on a last line, `Not delivered, over the hook's
+limit:`, which the `/health` skill also reports, reading it from the saved copy.
+
+The write guard refuses the assistant's Write, Edit and NotebookEdit on the saved copies and its
+common Bash write forms, whatever the kernel's profiles say. That stops an accidental write of text
+the person never confirmed; the Bash patterns can be walked around deliberately, so it is not a
+barrier against a determined bypass.
 
 ## Claims
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SessionStart hook for the brabeus record.
 #
-# Three jobs, in order:
+# Five jobs, in order:
 #   1. drain ~/.claude/memory-outbox/ into the store — anything written locally
 #      while the server was unreachable — so a drained note is in the block;
 #   2. fetch the kernel's profiles from /healthz and write them where the write
@@ -10,7 +10,12 @@
 #   3. fetch /context, scoped to this session's project when the cwd names
 #      one, and emit it as the session's first context, with a routing
 #      reminder under it that states the session's own scope keys rather than
-#      leaving the model to guess them.
+#      leaving the model to guess them;
+#   4. fetch /instructions, save a per-session copy for the session's
+#      subagents, and put the instructions after the block, within the
+#      harness's cap (when the kernel is unreachable, the newest saved copy
+#      for this machine and project stands in);
+#   5. emit all of it as one additionalContext.
 #
 # BEST EFFORT, ALWAYS. A session must start whether or not the kernel is up,
 # so every step is bounded by a timeout and every failure is non-fatal. The
@@ -138,9 +143,28 @@ else
 fi
 
 read -r -d '' ROUTING <<CTX || true
-Durable facts go to the brabeus MCP server's \`write\` tool (module, kind, scope, path), never to a file under ~/.claude/projects/*/memory/. $SCOPE_KEYS \`context\` is the block above, and its first line is what the person's record is asking. Unless it says nothing is due, raise that question with the person once, briefly: early in your first reply, or at the first natural break if they opened with a task. Do not raise it again this session once they have answered it, put it off or passed over it. An answer to that first line given outside \`/interview\` is recorded with \`review\`, whose \`question\` is the first line's question exactly as the block gives it, with nothing added; this rule is for the first line only, and \`/interview\` sets its own for drafts. \`/interview\` works through the rest of the agenda, confirming with \`review\` and recording a manual claim's answer with \`claim_result\`. If the server is unreachable, queue a frontmattered file in ~/.claude/memory-outbox/ and the next session drains it.
+Durable facts go to the brabeus MCP server's \`write\` tool (module, kind, scope, path), never to a file under ~/.claude/projects/*/memory/. $SCOPE_KEYS \`context\` is the block above, and its first line is what the person's record is asking. Unless it says nothing is due, raise that question with the person once, briefly: early in your first reply, or at the first natural break if they opened with a task. Do not raise it again this session once they have answered it, put it off or passed over it. An answer to that first line given outside \`/interview\` is recorded with \`review\`, whose \`question\` is the first line's question exactly as the block gives it, with nothing added; a first line that names a module and no record (the budget item) is answered in conversation, or worked through in \`/interview\`, and is not recorded with \`review\`; this rule is for the first line only, and \`/interview\` sets its own for drafts. \`/interview\` works through the rest of the agenda, confirming with \`review\` and recording a manual claim's answer with \`claim_result\`. If the server is unreachable, queue a frontmattered file in ~/.claude/memory-outbox/ and the next session drains it.
 CTX
 
+# 4. the person's instructions (spec §4.2, §10): fetched after the drain, so a
+#    confirmation queued offline is in them; saved for this session's
+#    subagents; injected after the block within the harness's cap.
+DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/brabeus}/instructions"
+INSTR_PY="$HOOK_DIR/brabeus-instructions.py"
+SCOPE="machine/$MACHINE"; [ -n "$PROJECT" ] && SCOPE="$SCOPE project/$PROJECT"
+INSTR_URL="${BRABEUS_URL:-}/instructions"; [ -n "$PROJECT" ] && INSTR_URL="${INSTR_URL}?project=$PROJECT"
+if [ -n "$sid" ]; then
+  if [ -n "$block" ] && json=$(curl -sf --max-time 5 ${auth[@]+"${auth[@]}"} "$INSTR_URL" 2>/dev/null); then
+    printf '%s' "$json" | python3 "$INSTR_PY" save "$DATA" "$sid" "$SCOPE" "${BRABEUS_URL:-}" 2>/dev/null \
+      || python3 "$INSTR_PY" fallback "$DATA" "$sid" "$SCOPE" "${BRABEUS_URL:-}" >/dev/null 2>&1 || true
+  else
+    python3 "$INSTR_PY" fallback "$DATA" "$sid" "$SCOPE" "${BRABEUS_URL:-}" >/dev/null 2>&1 || true
+  fi
+fi
+
+# The text without the instructions. What the instructions may use is what is
+# left under the harness's 10,000-character cap, with a margin: it replaces a
+# hook string past the cap with a file path the model is never asked to read.
 CONTEXT="$block"
 [ -n "$CONTEXT" ] && CONTEXT="$CONTEXT
 "
@@ -151,6 +175,33 @@ $kernel_note"
 [ -n "$drained" ] && CONTEXT="$CONTEXT
 
 $drained"
+
+# Characters, counted by Python so the answer does not depend on the hook's
+# locale (bash's ${#var} counts bytes under LANG=C). Setting the instructions in
+# adds at most 3 characters of separator to the text above: a blank line after
+# them in place of a line break after the block.
+if [ -n "$sid" ] && [ -f "$DATA/$sid.json" ]; then
+  rest_len=$(printf '%s' "$CONTEXT" | python3 -c \
+    'import sys; print(len(sys.stdin.buffer.read().decode("utf-8", "replace")))' 2>/dev/null) || rest_len=${#CONTEXT}
+  cap=$((9800 - rest_len - 3))
+  if [ "$cap" -gt 0 ]; then
+    instr=$(python3 "$INSTR_PY" text "$DATA" "$sid" "$cap" main 2>/dev/null) || instr=""
+    if [ -n "$instr" ]; then
+      # Between the block and the routing text: the block's own lines first.
+      CONTEXT="${block:+$block
+
+}${instr}
+
+${ROUTING}"
+      [ -n "$kernel_note" ] && CONTEXT="$CONTEXT
+
+$kernel_note"
+      [ -n "$drained" ] && CONTEXT="$CONTEXT
+
+$drained"
+    fi
+  fi
+fi
 
 jq -cn --arg c "$CONTEXT" \
   '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'

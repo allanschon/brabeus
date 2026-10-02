@@ -1,6 +1,6 @@
 ---
 name: health
-description: Use when checking whether this machine's brabeus routing is working - the guard is active, nothing is stuck in or rejected from the outbox, nothing has accumulated in per-machine scratch - and whether the failures that would otherwise be silent have happened - a module over its byte budget, the claim schedule not running, an adapter unable to answer. Also use when setting up a new machine.
+description: Use when checking whether this machine's brabeus routing is working - the guard is active, nothing is stuck in or rejected from the outbox, nothing has accumulated in per-machine scratch - and whether the failures that would otherwise be silent have happened - a module over its byte budget, the claim schedule not running, an adapter unable to answer, the standing instructions over their byte budget, or instructions cut short or never saved for subagents. Also use when setting up a new machine.
 ---
 
 # Is this machine's memory routing working?
@@ -10,8 +10,9 @@ machine: reaching across the network is what made the previous checker
 unreliable — it was blind to a sleeping laptop and reported "could not reach it"
 as a failure, so it was red most nights for a boring reason.
 
-Run all seven checks and give one verdict. Four of them look for failures that nothing
-else would show — a module over its byte budget (check 0), an outbox write the kernel
+Run all eight checks and give one verdict. Five of them look for six failures that nothing
+else would show — a module over its byte budget and the standing instructions over theirs
+(both check 0), instructions not reaching subagents (check 7), an outbox write the kernel
 rejected (check 3), the claim schedule not running (check 4) and an adapter that cannot
 answer (check 5) — because each one leaves the record quietly wrong rather than visibly
 broken.
@@ -28,9 +29,17 @@ must be absent. A fault names a module whose summary is over its budget, or
 `agenda` when its line had to be cut. That is the budget failure: the module's
 share of the block is one line saying so, and every session is missing what it
 would have said. Report it by module name; it is a template or budget problem,
-not a data problem. If the first line is `agenda: nothing due` and you
+not a data problem.
+
+If the first line is `agenda: nothing due` and you
 know a record is old, that is worth saying: the agenda is computed from what
 this machine may see.
+
+The same output has `instructions`, one entry per module that delivers the person's
+standing instructions, each with `bytes` and `budget`. A module whose `bytes` exceed its
+`budget` is a fault: name it with both numbers ("identity: 5120 of 4096 bytes"). Every session
+and subagent is being handed more than the module agreed to, and the interview's `budget`
+agenda item is how the person trims it.
 
 ## 1. Is the guard actually refusing?
 
@@ -132,6 +141,25 @@ description, as notes worth a review — nothing more. This is a heuristic on th
 description alone; it does not read bodies, and it is not a verdict. Do not
 delete or rewrite anything from this check.
 
+## 7. Are the instructions reaching subagents?
+
+Each session saves the instructions it delivered, and a subagent reads that copy. Read this
+session's own:
+
+```bash
+f=${CLAUDE_PLUGIN_DATA:+$CLAUDE_PLUGIN_DATA/instructions/$CLAUDE_CODE_SESSION_ID.json}
+[ -n "$f" ] || f=$(ls ~/.claude/plugins/data/*/instructions/"$CLAUDE_CODE_SESSION_ID".json 2>/dev/null | head -1)
+cat "$f" 2>/dev/null
+```
+
+The harness gives hooks a data directory of their own, `~/.claude/plugins/data/<plugin>-<marketplace>`,
+and the Bash tool does not see `CLAUDE_PLUGIN_DATA`, so the glob finds the copy there. No copy for
+this session, while the kernel answers (check 0), is a fault: the session-start hook is not saving
+copies, and a subagent starts without the person's instructions. A non-empty `omitted` is a fault:
+it lists instruction records that were over what one hook may inject, so they reach no session or
+subagent. Name the paths in it. `fallback: true` only means the copy came from the last saved fetch
+because the kernel was unreachable then; say so, and do not count it as a fault.
+
 ## Reporting
 
 Say plainly which of the checks passed. If all pass, one line is enough.
@@ -140,7 +168,8 @@ A kernel that does not answer (check 0) is the headline, because it makes the
 rest moot. After that, the silent failures lead: a stopped claim schedule or a
 non-zero `errors=` count (check 4) above everything else they report, because
 each leaves some goal's state quietly out of date; then adapter faults, a
-module over budget and rejected outbox writes. Checks 2 and 3's queued count
+module over budget, instructions over budget or omitted (checks 0 and 7), and rejected outbox
+writes. Checks 2 and 3's queued count
 are only meaningful once
 check 1 says the guard is live *and* check 0 says the kernel is up: both read
 zero on a machine where nothing is happening at all, and a guard that is off

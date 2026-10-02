@@ -168,8 +168,19 @@ func (s *Store) Review(rel string, in ReviewInput, caller string) (string, error
 	if err := os.WriteFile(full, []byte(content), 0o640); err != nil {
 		return "", err
 	}
-	msg := fmt.Sprintf("review %s/%s %s: %s\n\nQ: %s\nVerdict: %s\nA: %s\n\nReviewed through the kernel at %s.",
-		r.Module, r.Kind, r.Name, in.Verdict, question, in.Verdict, answer, time.Now().UTC().Format(time.RFC3339))
+	// A confirmation or correction of an instruction approves the text every
+	// session will receive, so the commit holds it: the first line is capped
+	// at 256 bytes and could not carry a body.
+	delivered := ""
+	if in.Verdict == Confirmed || in.Verdict == Corrected {
+		if k, ok := s.modules.InstructionKind(r.Module, r.Kind); ok {
+			if t := Delivered(r, k); t != "" {
+				delivered = "\n\nDelivered:\n" + t
+			}
+		}
+	}
+	msg := fmt.Sprintf("review %s/%s %s: %s\n\nQ: %s\nVerdict: %s\nA: %s%s\n\nReviewed through the kernel at %s.",
+		r.Module, r.Kind, r.Name, in.Verdict, question, in.Verdict, answer, delivered, time.Now().UTC().Format(time.RFC3339))
 	return s.commitAndPush(msg, caller)
 }
 

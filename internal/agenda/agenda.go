@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/allanschon/brabeus/internal/instructions"
 	"github.com/allanschon/brabeus/internal/module"
 	"github.com/allanschon/brabeus/internal/store"
 )
@@ -21,6 +22,7 @@ const (
 	Draft      Reason = "draft"
 	Stale      Reason = "stale"
 	Onboarding Reason = "onboarding"
+	Budget     Reason = "budget"
 )
 
 // The questions a kind is asked when it declares none (spec §6): so a new or
@@ -41,6 +43,8 @@ type Item struct {
 	Revision string            `json:"revision,omitempty"`
 	Snoozes  int               `json:"snoozes,omitempty"`
 	Fields   map[string]string `json:"fields,omitempty"`
+	// Body is the delivered text of an instructions record, beside its question, so the interviewer can show it (spec §9).
+	Body string `json:"body,omitempty"`
 	// ClaimText and ClaimIndex name the failed claim on a fail item. The
 	// index is 0-based, as the claims tool lists it, so it is a pointer:
 	// the first claim is 0 and must still be on the wire.
@@ -226,6 +230,10 @@ func Compute(set *module.Set, records []store.Stored, results map[string][]store
 			}
 		}
 
+		// Set before the draft and stale branches copy base.
+		if k, ok := set.InstructionKind(r.Module, r.Kind); ok {
+			base.Body = store.Delivered(r.Record, k)
+		}
 		if r.Reviewed.IsZero() {
 			base.Reason, base.Question = Draft, render(orDefault(kind.Draft, DefaultDraft), r)
 			drafts = append(drafts, candidate{base, man.Priority, now.Sub(r.Updated), pref})
@@ -291,6 +299,15 @@ func Compute(set *module.Set, records []store.Stored, results map[string][]store
 			if !present[man.Name+"/"+k] {
 				out = append(out, Item{Module: man.Name, Kind: k, Reason: Onboarding, Question: man.Kinds[k].First})
 			}
+		}
+	}
+	// Instructions over their budget come last: housekeeping, raised only
+	// when nothing else is due, and never deferred, because the item names a
+	// module rather than a record (spec §9).
+	for _, sz := range instructions.Sizes(set, instructions.Collect(set, records)) {
+		if sz.Bytes > sz.Budget {
+			out = append(out, Item{Module: sz.Module, Reason: Budget,
+				Question: fmt.Sprintf("The %s instructions every session receives are %d of %d bytes. Which can be merged or retired?", sz.Module, sz.Bytes, sz.Budget)})
 		}
 	}
 	return out

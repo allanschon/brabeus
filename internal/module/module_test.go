@@ -377,3 +377,78 @@ func TestTheShippedIdentityStartsWithRegisterAndMemoryDeclaresThread(t *testing.
 		t.Errorf("decision.due_field = %q", tl.Kinds["decision"].DueField)
 	}
 }
+
+func TestInstructionsKeys(t *testing.T) {
+	ratified := func(kinds, extra string) string {
+		return `{"name":"m","version":1,"profile":"ratified-record","priority":1,"budget_bytes":100,"summary":"s.tmpl",` +
+			`"kinds":{` + kinds + `}` + extra + `}`
+	}
+	cases := []struct {
+		name, manifest, wantErr string
+	}{
+		{"marked with budget and source loads",
+			ratified(`"pref":{"fields":["statement"],"optional":["source"],"instructions":true}`, `,"instructions_budget_bytes":4096`), ""},
+		{"marked without a budget is refused",
+			ratified(`"pref":{"fields":["statement"],"optional":["source"],"instructions":true}`, ``), "instructions_budget_bytes"},
+		{"marked without source is refused",
+			ratified(`"pref":{"fields":["statement"],"instructions":true}`, `,"instructions_budget_bytes":4096`), "source"},
+		{"a budget with nothing marked is refused",
+			ratified(`"pref":{"fields":["statement"]}`, `,"instructions_budget_bytes":4096`), "instructions"},
+		{"working-memory may not mark a kind",
+			`{"name":"m","version":1,"profile":"working-memory","priority":1,"kinds":{"note":{"fields":[],"optional":["source"],"instructions":true}}}`, "working-memory"},
+		{"working-memory may not declare a budget",
+			`{"name":"m","version":1,"profile":"working-memory","priority":1,"instructions_budget_bytes":10,"kinds":{"note":{"fields":[]}}}`, "working-memory"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := load(t, []string{"m"}, map[string]string{"m": c.manifest})
+			if c.wantErr == "" && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if c.wantErr != "" && (err == nil || !strings.Contains(err.Error(), c.wantErr)) {
+				t.Fatalf("want error containing %q, got %v", c.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestInstructionKindFollowsTheCrossing(t *testing.T) {
+	const marked = `{
+  "name": "identity", "version": 1, "profile": "ratified-record", "priority": 5,
+  "budget_bytes": 300, "instructions_budget_bytes": 4096, "audience": "self",
+  "kinds": {
+    "preference": {"fields": ["statement"], "optional": ["source"], "instructions": true},
+    "value": {"fields": ["statement"]}
+  },
+  "summary": "summary.md.tmpl"
+}`
+	set, err := load(t, []string{"memory", "identity"}, map[string]string{"memory": memoryJSON, "identity": marked})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		mod, kind string
+		want      bool
+	}{
+		{"memory", "preference", true},
+		{"identity", "preference", true},
+		{"identity", "value", false},
+		{"memory", "note", false},
+	} {
+		if k, got := set.InstructionKind(c.mod, c.kind); got != c.want || k.Instructions != c.want {
+			t.Errorf("InstructionKind(%q, %q) = %+v, %v; want %v", c.mod, c.kind, k, got, c.want)
+		}
+	}
+
+	bare, err := load(t, []string{"memory"}, map[string]string{"memory": memoryJSON})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, got := bare.InstructionKind("memory", "preference"); got {
+		t.Error("identity not enabled: memory's preference is not an instruction")
+	}
+	var none *Set
+	if _, got := none.InstructionKind("memory", "preference"); got {
+		t.Error("a nil set governs nothing")
+	}
+}

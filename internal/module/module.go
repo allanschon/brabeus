@@ -67,25 +67,28 @@ type Kind struct {
 	Lenses   []string `json:"lenses,omitempty"`
 	Draft    string   `json:"draft,omitempty"`
 	DueField string   `json:"due_field,omitempty"`
+	// Instructions marks a ratified-record kind whose confirmed records are delivered in full to every session and subagent (spec §6, §10).
+	Instructions bool `json:"instructions,omitempty"`
 }
 
 type Manifest struct {
-	Name        string            `json:"name"`
-	Version     int               `json:"version"`
-	Profile     Profile           `json:"profile"`
-	Priority    int               `json:"priority"`
-	BudgetBytes int               `json:"budget_bytes,omitempty"`
-	Audience    Audience          `json:"audience,omitempty"`
-	Intro       string            `json:"intro,omitempty"`
-	Kinds       map[string]Kind   `json:"kinds"`
-	Summary     string            `json:"summary,omitempty"`
-	Adapters    []string          `json:"adapters,omitempty"`
-	Skills      []string          `json:"skills,omitempty"`
-	ScopeKeys   []string          `json:"scope_keys,omitempty"`
-	Layout      string            `json:"layout,omitempty"`
-	LegacyTypes map[string]string `json:"legacy_types,omitempty"`
-	Onboarding  []string          `json:"onboarding,omitempty"`
-	Dir         string            `json:"-"`
+	Name                    string            `json:"name"`
+	Version                 int               `json:"version"`
+	Profile                 Profile           `json:"profile"`
+	Priority                int               `json:"priority"`
+	BudgetBytes             int               `json:"budget_bytes,omitempty"`
+	InstructionsBudgetBytes int               `json:"instructions_budget_bytes,omitempty"`
+	Audience                Audience          `json:"audience,omitempty"`
+	Intro                   string            `json:"intro,omitempty"`
+	Kinds                   map[string]Kind   `json:"kinds"`
+	Summary                 string            `json:"summary,omitempty"`
+	Adapters                []string          `json:"adapters,omitempty"`
+	Skills                  []string          `json:"skills,omitempty"`
+	ScopeKeys               []string          `json:"scope_keys,omitempty"`
+	Layout                  string            `json:"layout,omitempty"`
+	LegacyTypes             map[string]string `json:"legacy_types,omitempty"`
+	Onboarding              []string          `json:"onboarding,omitempty"`
+	Dir                     string            `json:"-"`
 }
 
 // Core names the modules whose audience is pinned to self (spec §7). A
@@ -205,6 +208,9 @@ func (m *Manifest) validate() error {
 		if m.BudgetBytes != 0 {
 			return fmt.Errorf("budget_bytes: a working-memory module is never in the context block")
 		}
+		if m.InstructionsBudgetBytes != 0 {
+			return fmt.Errorf("instructions_budget_bytes: a working-memory module delivers no instructions (spec §6)")
+		}
 		if len(m.Onboarding) > 0 {
 			return fmt.Errorf("onboarding: a working-memory module is not interviewed")
 		}
@@ -217,6 +223,9 @@ func (m *Manifest) validate() error {
 		for name, k := range m.Kinds {
 			if len(k.Lenses) > 0 || k.Draft != "" || k.DueField != "" {
 				return fmt.Errorf("kind %s: lenses, draft and due_field belong to a ratified-record kind; a working-memory module is not interviewed (spec §6)", name)
+			}
+			if k.Instructions {
+				return fmt.Errorf("kind %s: instructions belongs to a ratified-record kind; what a working-memory module holds is searched, not delivered (spec §6)", name)
 			}
 		}
 		if m.Layout == "" {
@@ -262,6 +271,26 @@ func (m *Manifest) validate() error {
 					return fmt.Errorf("kind %s: due_field %q is not a field of this kind (spec §6)", name, k.DueField)
 				}
 			}
+		}
+		marked := false
+		for name, k := range m.Kinds {
+			if !k.Instructions {
+				continue
+			}
+			marked = true
+			hasSource := false
+			for _, f := range k.Optional {
+				hasSource = hasSource || f == "source"
+			}
+			if !hasSource {
+				return fmt.Errorf("kind %s is marked instructions and must declare source among its optional fields, where the interviewer's label goes (spec §6)", name)
+			}
+		}
+		if marked && m.InstructionsBudgetBytes <= 0 {
+			return fmt.Errorf("instructions_budget_bytes is required when a kind is marked instructions (spec §6)")
+		}
+		if !marked && m.InstructionsBudgetBytes != 0 {
+			return fmt.Errorf("instructions_budget_bytes: no kind of this module is marked instructions")
 		}
 	}
 	return nil
@@ -365,6 +394,23 @@ func (s *Set) Interviewed(mod, kind string) bool {
 	}
 	bundle, _ := gov.Profile.Bundle()
 	return bundle.Interviewed
+}
+
+// InstructionKind reports whether a record of this module and kind is one
+// of the person's instructions (spec §10): governed by a ratified-record
+// module, crossing included, whose kind is marked instructions.
+func (s *Set) InstructionKind(mod, kind string) (Kind, bool) {
+	if s == nil {
+		return Kind{}, false
+	}
+	gov, k, ok := s.RuleFor(mod, kind)
+	if !ok || !k.Instructions {
+		return Kind{}, false
+	}
+	if bundle, _ := gov.Profile.Bundle(); !bundle.Interviewed {
+		return Kind{}, false
+	}
+	return k, true
 }
 
 // RuleFor names the manifest and kind that govern a record: its own module
