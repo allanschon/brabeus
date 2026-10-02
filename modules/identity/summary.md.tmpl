@@ -1,13 +1,7 @@
-{{- /* A ratified memory/preference crosses in with no statement field (spec §7); it renders from its description instead. */ -}}
+{{- /* The summary renders value, fact and belief. Register and preference are instructions, delivered in full beside the block (spec §7). */ -}}
 identity:
-{{- range first 1 (.Kind "register")}}
-- register: {{index .Fields "statement"}}{{.Mark}}
-{{- end}}
 {{- range first 2 (.Kind "value")}}
 - value: {{index .Fields "statement"}}{{.Mark}}
-{{- end}}
-{{- range first 1 (.Kind "preference")}}
-- preference: {{or (index .Fields "statement") .Description}}{{.Mark}}
 {{- end}}
 {{- range first 1 (.Kind "fact")}}
 - {{index .Fields "statement"}}{{.Mark}}

@@ -117,10 +117,9 @@ func TestEveryShippedTemplateMarksAnUnreviewedRecordOfEveryKind(t *testing.T) {
 	}
 }
 
-// A sibling of TestAStaleRecordIsTheFirstLine: identity's register kind (task
-// 4 added it to the block) renders like any other kind, first in the module's
-// section.
-func TestARegisterRecordRendersAsRegister(t *testing.T) {
+// Identity marks register as instructions, which are delivered in full beside
+// the block (spec §7), so the summary no longer renders it.
+func TestARegisterRecordIsNotInTheSummary(t *testing.T) {
 	set := shippedSet(t, "identity")
 	r, err := New(set)
 	if err != nil {
@@ -134,8 +133,8 @@ func TestARegisterRecordRendersAsRegister(t *testing.T) {
 	if len(faults) != 0 {
 		t.Fatalf("faults: %+v", faults)
 	}
-	if !strings.Contains(text, "- register: dry, no fluff") {
-		t.Errorf("register line missing:\n%s", text)
+	if strings.Contains(text, "dry, no fluff") {
+		t.Errorf("register is an instruction and stays out of the summary:\n%s", text)
 	}
 }
 
@@ -158,7 +157,7 @@ func TestModulesRenderInPriorityOrderAndOnlyRatifiedOnes(t *testing.T) {
 	}
 }
 
-func TestAReviewedCrossingPreferenceRendersUnderIdentityAndAnUnreviewedOneDoesNot(t *testing.T) {
+func TestACrossingPreferenceIsNotInTheSummary(t *testing.T) {
 	set := shippedSet(t, "memory", "identity")
 	r, _ := New(set)
 	now := at("2026-10-01T00:00:00Z")
@@ -168,8 +167,8 @@ func TestAReviewedCrossingPreferenceRendersUnderIdentityAndAnUnreviewedOneDoesNo
 	}
 	recs[0].Description, recs[1].Description = "terse answers", "an unratified guess"
 	text, _ := r.Render(nil, recs, now, store.Visibility{})
-	if !strings.Contains(text, "terse answers") || strings.Contains(text, "unratified guess") {
-		t.Errorf("crossing rule:\n%s", text)
+	if strings.Contains(text, "terse answers") || strings.Contains(text, "unratified guess") {
+		t.Errorf("preference is an instruction and stays out of the summary:\n%s", text)
 	}
 }
 
