@@ -886,14 +886,14 @@ that start after it. A set like this, pushed to every agent, is the constitution
 only if it grows unchecked; it is confirmed rule by rule, and its budget brings any growth back to
 the person (§3.10).
 
-The text opens by saying what to do when a task the agent was given conflicts with an
-instruction. On anything that cannot be undone or reaches beyond the working copy, such as
-pushing, deleting, sending or publishing, the instruction wins, because the task was written by
-the model and the instruction was confirmed by the person. On anything else the task wins,
-because a rule written for a conversation, such as proposing before acting, would otherwise stall
-a subagent that was told to act. Either way, the agent names the conflict in its report, so the
-session acting for the person sees it. A draft is not included, because it is not yet the person's word. The interviewer's labels are not
-included either, because they are kept in `source` (§9), except in records confirmed before
+The text opens by saying what to do when a task the agent was given conflicts with an instruction.
+On anything that cannot be undone or reaches beyond the working copy, such as pushing, deleting,
+sending or publishing, the instruction wins, because the task was written by the model and the
+instruction was confirmed by the person. On anything else the task wins, because a rule written for
+a conversation, such as proposing before acting, would otherwise stall a subagent that was told to
+act. Either way, the agent names the conflict in its report, so the session acting for the person
+sees it. A draft is not included, because it is not yet the person's word. The interviewer's labels
+are not included either, because they are kept in `source` (§9), except in records confirmed before
 v1.10 (§7).
 
 The instructions have their own budget, `instructions_budget_bytes`, and break with the block's
