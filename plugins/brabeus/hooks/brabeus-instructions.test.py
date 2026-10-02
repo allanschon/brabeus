@@ -63,6 +63,14 @@ class Save(Base):
         self.assertEqual(sorted(os.listdir(self.d)), ["c.json", "d.json"])
 
 
+class SaveRefusals(Base):
+    def test_non_object_or_bad_records_write_nothing(self):
+        for body in ("not json", "[1]", '"x"', '{"opening":"o","records":"x"}', ""):
+            with mock.patch("sys.stderr", io.StringIO()):
+                self.assertEqual(self.run_cmd("save", self.d, "s1", X, stdin=body)[0], 1, body)
+            self.assertFalse(os.path.exists(os.path.join(self.d, "s1.json")))
+
+
 class Fallback(Base):
     def test_newest_same_scope_copy_is_labelled_and_written(self):
         self.save("old", X, [rec(0)], "OLD"); self.age("old", 3)
@@ -75,6 +83,19 @@ class Fallback(Base):
         self.assertEqual((doc["opening"], doc["fallback"]), ("NEW", True))
         self.assertEqual(stat.S_IMODE(os.stat(os.path.join(self.d, "sid.json")).st_mode), 0o600)
 
+    def test_a_rewritten_older_copy_is_not_newer(self):
+        self.save("A", X, [rec(0, 50), rec(1, 50)], "A")
+        self.save("B", X, [rec(2)], "B")
+        for sid, f in (("A", "2026-01-01T00:00:00Z"), ("B", "2026-01-03T00:00:00Z")):
+            doc = self.doc(sid); doc["fetched"] = f
+            with open(os.path.join(self.d, sid + ".json"), "w") as fh:
+                json.dump(doc, fh)
+        self.age("B", 2)
+        self.run_cmd("text", self.d, "A", "80")  # drops a record, rewrites A just now
+        self.assertNotEqual(self.doc("A")["omitted"], [])
+        self.assertEqual(self.run_cmd("fallback", self.d, "sid", X)[1].strip(), "2026-01-03")
+        self.assertEqual(self.doc("sid")["opening"], "B")
+
     def test_none_exits_1_silently(self):
         self.save("other", Y, [rec(0)])
         self.assertEqual(self.run_cmd("fallback", self.d, "sid", X), (1, ""))
@@ -84,6 +105,14 @@ class Fallback(Base):
 class Text(Base):
     def test_missing_copy(self):
         self.assertEqual(self.run_cmd("text", self.d, "nope", "9800"), (0, instr.UNAVAILABLE + "\n"))
+
+    def test_unreadable_copy_is_unavailable_to_a_subagent_only(self):
+        os.makedirs(self.d)
+        with open(os.path.join(self.d, "s1.json"), "w") as f:
+            f.write("{broken")
+        self.assertEqual(self.run_cmd("text", self.d, "s1", "9800"), (0, instr.UNAVAILABLE + "\n"))
+        self.assertEqual(self.run_cmd("text", self.d, "s1", "9800", "main"), (0, ""))
+        self.assertEqual(self.run_cmd("text", self.d, "absent", "9800", "main"), (0, ""))
 
     def test_no_records_prints_nothing(self):
         self.save("s1", X, [])

@@ -3,7 +3,8 @@
 
   save DIR SID SCOPE < kernel-json   write DIR/SID.json from the kernel's /instructions reply
   fallback DIR SID SCOPE             copy the newest saved copy for SCOPE to DIR/SID.json
-  text DIR SID CAP                   print what to inject, within CAP characters
+  text DIR SID CAP [main]            print what to inject, within CAP characters;
+                                     with `main`, say nothing when there is no usable copy
 
 WHY A COPY, AND WHY PER SESSION. A subagent starts without the session-start
 text, so it is given the instructions from this copy instead of asking the
@@ -62,13 +63,22 @@ def copies(d):
     return [p for p in glob.glob(os.path.join(d, "*.json")) if os.path.isfile(p)]
 
 
+def freshness(doc, path):
+    """Sort key for "newest": when the kernel was asked, then mtime.
+
+    mtime alone is wrong: `text` rewrites a copy (its omitted field), which
+    would make an old copy look new. A fallback copy keeps its source's fetched.
+    """
+    return (str(doc.get("fetched", "")) if doc else "", os.path.getmtime(path))
+
+
 def prune(d, now=None):
     now = time.time() if now is None else now
     newest = {}  # scope -> (mtime, path)
     for p in copies(d):
         doc = load(p)
         scope = doc.get("scope") if doc else None
-        m = os.path.getmtime(p)
+        m = freshness(doc, p)
         if scope not in newest or m > newest[scope][0]:
             newest[scope] = (m, p)
     keep = {p for _, p in newest.values()}
@@ -81,7 +91,13 @@ def prune(d, now=None):
 
 
 def cmd_save(d, sid, scope):
-    kernel = json.load(sys.stdin)
+    try:
+        kernel = json.load(sys.stdin)
+    except ValueError:
+        kernel = None
+    if not isinstance(kernel, dict) or not isinstance(kernel.get("records", []), list):
+        sys.stderr.write("save: the reply is not an instructions object\n")
+        return 1
     fetched = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     write_copy(d, sid, {"fetched": fetched, "scope": scope,
                         "opening": kernel.get("opening", ""),
@@ -95,7 +111,7 @@ def cmd_fallback(d, sid, scope):
     for p in copies(d):
         doc = load(p)
         if doc and doc.get("scope") == scope:
-            m = os.path.getmtime(p)
+            m = freshness(doc, p)
             if best is None or m > best[0]:
                 best = (m, doc)
     if best is None:
@@ -108,7 +124,8 @@ def cmd_fallback(d, sid, scope):
 
 def render(doc, cap):
     """Return (text, omitted paths) for a copy, within cap characters."""
-    records = doc.get("records") or []
+    records = doc.get("records")
+    records = records if isinstance(records, list) else []
     if not records:
         return "", []
     head = doc.get("opening", "")
@@ -127,11 +144,15 @@ def render(doc, cap):
     return "", paths  # not even the opening and the closing line fit
 
 
-def cmd_text(d, sid, cap):
+def cmd_text(d, sid, cap, who="subagent"):
     path = os.path.join(d, sid + ".json")
     doc = load(path)
     if doc is None:
-        print(UNAVAILABLE)
+        # The unavailable line is for a subagent, which has no other source.
+        # The main session says nothing: its own start-up text already tells it
+        # what it has.
+        if who != "main":
+            print(UNAVAILABLE)
         return 0
     out, dropped = render(doc, int(cap))
     if dropped != (doc.get("omitted") or []):
@@ -146,9 +167,9 @@ def main(argv):
         sys.stderr.write(__doc__)
         return 2
     cmd, args = argv[1], argv[2:]
-    if len(args) != 3 or not args[1] or os.path.basename(args[1]) != args[1] or args[1].startswith("."):
+    if len(args) not in ((3, 4) if cmd == "text" else (3,)) or (len(args) == 4 and args[3] != "main") or not args[1] or os.path.basename(args[1]) != args[1] or args[1].startswith("."):
         sys.stderr.write("usage: brabeus-instructions.py %s DIR SID %s\n"
-                         % (cmd, "CAP" if cmd == "text" else "SCOPE"))
+                         % (cmd, "CAP [main]" if cmd == "text" else "SCOPE"))
         return 2
     return {"save": cmd_save, "fallback": cmd_fallback, "text": cmd_text}[cmd](*args)
 

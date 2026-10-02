@@ -155,7 +155,8 @@ SCOPE="machine/$MACHINE"; [ -n "$PROJECT" ] && SCOPE="$SCOPE project/$PROJECT"
 INSTR_URL="${BRABEUS_URL:-}/instructions"; [ -n "$PROJECT" ] && INSTR_URL="${INSTR_URL}?project=$PROJECT"
 if [ -n "$sid" ]; then
   if [ -n "$block" ] && json=$(curl -sf --max-time 5 ${auth[@]+"${auth[@]}"} "$INSTR_URL" 2>/dev/null); then
-    printf '%s' "$json" | python3 "$INSTR_PY" save "$DATA" "$sid" "$SCOPE" 2>/dev/null || true
+    printf '%s' "$json" | python3 "$INSTR_PY" save "$DATA" "$sid" "$SCOPE" 2>/dev/null \
+      || python3 "$INSTR_PY" fallback "$DATA" "$sid" "$SCOPE" >/dev/null 2>&1 || true
   else
     python3 "$INSTR_PY" fallback "$DATA" "$sid" "$SCOPE" >/dev/null 2>&1 || true
   fi
@@ -184,7 +185,7 @@ if [ -n "$sid" ] && [ -f "$DATA/$sid.json" ]; then
     'import sys; print(len(sys.stdin.buffer.read().decode("utf-8", "replace")))' 2>/dev/null) || rest_len=${#CONTEXT}
   cap=$((9800 - rest_len - 3))
   if [ "$cap" -gt 0 ]; then
-    instr=$(python3 "$INSTR_PY" text "$DATA" "$sid" "$cap" 2>/dev/null) || instr=""
+    instr=$(python3 "$INSTR_PY" text "$DATA" "$sid" "$cap" main 2>/dev/null) || instr=""
     if [ -n "$instr" ]; then
       # Between the block and the routing text: the block's own lines first.
       CONTEXT="${block:+$block
