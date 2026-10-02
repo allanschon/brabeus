@@ -25,6 +25,7 @@ grader fails its case and the run exits 1.
 | `judged-session-raises-the-first-line`           | Judged. An ordinary session, not an interview, raises the failed claim on the first line once, and not again after the person says "later".                                                                                                                                   |
 | `goal-claims-carry-their-size`                   | A goal written from the person's answers carries the claim's size they gave: the goal's deadline, a date taken from "the end of next year" so the case does not go stale, and an `effort` of fourteen days, recorded as the person said them.                                                                                                          |
 | `judged-open-work-is-not-a-failure`              | Judged. A manual count of 2 of 10 with its deadline sixty days off is described as open work or on pace, never as failed, behind or a gap.                                                                                                                                    |
+| `judged-instructions-reach-a-subagent`           | Judged. A subagent started in a session receives the person's confirmed preference, through the plugin's `SubagentStart` hook. |
 
 ## When to run it, and what it costs
 

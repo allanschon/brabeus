@@ -165,6 +165,12 @@ craft was my idea; is the goal right as written?" That question goes into the re
 the record shows they were told. Show the draft as you wrote it; a draft you describe in
 other words is not the one they are approving.
 
+The exception is an instruction. On `identity/preference`, `identity/register` and a
+`memory/preference` you are confirming, the body is the rule in the person's words and nothing
+else. Your label ("wording is the interviewer's", "summarising ...", "the person took it up") goes in
+the `source` field, never the body, because the body is delivered word for word to every
+session and every subagent, and a label there becomes part of the instruction.
+
 Challenge where it helps, once and plainly:
 
 - something in the wrong kind: a goal stated as a value, a problem stated as a goal;
@@ -197,6 +203,10 @@ Each approval is one `review` per draft:
   replies (a follow-up question about the date, say), give both replies, joined with a
   space, and put what you asked in `question`.
 
+When you confirm one of those instruction records, show the person the item's `body` exactly
+as the kernel gave it, because that is the text every agent will receive and the kernel writes
+it into the review's commit. Do not summarise it or show your reading of it.
+
 **Never `review` without the person's answer in this conversation.** A confirmation you
 inferred is exactly what the record exists to prevent.
 
@@ -209,6 +219,16 @@ their answer amounts to (`confirmed`, `corrected`, `retired`, or `later` if they
 leave it for now, which the kernel counts as a snooze), and their answer. A bare "later"
 in reply to an item puts off that item and nothing else: record the `later` review and
 carry on with the next item (§8).
+
+**A `budget` item** says the instructions every session receives are over their byte budget.
+It has a module and no record, so there is nothing to confirm. `list` with prefix
+`identity/preference`, `identity/register` and `memory/preference`, keeping the confirmed
+memory ones, and `read` each. Show every instruction with its size in bytes, and propose
+merges and retirements in the person's words: which say the same thing, which no longer hold.
+Record each change they agree to with `review`: `corrected` on the record that survives a
+merge, carrying the merged wording they approved as its `body`, and `retired` on the others.
+The item has no record, so there is no `later` to record for it; if the person puts it off,
+move on to the next item.
 
 Once a record is confirmed, it changes only through `review`. The kernel refuses `write`
 and `delete` on it, so do not try either: a change is a `corrected` review carrying their
