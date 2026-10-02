@@ -525,7 +525,10 @@ again if `identity` is enabled, so the preference is delivered as the confirmed 
 without being asked again.
 
 `register` is how the person wants to be spoken to — dry or warm, formal or loose, how much colour
-— as a ratified statement that renders in the block, so every session uses it. It is not a persona:
+— as a ratified statement. `identity` marks it `instructions` too, and it declares `source`, so
+every session and every subagent uses it, including one that writes a commit message or a
+document the person will read; the summary template renders no register, for the same reason it
+renders no preference. It is not a persona:
 it names no character and gives the assistant no name (§2.3). It is first in `identity`'s
 onboarding, so getting to know the person starts by agreeing how to talk.
 
@@ -745,7 +748,8 @@ after what they mean as well as what they said.
 6. each module whose instructions are over their budget (§10), in module priority. A set that
    only grows costs context in every session and every subagent, and the person is the one who
    knows which can be merged or retired; but it is housekeeping, so it heads the line only when
-   nothing else is due, and never keeps real work waiting;
+   nothing else is due, and never keeps real work waiting. A `later` on it is not recorded, because
+   it names a module, not a record; it returns at the next session with nothing else due;
 7. nothing, if none of these exists.
 
 Within each reason, preferences sort last, native and crossing alike: a preference about how the
@@ -882,10 +886,13 @@ that start after it. A set like this, pushed to every agent, is the constitution
 only if it grows unchecked; it is confirmed rule by rule, and its budget brings any growth back to
 the person (§3.10).
 
-The text opens with one line: where a task the agent was given conflicts with an instruction, the
-task wins, because the session acting for the person set it. A rule written for a conversation,
-such as proposing before acting, would otherwise stall a subagent that was told to act. A draft
-is not included, because it is not yet the person's word. The interviewer's labels are not
+The text opens by saying what to do when a task the agent was given conflicts with an
+instruction. On anything that cannot be undone or reaches beyond the working copy, such as
+pushing, deleting, sending or publishing, the instruction wins, because the task was written by
+the model and the instruction was confirmed by the person. On anything else the task wins,
+because a rule written for a conversation, such as proposing before acting, would otherwise stall
+a subagent that was told to act. Either way, the agent names the conflict in its report, so the
+session acting for the person sees it. A draft is not included, because it is not yet the person's word. The interviewer's labels are not
 included either, because they are kept in `source` (§9), except in records confirmed before
 v1.10 (§7).
 
@@ -1240,13 +1247,13 @@ line of the block, and the subagents doing the work started without them.
 | | change | sections |
 |---|---|---|
 | BG | §3.2 states what it guards: the install changes nothing in the assistant's global configuration or permissions beyond registering the plugin, and its hooks ship inside the plugin; the count of hooks is dropped, because what it guards is the configuration, not the number. A new §3.10 says context is spent where it does work: the block and the person's instructions are pushed, and the rest is searched. The `PreToolUse` guard ships with the plugin and does its memory part only when a `working-memory` module is enabled | §3.2, §3.10, §4.2, §13, §15 |
-| BH | a `ratified-record` kind may be marked `instructions`; the bodies of its confirmed records are delivered in full to every session and every subagent, beside the block, scope-filtered as the block is, with a budget of their own, `instructions_budget_bytes`, outside the 2 KB cap; `identity` marks `preference` with a budget of 4096 bytes and its summary renders no preference, because the instructions carry them all | §1.1, §4.1, §6, §7, §10, §13, §14 |
-| BI | over budget, the instructions are still delivered in full, because cutting them would drop confirmed rules silently from the agents doing the work; the excess is a `budget` item, last on the agenda, after onboarding, because it is housekeeping and must not keep real work waiting, and a fault `/health` reports; it is a check that runs, which asks rather than refuses | §3.4, §4.1, §4.2, §9, §10, §13, §15 |
+| BH | a `ratified-record` kind may be marked `instructions`; the bodies of its confirmed records are delivered in full to every session and every subagent, beside the block, scope-filtered as the block is, with a budget of their own, `instructions_budget_bytes`, outside the 2 KB cap; `identity` marks `preference` and `register`, with one budget of 4096 bytes, and its summary renders neither, because the instructions carry them all | §1.1, §4.1, §6, §7, §10, §13, §14 |
+| BI | over budget, the instructions are still delivered in full, because cutting them would drop confirmed rules silently from the agents doing the work; the excess is a `budget` item, last on the agenda, after onboarding, because it is housekeeping and must not keep real work waiting, and a fault `/health` reports; it is a check that runs, which asks rather than refuses; a `later` on it is not recorded, because it names a module, not a record, and it returns at the next session with nothing else due | §3.4, §4.1, §4.2, §9, §10, §13, §15 |
 | BJ | the plugin gains a `SubagentStart` hook, which injects the instructions `SessionStart` saved, with no network call; the copy is kept per session and stamped with its time and scope, because sessions in different projects run side by side on one machine; `SessionStart` drains the outbox before it fetches; offline, the most recent copy for the same scope stands in, says how old it is and becomes the session's copy; an empty set injects nothing, and no copy at all tells a subagent the instructions are unavailable; a session's instructions are as of its most recent start; copies older than 30 days are deleted, except the newest per scope; the guard refuses the assistant's writes to them | §4.2, §10, §11 |
 | BK | a kind marked `instructions` declares `source`, and the interviewer's label goes there, never in the body, because the body is what every session receives; the kernel's question for such a record ends with its body exactly as it will be delivered, so the recorded question holds what was approved; labels in preferences confirmed before v1.10 are moved by `corrected` reviews at release | §6, §7, §9, §10 |
 | BL | §15's question of which preference the block shows is closed by BH: every confirmed preference is delivered, and the block no longer has to choose | §15 |
 | BM | the harness caps one hook's output (10,000 characters in Claude Code), and the plugin applies the cap, because it belongs to the harness: past it, whole records are delivered in order up to the limit, with a line naming those left out and a `/health` fault | §4.2, §10 |
-| BN | the delivered text opens by saying that where a task an agent was given conflicts with an instruction, the task wins, because a rule written for a conversation would otherwise stall a subagent told to act | §10 |
+| BN | the delivered text opens by saying how an agent resolves a conflict between its task and an instruction: the instruction wins on anything that cannot be undone or reaches beyond the working copy, because the task was written by the model and the instruction confirmed by the person; the task wins on anything else, because a rule written for a conversation would otherwise stall a subagent told to act; and either way the agent reports the conflict | §10 |
 | BO | the instructions are a path the audience rule covers, so a consumer receives only those of modules declared `any`, and `identity/preference` reaches only the person's own sessions; the saved copy is readable and writable only by the person, and written only by the plugin | §11 |
 | BP | §13 gains an acceptance case: a preference confirmed on one machine reaches the next session on another and a subagent it starts, checked by a case in the plugin's eval suite in which the subagent quotes it, and an over-budget set is still delivered in full | §13 |
 
