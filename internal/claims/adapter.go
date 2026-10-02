@@ -21,6 +21,7 @@ import (
 type Outcome struct {
 	State  store.ClaimState
 	Detail string // "2 found", "credential refused (HTTP 401)", "label \"article\" unknown to the tracker"
+	Count  *int   // the count compared with min; nil when the adapter did not count, or counted only a lower bound
 }
 
 // Adapter is one evidence source (spec §8.1). An error from Check is a fault
@@ -60,20 +61,18 @@ var schemas = map[string]schema{
 	"tracker": {required: []string{"label", "since", "min"}, optional: []string{"done"}},
 	"forge":   {required: []string{"repo", "since", "min"}, optional: []string{"merged"}},
 	"date":    {optional: []string{"before", "after"}},
-	"manual":  {},
+	"manual":  {optional: []string{"of", "since"}},
 }
 
 // Validate checks a claim's arguments against its adapter's schema. It is the
 // value Store.ValidateClaim is set to, and it needs no configuration, so a
 // goal written on a deployment without a tracker still carries a claim a
-// deployment with one could run.
+// deployment with one could run. A manual claim takes no arguments, or the
+// pair of and since that make it a count (spec §8.1).
 func Validate(adapter string, args map[string]string) error {
 	sc, ok := schemas[adapter]
 	if !ok {
 		return fmt.Errorf("adapter %q is not one this kernel implements (spec §8.1)", adapter)
-	}
-	if adapter == "manual" && len(args) > 0 {
-		return fmt.Errorf("a manual claim takes no arguments; it is asked at interview (spec §8.1)")
 	}
 	allowed := map[string]bool{}
 	for _, k := range append(append([]string{}, sc.required...), sc.optional...) {
@@ -113,6 +112,19 @@ func Validate(adapter string, args map[string]string) error {
 		}
 		if len(parts) != 1 && len(parts) != 2 {
 			return fmt.Errorf("repo: %q is not name or owner/name (spec §8.1)", v)
+		}
+	}
+	if adapter == store.AdapterManual && len(args) > 0 {
+		of, hasOf := args["of"]
+		since, hasSince := args["since"]
+		if !hasOf || !hasSince {
+			return fmt.Errorf("a manual count names both of and since (spec §8.1)")
+		}
+		if n, err := strconv.Atoi(of); err != nil || n < 1 {
+			return fmt.Errorf("of: %q is not an integer of at least 1 (spec §8.1)", of)
+		}
+		if _, err := time.Parse("2006-01-02", since); err != nil {
+			return fmt.Errorf("since: a manual count's window starts on a date, YYYY-MM-DD, not %q (spec §8.1)", since)
 		}
 	}
 	if adapter == "date" {
@@ -253,9 +265,9 @@ func get(ctx context.Context, client *http.Client, endpoint string, headers map[
 
 func counted(count, min int) Outcome {
 	if count >= min {
-		return Outcome{State: store.Pass, Detail: fmt.Sprintf("%d found", count)}
+		return Outcome{State: store.Pass, Detail: fmt.Sprintf("%d found", count), Count: &count}
 	}
-	return Outcome{State: store.Fail, Detail: fmt.Sprintf("%d found", count)}
+	return Outcome{State: store.Fail, Detail: fmt.Sprintf("%d found", count), Count: &count}
 }
 
 // pageLimit bounds every backend's paging, so a runaway source cannot hold a

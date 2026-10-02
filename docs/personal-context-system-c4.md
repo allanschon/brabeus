@@ -1,7 +1,7 @@
 # The personal context system — C4 diagrams
 
 These diagrams accompany [`personal-context-system-v1.md`](personal-context-system-v1.md) at
-v1.8. They describe the same system as the specification at four levels of detail, and where they
+v1.9. They describe the same system as the specification at four levels of detail, and where they
 disagree, the specification is correct. Components carry the specification's descriptive names.
 
 The diagrams show the whole design, not only what is built. An element tagged with a milestone,
@@ -159,7 +159,7 @@ flowchart LR
         review["<b>Review</b><br/><i>question, verdict and answer into the commit;<br/>the only path that moves reviewed</i>"]
         claims["<b>Claims runner (M2)</b><br/><i>declared adapters, data-only arguments;<br/>pass · fail · no-evidence, each timestamped</i>"]
         adapters["<b>Adapters (M2)</b><br/><i>tracker · forge · date · manual;<br/>one implementation per backend</i>"]
-        agenda["<b>Agenda</b><br/><i>fails by nearest goal date, then drafts, then stale<br/>by priority and age, then onboarding; preferences last<br/>in each; snoozes counted; no-evidence excluded</i>"]
+        agenda["<b>Agenda</b><br/><i>fails by the claim's deadline, then behind, then drafts, then stale<br/>by priority and age, deferred behind, then onboarding; preferences last<br/>in each; snoozes counted; open and no-evidence excluded</i>"]
         context["<b>Context renderer</b><br/><i>agenda line in reserved space,<br/>then module templates in priority order;<br/>2 KB hard cap; per-module budgets;<br/>overflow refused, never truncated</i>"]
         view["<b>View (M3)</b><br/><i>the same render as HTML, plus freshness,<br/>claim state, revision lines, snooze counts,<br/>manual fraction; read-only; loopback</i>"]
     end

@@ -122,7 +122,7 @@ func TestACorrectedReviewValidatesTheClaimsBlockToo(t *testing.T) {
 	s.ValidateClaim = strictHook
 	writeGoal(t, s, "telos/goal/g3.md", goalClaims)
 	_, err := s.Review("telos/goal/g3.md", ReviewInput{Question: "Still right?", Verdict: Corrected, Answer: "add a commit claim",
-		Fields: map[string]string{"claims": goalClaims + "\n- text: \"a commit\"\n  check: {adapter: forge, repo: a/b, since: -14d}"}}, "m")
+		Fields: map[string]string{"claims": goalClaims + "\n- text: \"a commit\"\n  standing: true\n  check: {adapter: forge, repo: a/b, since: -14d}"}}, "m")
 	if err == nil || !strings.Contains(err.Error(), "claim 3") || !strings.Contains(err.Error(), "needs min") {
 		t.Errorf("a corrected review must validate the claims block: %v", err)
 	}
@@ -319,5 +319,115 @@ func TestAMarkdownFileUnderClaimsIsNeitherListedNorSearched(t *testing.T) {
 	}
 	if hits, _, _ := s.Search("zebra", 10, SearchFilter{}); len(hits) != 0 {
 		t.Errorf("searched: %+v", hits)
+	}
+}
+
+func TestParseClaimsReadsTheClaimLevelKeys(t *testing.T) {
+	block := "- text: \"Draft written\"\n  by: 2026-11-15\n  effort: 21d\n  check: { adapter: manual }\n" +
+		"- text: \"A commit a fortnight\"\n  standing: true\n  check: { adapter: forge, repo: r, since: -14d, min: 1 }\n" +
+		"- text: \"Photos reviewed\"\n  check: { adapter: manual, of: 1200, since: 2026-09-01 }"
+	cs, err := ParseClaims(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cs[0].By != "2026-11-15" || cs[0].Effort != "21d" || cs[0].Standing {
+		t.Errorf("claim 1 = %+v", cs[0])
+	}
+	if !cs[1].Standing || !cs[1].IsStanding() {
+		t.Errorf("claim 2 = %+v", cs[1])
+	}
+	if n, ok := cs[2].Paced(); !ok || n != 1200 {
+		t.Errorf("claim 3 paced = %d, %v", n, ok)
+	}
+	if _, err := ParseClaims("- text: \"x\"\n  standing: yes\n  check: { adapter: manual }"); err == nil {
+		t.Error("standing: yes accepted; only true is")
+	}
+	if _, err := ParseClaims("- text: \"x\"\n  colour: red\n  check: { adapter: manual }"); err == nil {
+		t.Error("an unknown claim key was accepted")
+	}
+}
+
+func TestPacedAndStandingFollowTheSpec(t *testing.T) {
+	cases := []struct {
+		c        Claim
+		standing bool
+		target   int
+		paced    bool
+	}{
+		{Claim{Adapter: "tracker", Args: map[string]string{"min": "6", "since": "2026-09-28"}}, false, 6, true},
+		{Claim{Adapter: "tracker", Args: map[string]string{"min": "6", "done": "false", "since": "2026-09-28"}}, false, 0, false},
+		{Claim{Adapter: "tracker", Args: map[string]string{"min": "1", "since": "2026-09-28"}}, false, 0, false},
+		{Claim{Adapter: "forge", Args: map[string]string{"min": "3", "since": "2026-09-28"}}, false, 3, true},
+		{Claim{Adapter: "date", Args: map[string]string{"before": "2026-12-01"}}, true, 0, false},
+		{Claim{Adapter: "manual", Args: map[string]string{}}, false, 0, false},
+		{Claim{Adapter: "manual", Standing: true, Args: map[string]string{}}, true, 0, false},
+	}
+	for i, tc := range cases {
+		if got := tc.c.IsStanding(); got != tc.standing {
+			t.Errorf("%d: standing = %v", i, got)
+		}
+		n, ok := tc.c.Paced()
+		if ok != tc.paced || n != tc.target {
+			t.Errorf("%d: paced = %d, %v", i, n, ok)
+		}
+	}
+}
+
+func TestTheClaimLevelKeysAreRefusedWhenTheyBreakTheRules(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	write := func(by, claims string) error {
+		_, err := s.Write("telos/goal/g7.md", Record{Name: "g7", Description: "d", Module: "telos", Kind: "goal", Scope: "global",
+			Fields: map[string]string{"id": "G7", "title": "t", "ideal": "i", "by": by, "claims": claims}, Body: "b"}, "m")
+		return err
+	}
+	refused := []string{
+		"- text: \"x\"\n  standing: true\n  by: 2026-11-01\n  check: { adapter: manual }",
+		"- text: \"x\"\n  standing: true\n  effort: 3d\n  check: { adapter: manual }",
+		"- text: \"x\"\n  by: 2026-11-01\n  check: { adapter: date, before: 2026-12-01 }",
+		"- text: \"x\"\n  by: 2027-01-01\n  check: { adapter: manual }",
+		"- text: \"x\"\n  by: next week\n  check: { adapter: manual }",
+		"- text: \"x\"\n  effort: 3\n  check: { adapter: manual }",
+		"- text: \"x\"\n  effort: 3d\n  check: { adapter: tracker, label: a, since: 2026-09-28, min: 6 }",
+		"- text: \"x\"\n  effort: 3d\n  check: { adapter: manual, of: 10, since: 2026-09-01 }",
+		"- text: \"x\"\n  check: { adapter: forge, repo: r, since: -14d, min: 1 }",
+	}
+	for _, c := range refused {
+		if err := write("2026-12-31", c); err == nil || !strings.Contains(err.Error(), "claim 1") {
+			t.Errorf("want a refusal naming claim 1 for %q, got %v", c, err)
+		}
+	}
+	accepted := "- text: \"x\"\n  standing: true\n  check: { adapter: forge, repo: r, since: -14d, min: 1 }"
+	if err := write("2026-12-31", accepted); err != nil {
+		t.Errorf("a standing rolling claim was refused: %v", err)
+	}
+	endState := "- text: \"x\"\n  check: { adapter: manual }"
+	if err := write("October", endState); err == nil || !strings.Contains(err.Error(), "goal's by") {
+		t.Errorf("an end-state claim under a goal by of October must be refused naming the goal's by: %v", err)
+	}
+	if err := write("October", accepted); err != nil {
+		t.Errorf("a goal with only a standing claim needs no date: %v", err)
+	}
+}
+
+func TestACountMovingWithinOneStateIsRecordedAndAnUnchangedOneIsNot(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	writeGoal(t, s, "telos/goal/g3.md", goalClaims)
+	when := at("2026-09-20T04:00:00Z")
+	two, three, six := 2, 3, 6
+	rec := func(detail string, count *int) []ClaimResult {
+		return []ClaimResult{{Index: 0, Text: "t", State: Fail, Detail: detail, Count: count, Target: &six, Since: when, Recorded: when}}
+	}
+	if c, err := s.RecordClaimResults("telos/goal/g3.md", rec("2 found", &two), "desk"); err != nil || c == "no change" {
+		t.Fatalf("first: %q %v", c, err)
+	}
+	if c, err := s.RecordClaimResults("telos/goal/g3.md", rec("3 found", &three), "desk"); err != nil || c == "no change" {
+		t.Fatalf("a moved count must commit: %q %v", c, err)
+	}
+	got, _ := s.ClaimResults()
+	if r := got["telos/goal/g3.md"]; len(r) != 1 || r[0].Count == nil || *r[0].Count != 3 || r[0].Target == nil || *r[0].Target != 6 {
+		t.Errorf("the file holds %+v", r)
+	}
+	if c, err := s.RecordClaimResults("telos/goal/g3.md", rec("3 found", &three), "desk"); err != nil || c != "no change" {
+		t.Errorf("an identical record must not commit: %q %v", c, err)
 	}
 }

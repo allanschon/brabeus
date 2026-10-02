@@ -60,7 +60,7 @@ func (s *Store) Migrate(caller string) (MigrateReport, error) {
 		}
 		// A kernel key present but unparseable is a problem Migrate cannot
 		// map either: composing anyway would silently drop it, and only a
-		// review may move reviewed/retired/snoozes (§9). Same helper Write and
+		// review may move reviewed/retired/snoozes/snoozed (§9). Same helper Write and
 		// Review refuse with, so the three agree on the wording.
 		if len(meta.Malformed) > 0 {
 			problems = append(problems, rel+": "+malformedError(parseFrontmatter(string(b)), meta.Malformed).Error())

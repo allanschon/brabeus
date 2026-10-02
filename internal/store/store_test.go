@@ -1079,6 +1079,15 @@ func TestAWriteMayNotCarryAKernelOwnedKey(t *testing.T) {
 	}
 }
 
+func TestAWriteMayNotSetSnoozed(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	r := Record{Name: "n", Description: "d", Module: "memory", Kind: "note", Scope: "global", Body: "b",
+		Fields: map[string]string{"snoozed": "2026-09-01T00:00:00Z"}}
+	if _, err := s.Write("infra/x.md", r, "test-machine"); err == nil || !strings.Contains(err.Error(), "snoozed") {
+		t.Errorf("snoozed via a write must be refused: %v", err)
+	}
+}
+
 func TestThePathRuleFollowsTheProfile(t *testing.T) {
 	s := newTestStore(t, newTestRemote(t))
 	goal := Record{Name: "g", Description: "d", Module: "telos", Kind: "goal", Scope: "global",

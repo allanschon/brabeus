@@ -50,6 +50,31 @@ func TestComposeCarriesTheKernelOwnedKeysThrough(t *testing.T) {
 	}
 }
 
+func TestComposeRoundTripsSnoozed(t *testing.T) {
+	restore := fixClock(t, "2026-09-27T10:00:00Z")
+	defer restore()
+	snoozed, _ := time.Parse(time.RFC3339, "2026-09-20T08:00:00Z")
+	r := Record{Name: "n", Description: "d", Module: "identity", Kind: "value", Scope: "global",
+		Fields: map[string]string{"statement": "family time"}, Body: "b"}
+	got := compose(r, Meta{Updated: now(), Snoozes: 1, Snoozed: snoozed}, []string{"statement"})
+	if !strings.Contains(got, "snoozes: 1\nsnoozed: 2026-09-20T08:00:00Z\n") {
+		t.Errorf("snoozed must follow snoozes:\n%s", got)
+	}
+	if _, meta := ParseRecord(got); !meta.Snoozed.Equal(snoozed) || len(meta.Malformed) != 0 {
+		t.Errorf("round trip lost snoozed: %+v", meta)
+	}
+	if strings.Contains(compose(r, Meta{Updated: now()}, []string{"statement"}), "snoozed:") {
+		t.Error("a zero snoozed must not be written")
+	}
+}
+
+func TestParseRecordListsAnUnparseableSnoozedAsMalformed(t *testing.T) {
+	_, meta := ParseRecord("---\nname: n\ndescription: d\nmodule: identity\nkind: value\nscope: global\nupdated: 2026-09-27T10:00:00Z\nsnoozed: not-a-time\n---\n\nb\n")
+	if len(meta.Malformed) != 1 || meta.Malformed[0] != "snoozed" {
+		t.Errorf("Malformed = %v", meta.Malformed)
+	}
+}
+
 func TestParseRecordSplitsKernelKeysFromFields(t *testing.T) {
 	content := "---\nname: g1\ndescription: d\nmodule: telos\nkind: goal\nid: G1\nscope: global\ntitle: T\nby: 2026-12-01\nupdated: 2026-09-27T10:00:00Z\nreviewed: 2026-09-01T00:00:00Z\nsnoozes: 1\n---\n\nbody\n"
 	r, meta := ParseRecord(content)

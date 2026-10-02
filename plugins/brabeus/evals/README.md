@@ -23,13 +23,15 @@ grader fails its case and the run exits 1.
 | `judged-check-in-raises-the-failure-first`       | Judged. A check-in raises the failed claim before anything else.                                                                                                                                                                                                              |
 | `judged-stop-asks-nothing-more`                  | Judged. Nothing is asked or put up for approval after "stop".                                                                                                                                                                                                                 |
 | `judged-session-raises-the-first-line`           | Judged. An ordinary session, not an interview, raises the failed claim on the first line once, and not again after the person says "later".                                                                                                                                   |
+| `goal-claims-carry-their-size`                   | A goal written from the person's answers carries the claim's size they gave: the goal's deadline, a date taken from "the end of next year" so the case does not go stale, and an `effort` of fourteen days, recorded as the person said them.                                                                                                          |
+| `judged-open-work-is-not-a-failure`              | Judged. A manual count of 2 of 10 with its deadline sixty days off is described as open work or on pace, never as failed, behind or a gap.                                                                                                                                    |
 
 ## When to run it, and what it costs
 
 Run it when the `interview` skill changes and before a release, not in CI: every case is a real
-model conversation on your account. One run of each of the eleven cases cost $2.97 and took seven
-minutes on 2026-10-01, with the default model and a Sonnet judge. `--runs 2` doubles both and
-shows whether a judged verdict holds. Pass `--max-cost-usd` to cap a run.
+model conversation on your account. One run of each of the thirteen cases cost $3.72 and
+took about eight minutes on 2026-10-02, with the default model and a Sonnet judge. `--runs 2`
+doubles both and shows whether a judged verdict holds. Pass `--max-cost-usd` to cap a run.
 
 ## How to run it
 

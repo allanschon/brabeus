@@ -35,15 +35,16 @@ type Record struct {
 }
 
 // Meta is what the kernel owns about a file. A caller never sets any of it:
-// updated moves on every write, reviewed and snoozes only on review (§9),
+// updated moves on every write, reviewed, snoozes and snoozed only on review (§9),
 // retired only on a review whose answer is retired.
 type Meta struct {
 	Updated    time.Time
 	Reviewed   time.Time
 	Retired    time.Time
 	Snoozes    int
+	Snoozed    time.Time // when a record was last put off with later (§9); only a review moves it
 	LegacyType string
-	// Malformed lists kernel keys (reviewed, retired, snoozes) whose value was
+	// Malformed lists kernel keys (reviewed, retired, snoozes, snoozed) whose value was
 	// present in the file but did not parse. Write refuses rather than
 	// composing anyway: silently dropping one of these would erase it, and
 	// only a review may move them (§9). updated is deliberately not tracked
@@ -140,6 +141,9 @@ func compose(r Record, meta Meta, fieldOrder []string) string {
 	if meta.Snoozes > 0 {
 		fmt.Fprintf(&b, "snoozes: %d\n", meta.Snoozes)
 	}
+	if !meta.Snoozed.IsZero() {
+		fmt.Fprintf(&b, "snoozed: %s\n", meta.Snoozed.UTC().Format(time.RFC3339))
+	}
 	b.WriteString("---\n\n")
 	b.WriteString(strings.TrimRight(r.Body, "\n"))
 	b.WriteString("\n")
@@ -165,7 +169,7 @@ func ParseRecord(content string) (Record, Meta) {
 	// updated: a value that fails to parse means "restamp" (staleStamp already
 	// treats it that way), so it is never added to Malformed.
 	meta.Updated, _ = time.Parse(time.RFC3339, fm["updated"])
-	// reviewed and retired: absent is fine (zero value, never reviewed/retired);
+	// reviewed, retired and snoozed: absent is fine (zero value, never reviewed/retired);
 	// present but unparseable is not, and must stop the write rather than
 	// silently erase the key on rewrite (§9).
 	parseKernelTime := func(key string) time.Time {
@@ -182,6 +186,7 @@ func ParseRecord(content string) (Record, Meta) {
 	}
 	meta.Reviewed = parseKernelTime("reviewed")
 	meta.Retired = parseKernelTime("retired")
+	meta.Snoozed = parseKernelTime("snoozed")
 	if s := fm["snoozes"]; s != "" {
 		if n, err := strconv.Atoi(s); err == nil {
 			meta.Snoozes = n

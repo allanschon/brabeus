@@ -114,7 +114,7 @@ const (
 
 // Reserved are the frontmatter keys the kernel composes itself (spec §5). A
 // kind may declare "id" — the kernel reads Record.ID from it — and no other.
-var Reserved = []string{"name", "description", "module", "kind", "id", "scope", "updated", "reviewed", "retired", "snoozes"}
+var Reserved = []string{"name", "description", "module", "kind", "id", "scope", "updated", "reviewed", "retired", "snoozes", "snoozed"}
 
 type Set struct {
 	Modules []Manifest

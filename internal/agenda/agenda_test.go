@@ -346,9 +346,11 @@ func result(idx int, text string, state store.ClaimState, since string, detail s
 // AM: failed claims head the agenda, nearest goal date first, then by how
 // long the claim has been failing; no-evidence is never on it; a goal whose
 // by date does not parse sorts last among fails rather than breaking them.
+// The claims are standing: an end-state claim with its deadline ahead reads
+// open, not fail (spec §8.1), so only a standing claim exercises the tier here.
 func TestFailedClaimsHeadTheAgendaByTheGoalsDateThenByHowLongTheyHaveFailed(t *testing.T) {
 	now := at("2026-10-01T00:00:00Z")
-	claims := "- text: \"three articles\"\n  check: {adapter: tracker, min: 3}\n- text: \"a commit a fortnight\"\n  check: {adapter: forge, repo: a/b, since: -14d, min: 1}"
+	claims := "- text: \"three articles\"\n  standing: true\n  check: {adapter: tracker, min: 3}\n- text: \"a commit a fortnight\"\n  standing: true\n  check: {adapter: forge, repo: a/b, since: -14d, min: 1}"
 	g := func(path, id, by string) store.Stored {
 		return rec(path, "telos", "goal", map[string]string{"id": id, "title": "t", "by": by, "claims": claims}, "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 0)
 	}
@@ -393,7 +395,7 @@ func TestFailedClaimsHeadTheAgendaByTheGoalsDateThenByHowLongTheyHaveFailed(t *t
 // nothing on the goal and is ignored, not shown against the new wording.
 func TestAResultForAClaimThatNoLongerExistsIsIgnored(t *testing.T) {
 	now := at("2026-10-01T00:00:00Z")
-	r := rec("telos/goal/g.md", "telos", "goal", map[string]string{"id": "G1", "title": "t", "by": "2026-11-01", "claims": "- text: \"four articles\"\n  check: {adapter: tracker, min: 4}"}, "2026-09-25T00:00:00Z", "2026-09-25T00:00:00Z", 0)
+	r := rec("telos/goal/g.md", "telos", "goal", map[string]string{"id": "G1", "title": "t", "by": "2026-11-01", "claims": "- text: \"four articles\"\n  standing: true\n  check: {adapter: tracker, min: 4}"}, "2026-09-25T00:00:00Z", "2026-09-25T00:00:00Z", 0)
 	results := map[string][]store.ClaimResult{"telos/goal/g.md": {result(0, "three articles", store.Fail, "2026-09-20T00:00:00Z", "")}}
 	for _, it := range Compute(testSet(), []store.Stored{r}, results, now) {
 		if it.Reason == Fail {
@@ -407,7 +409,7 @@ func TestAResultForAClaimThatNoLongerExistsIsIgnored(t *testing.T) {
 // claim's position travels with the item even when it is the first claim, 0.
 func TestADraftGoalWithAFailedClaimIsAskedAboutTheFailFirst(t *testing.T) {
 	now := at("2026-10-01T00:00:00Z")
-	r := rec("telos/goal/g.md", "telos", "goal", map[string]string{"id": "G1", "title": "t", "by": "2026-11-01", "claims": "- text: \"three articles\"\n  check: {adapter: tracker, min: 3}"}, "2026-09-25T00:00:00Z", "", 0)
+	r := rec("telos/goal/g.md", "telos", "goal", map[string]string{"id": "G1", "title": "t", "by": "2026-11-01", "claims": "- text: \"three articles\"\n  standing: true\n  check: {adapter: tracker, min: 3}"}, "2026-09-25T00:00:00Z", "", 0)
 	results := map[string][]store.ClaimResult{"telos/goal/g.md": {result(0, "three articles", store.Fail, "2026-09-20T00:00:00Z", "2 found")}}
 	items := Compute(testSet(), []store.Stored{r}, results, now)
 	if len(items) < 2 || items[0].Reason != Fail || items[1].Reason != Draft || items[0].Path != items[1].Path {
@@ -431,7 +433,7 @@ func TestADraftGoalWithAFailedClaimIsAskedAboutTheFailFirst(t *testing.T) {
 // of its last review.
 func TestAConfirmedGoalsFailAsksWhetherItIsStillRight(t *testing.T) {
 	now := at("2026-10-01T00:00:00Z")
-	r := rec("telos/goal/g.md", "telos", "goal", map[string]string{"id": "G1", "title": "t", "by": "2026-11-01", "claims": "- text: \"three articles\"\n  check: {adapter: tracker, min: 3}"}, "2026-09-25T00:00:00Z", "2026-09-26T00:00:00Z", 0)
+	r := rec("telos/goal/g.md", "telos", "goal", map[string]string{"id": "G1", "title": "t", "by": "2026-11-01", "claims": "- text: \"three articles\"\n  standing: true\n  check: {adapter: tracker, min: 3}"}, "2026-09-25T00:00:00Z", "2026-09-26T00:00:00Z", 0)
 	results := map[string][]store.ClaimResult{"telos/goal/g.md": {result(0, "three articles", store.Fail, "2026-09-27T00:00:00Z", "2 found")}}
 	items := Compute(testSet(), []store.Stored{r}, results, now)
 	if len(items) == 0 || items[0].Reason != Fail {
@@ -439,5 +441,153 @@ func TestAConfirmedGoalsFailAsksWhetherItIsStillRight(t *testing.T) {
 	}
 	if want := `the claim "three articles" failed on 2026-09-27 (2 found). Still right? Progress since 2026-09-26?`; items[0].Question != want {
 		t.Errorf("question = %q, want %q", items[0].Question, want)
+	}
+}
+
+// goalWith is a confirmed or draft goal carrying one claims block.
+func goalWith(path, id, by, claims, reviewed string) store.Stored {
+	return rec(path, "telos", "goal", map[string]string{"id": id, "title": "t", "by": by, "claims": claims}, "2026-09-01T00:00:00Z", reviewed, 0)
+}
+
+func reasons(items []Item) string {
+	var out []string
+	for _, it := range items {
+		out = append(out, string(it.Reason)+":"+it.ID)
+	}
+	return strings.Join(out, ",")
+}
+
+// An open claim is on schedule: nothing to ask about it (spec §8.1, §9).
+func TestAnOpenClaimIsNeverOnTheAgenda(t *testing.T) {
+	now := at("2026-10-01T00:00:00Z")
+	r := goalWith("telos/goal/g.md", "G1", "2026-10-31", "- text: \"ten articles\"\n  check: {adapter: tracker, min: 10, since: 2026-09-01}", "2026-08-01T00:00:00Z")
+	r.Updated = at("2026-08-01T00:00:00Z")
+	counted := map[string][]store.ClaimResult{"telos/goal/g.md": {{Index: 0, Text: "ten articles", State: store.Pass, Count: ip(5), Target: ip(10)}}}
+	for _, it := range Compute(testSet(), []store.Stored{r}, counted, now) {
+		if it.ClaimText != "" {
+			t.Errorf("an open claim reached the agenda: %+v", it)
+		}
+	}
+	// Reviewed 2026-08-01 is 61 days ago, under the goal kind's 90: not stale either.
+	r2 := goalWith("telos/goal/h.md", "G2", "2026-10-31", "- text: \"ten articles\"\n  check: {adapter: tracker, min: 10, since: 2026-09-01}", "2026-08-01T00:00:00Z")
+	res := map[string][]store.ClaimResult{"telos/goal/h.md": {{Index: 0, Text: "ten articles", State: store.Fail, Count: ip(9), Target: ip(10)}}}
+	for _, it := range Compute(testSet(), []store.Stored{r2}, res, now) {
+		if it.ClaimText != "" {
+			t.Errorf("an open claim with a stored fail reached the agenda: %+v", it)
+		}
+	}
+}
+
+func ip(n int) *int { return &n }
+
+const pacedBehind = "- text: \"ten articles\"\n  check: {adapter: tracker, min: 10, since: 2026-09-01}"
+
+func TestBehindComesAfterFailAndBeforeDrafts(t *testing.T) {
+	now := at("2026-10-01T00:00:00Z")
+	records := []store.Stored{
+		goalWith("telos/goal/behind.md", "G2", "2026-10-31", pacedBehind, "2026-08-01T00:00:00Z"),
+		goalWith("telos/goal/fail.md", "G1", "2026-12-01", "- text: \"keep going\"\n  standing: true\n  check: {adapter: tracker, min: 1}", "2026-08-01T00:00:00Z"),
+		rec("identity/value/v3.md", "identity", "value", map[string]string{"id": "V3"}, "2026-09-20T00:00:00Z", "", 0),
+	}
+	results := map[string][]store.ClaimResult{"telos/goal/fail.md": {result(0, "keep going", store.Fail, "2026-09-20T00:00:00Z", "")}}
+	got := reasons(Compute(testSet(), records, results, now))
+	if want := "fail:G1,behind:G2,draft:V3"; !strings.HasPrefix(got, want) {
+		t.Errorf("order = %s, want it to begin %s", got, want)
+	}
+}
+
+func TestFailIsOrderedByTheClaimsOwnDeadline(t *testing.T) {
+	now := at("2026-10-01T00:00:00Z")
+	early := "- text: \"first\"\n  by: 2026-09-10\n  check: {adapter: tracker, min: 1}"
+	late := "- text: \"second\"\n  by: 2026-09-20\n  check: {adapter: tracker, min: 1}"
+	records := []store.Stored{
+		goalWith("telos/goal/a.md", "G1", "2026-09-30", late, "2026-08-01T00:00:00Z"), // goal date earlier, claim date later
+		goalWith("telos/goal/b.md", "G2", "2027-01-01", early, "2026-08-01T00:00:00Z"),
+	}
+	results := map[string][]store.ClaimResult{
+		"telos/goal/a.md": {result(0, "second", store.Fail, "2026-09-25T00:00:00Z", "")},
+		"telos/goal/b.md": {result(0, "first", store.Fail, "2026-09-25T00:00:00Z", "")},
+	}
+	if got := reasons(Compute(testSet(), records, results, now)); !strings.HasPrefix(got, "fail:G2,fail:G1") {
+		t.Errorf("order = %s, want the claim due 2026-09-10 (G2) first", got)
+	}
+}
+
+func TestABehindClaimOnAGoalReviewedThisWeekWaitsBelowStale(t *testing.T) {
+	now := at("2026-10-01T00:00:00Z")
+	staleValue := rec("identity/value/v.md", "identity", "value", map[string]string{"id": "V"}, "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z", 0)
+	reviewed := goalWith("telos/goal/g.md", "G1", "2026-10-31", pacedBehind, "2026-09-28T00:00:00Z")
+	if got := reasons(Compute(testSet(), []store.Stored{reviewed, staleValue}, nil, now)); !strings.HasPrefix(got, "stale:V,behind:G1") {
+		t.Errorf("reviewed 3 days ago: order = %s, want stale:V,behind:G1", got)
+	}
+	snoozed := goalWith("telos/goal/s.md", "G2", "2026-10-31", pacedBehind, "2026-07-15T00:00:00Z") // 78 days: not stale, but long past a week
+	snoozed.Snoozed = at("2026-09-29T00:00:00Z")
+	if got := reasons(Compute(testSet(), []store.Stored{snoozed, staleValue}, nil, now)); !strings.HasPrefix(got, "stale:V,behind:G2") {
+		t.Errorf("snoozed 2 days ago: order = %s, want stale:V,behind:G2", got)
+	}
+	// Nothing else to ask: the deferred item leads, and is the top item.
+	fresh := rec("identity/value/v.md", "identity", "value", map[string]string{"id": "V"}, "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 0)
+	pref := rec("identity/preference/p.md", "identity", "preference", map[string]string{"id": "P"}, "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 0)
+	items := Compute(testSet(), []store.Stored{reviewed, fresh, pref}, nil, now)
+	if top, ok := Top(items); !ok || top.Reason != Behind || top.ID != "G1" {
+		t.Errorf("top = %+v, want the deferred behind item", top)
+	}
+	// Eight days ago is outside the week: it is no longer deferred.
+	old := goalWith("telos/goal/o.md", "G3", "2026-10-31", pacedBehind, "2026-09-23T00:00:00Z")
+	if got := reasons(Compute(testSet(), []store.Stored{old, staleValue}, nil, now)); !strings.HasPrefix(got, "behind:G3,stale:V") {
+		t.Errorf("reviewed 8 days ago: order = %s, want behind first", got)
+	}
+}
+
+func TestTheQuestionNamesWhatWasMeasured(t *testing.T) {
+	now := at("2026-10-01T00:00:00Z")
+	followUp := "Still right? Progress since 2026-08-01?"
+	ask := func(claims string, res []store.ClaimResult) string {
+		r := goalWith("telos/goal/g.md", "G1", "2026-10-31", claims, "2026-08-01T00:00:00Z")
+		items := Compute(testSet(), []store.Stored{r}, map[string][]store.ClaimResult{"telos/goal/g.md": res}, now)
+		if len(items) == 0 || items[0].ClaimText == "" {
+			t.Fatalf("no claim item for %q: %+v", claims, items)
+		}
+		return items[0].Question
+	}
+	if got, want := ask(pacedBehind, nil), `the claim "ten articles" is behind: 0 of 10 found, 4 expected by now, 31 days left. `+followUp; got != want {
+		t.Errorf("paced = %q, want %q", got, want)
+	}
+	manual := "- text: \"ten chapters\"\n  check: {adapter: manual, of: 10, since: 2026-09-01}"
+	if got, want := ask(manual, []store.ClaimResult{{Index: 0, Text: "ten chapters", State: store.Fail, Count: ip(1), Target: ip(10)}}), `the claim "ten chapters" is behind: 1 of 10 done, 4 expected by now, 31 days left. `+followUp; got != want {
+		t.Errorf("manual = %q, want %q", got, want)
+	}
+	yesNo := "- text: \"ship it\"\n  by: 2026-10-11\n  effort: 20d\n  check: {adapter: manual}"
+	if got, want := ask(yesNo, nil), `the claim "ship it" is behind: 11 days left, about 20 days of work. `+followUp; got != want {
+		t.Errorf("yes-or-no = %q, want %q", got, want)
+	}
+	unreadable := map[string]string{
+		"deadline": "- text: \"ship it\"\n  by: soon\n  check: {adapter: manual}",
+		"since":    "- text: \"ten chapters\"\n  check: {adapter: manual, of: 10, since: yesterday}",
+		"effort":   "- text: \"ship it\"\n  effort: lots\n  check: {adapter: manual}",
+		"window":   "- text: \"ten chapters\"\n  check: {adapter: manual, of: 10, since: 2026-11-05}",
+		"rolling":  "- text: \"a commit a fortnight\"\n  check: {adapter: forge, repo: side-project, since: -14d, min: 1}",
+	}
+	wants := map[string]string{
+		"deadline": `the claim "ship it" has a deadline "soon" that could not be read; fix the date. `,
+		"since":    `the claim "ten chapters" has a since "yesterday" that could not be read; fix the date. `,
+		"effort":   `the claim "ship it" has an effort "lots" that could not be read; fix it. `,
+		"window":   `the claim "ten chapters" starts counting on 2026-11-05, after its deadline 2026-10-31; fix the dates. `,
+		"rolling":  `the claim "a commit a fortnight" counts a rolling window (since -14d) but does not say standing: true; should it hold all the time? `,
+	}
+	for k, claims := range unreadable {
+		if got, want := ask(claims, nil), wants[k]+followUp; got != want {
+			t.Errorf("unreadable %s = %q, want %q", k, got, want)
+		}
+	}
+	endState := "- text: \"ship it\"\n  by: 2026-09-15\n  check: {adapter: tracker, min: 1}"
+	if got, want := ask(endState, []store.ClaimResult{result(0, "ship it", store.Fail, "2026-09-20T00:00:00Z", "0 found")}), `the claim "ship it" was due by 2026-09-15 and is not met (0 found). `+followUp; got != want {
+		t.Errorf("end-state fail = %q, want %q", got, want)
+	}
+	// A never-reviewed goal asks the draft question after the claim's.
+	d := goalWith("telos/goal/g.md", "G1", "2026-10-31", pacedBehind, "")
+	items := Compute(testSet(), []store.Stored{d}, nil, now)
+	if want := `the claim "ten articles" is behind: 0 of 10 found, 4 expected by now, 31 days left. Is this right as written?`; len(items) == 0 || items[0].Question != want {
+		t.Errorf("draft follow-up: %+v", items)
 	}
 }

@@ -1,0 +1,5 @@
+schema_version: "1.1"
+name: goal-claims-carry-their-size
+tags: [interview, store]
+context:
+  scaffold_script: scaffold.sh

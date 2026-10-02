@@ -1,0 +1,5 @@
+schema_version: "1.1"
+name: judged-open-work-is-not-a-failure
+tags: [interview, judged]
+context:
+  scaffold_script: scaffold.sh

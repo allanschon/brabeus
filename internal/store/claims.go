@@ -26,9 +26,12 @@ const claimsDir = "claims"
 // Claim is one entry of a claims block: what true would look like, and the
 // adapter that gathers the evidence with its arguments as data (§8.1).
 type Claim struct {
-	Text    string
-	Adapter string
-	Args    map[string]string
+	Text     string
+	Adapter  string
+	Args     map[string]string
+	Standing bool   // standing: true (§8.1); a date claim is standing without it
+	By       string // the claim's own deadline, YYYY-MM-DD, as written
+	Effort   string // <n>d, as written; only on a yes-or-no claim
 }
 
 // ClaimState is a claim's result (spec §8.1): pass and fail are evidence,
@@ -62,6 +65,8 @@ type ClaimResult struct {
 	Adapter  string     `json:"adapter"`
 	State    ClaimState `json:"state"`
 	Detail   string     `json:"detail,omitempty"`
+	Count    *int       `json:"count,omitempty"`  // what the claim was measured at, which pace reads (spec §8.1)
+	Target   *int       `json:"target,omitempty"` // the count a paced claim is pacing toward; unset for a standing or unpaced claim
 	Since    time.Time  `json:"since"`
 	Recorded time.Time  `json:"recorded"`
 }
@@ -143,8 +148,9 @@ func ParseClaims(block string) ([]Claim, error) {
 		}
 		value = strings.TrimSpace(value)
 		key = strings.TrimSpace(key)
-		if (key == "text" && cur.Text != "") || (key == "check" && cur.Adapter != "") {
-			return nil, fmt.Errorf("claim %d has %s twice; an item has one text and one check", len(out), key)
+		if (key == "text" && cur.Text != "") || (key == "check" && cur.Adapter != "") ||
+			(key == "by" && cur.By != "") || (key == "effort" && cur.Effort != "") || (key == "standing" && cur.Standing) {
+			return nil, fmt.Errorf("claim %d has %s twice", len(out), key)
 		}
 		switch key {
 		case "text":
@@ -166,8 +172,17 @@ func ParseClaims(block string) ([]Claim, error) {
 					cur.Args[k] = v
 				}
 			}
+		case "standing":
+			if retrieval.Unquote(value) != "true" {
+				return nil, fmt.Errorf("claim %d: standing is %q; it takes only true (spec §8.1)", len(out), value)
+			}
+			cur.Standing = true
+		case "by":
+			cur.By = retrieval.Unquote(value)
+		case "effort":
+			cur.Effort = retrieval.Unquote(value)
 		default:
-			return nil, fmt.Errorf("claim %d has a key %q; an item has text and check only", len(out), key)
+			return nil, fmt.Errorf("claim %d has a key %q; an item has text, check, standing, by and effort only", len(out), key)
 		}
 	}
 	if err := finish(); err != nil {
@@ -196,6 +211,9 @@ func (s *Store) checkClaims(man module.Manifest, fields map[string]string) error
 	for i, c := range claims {
 		if !declared[c.Adapter] {
 			return fmt.Errorf("claim %d (%q) names adapter %q, which module %s does not declare (spec §8.1)", i+1, c.Text, c.Adapter, man.Name)
+		}
+		if err := checkClaimKeys(c, fields["by"]); err != nil {
+			return fmt.Errorf("claim %d (%q): %w (spec §8.1)", i+1, c.Text, err)
 		}
 		if s.ValidateClaim != nil {
 			if err := s.ValidateClaim(c.Adapter, c.Args); err != nil {
@@ -282,7 +300,7 @@ func (s *Store) RecordClaimResults(goal string, results []ClaimResult, caller st
 //
 // It never opens the goal for writing, so the goal's content, its updated
 // stamp and its history stay what the person made them. It commits only when
-// a claim's state or its detail changed: a run that finds what the last
+// a claim's state, detail or count changed: a run that finds what the last
 // one found writes nothing, and a new answer from the person in the same
 // state is recorded. Since is kept whenever the state is, because it means
 // when the state was entered, whoever wrote the entry.
@@ -358,7 +376,7 @@ func (s *Store) UpdateClaimResults(goal string, merge func(prev []ClaimResult) [
 			n.Since = p.Since
 			fallthrough
 		default:
-			if n.Detail == p.Detail {
+			if n.Detail == p.Detail && sameCount(n.Count, p.Count) && sameCount(n.Target, p.Target) {
 				if had {
 					n.Recorded = p.Recorded
 				}
@@ -407,4 +425,12 @@ func (s *Store) UpdateClaimResults(goal string, merge func(prev []ClaimResult) [
 	msg := fmt.Sprintf("claims %s/%s %s: %s\n\n%s\n\nRecorded through the kernel at %s.",
 		r.Module, r.Kind, r.Name, counts, strings.Join(lines, "\n"), time.Now().UTC().Format(time.RFC3339))
 	return s.commitAndPush(msg, caller)
+}
+
+// sameCount reports whether two optional counts are both absent or equal.
+func sameCount(a, b *int) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }

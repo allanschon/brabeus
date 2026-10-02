@@ -1,8 +1,8 @@
-# A personal AI context system — v1.8 specification
+# A personal AI context system — v1.9 specification
 
 **Working name: Brabeus.** See §16.
 
-**Status: v1.8. M0, M1 and M2 are built; see §14.**
+**Status: v1.9. M0, M1 and M2 are built, and v1.9's claim dates; see §14.**
 
 This document describes a system built on the kernel this repository already contains: a
 private store with hybrid retrieval, a Claude Code plugin, and a Dockerfile that builds the
@@ -203,7 +203,8 @@ makes.
   model on request, unverified, four commits.
 
 What is distinctive here, in descending order of confidence: authorship enforced by the server
-(§9); claims verified against external evidence with three-state results (§8.1); the repository
+(§9); claims verified against external evidence, with results that tell a fault from a failure
+and open work from both (§8.1); the repository
 as the trust boundary (§3.8); the 2 KB cap as a constraint (§10). Where others are ahead:
 automatic capture of working memory (mnott), self-maintenance of the store (obsidian-second-brain),
 and decision capture with a revisit date (seandavi). This specification takes the ideas from the
@@ -261,8 +262,8 @@ which milestone delivers each. None of it knows what a `goal` or a `trap` is.
 | **profiles** | the closed set in §1.1; each module's manifest names one and the kernel enforces its bundle — who may write, whether records are rendered or searched, whether `review` is required, the audience default |
 | **modules** | loads module manifests; exposes each module's kinds, interview prompts and summary template, and serves the module set to the plugin through a read-only `modules` tool, which lists to a caller only the modules it may read (§11); refuses a manifest that does not validate |
 | **context** | renders a size-capped session block from the enabled `ratified-record` modules' templates |
-| **claims** | runs the evidence adapters itself, on the deployment's interval; results are three-state — pass, fail, no evidence — each with its own timestamp, and are written through the kernel's claim-result operation (§8.1) |
-| **agenda** | computes what is due — failed claims, drafts, stale records, onboarding — and renders the top item, with its question, as the first line of the context block (§9) |
+| **claims** | runs the evidence adapters itself, on the deployment's interval, and stores what each measured — pass, fail or no evidence, each with its own timestamp, and a count where the claim counts — through the kernel's claim-result operation; what a result means today (`open`, `behind`, `fail` and the rest) is derived from that and the date whenever it is read (§8.1) |
+| **agenda** | computes what is due — failed claims, claims behind, drafts, stale records, onboarding — and renders the top item, with its question, as the first line of the context block (§9) |
 | **review** | a distinct operation carrying the question asked, a verdict and the person's answer in their own words; the only path that moves `reviewed` (§9) |
 | **reflect** | a read-only tool that computes the gap by value — each value, the goals that serve it with their claim states and days since confirmed, and the goals that serve none — for the interview to phrase (§9) |
 | **budgets** | validates each enabled module's byte budget against the cap on load; refuses overflow rather than truncating (§10) |
@@ -537,34 +538,118 @@ naming its evidence.
 
 ```yaml
 claims:
-  - text: "At least three articles published since the quarter began"
+  - text: "At least three articles published this quarter"
     check: { adapter: tracker, done: true, label: article, since: 2026-07-01, min: 3 }
+  - text: "The first draft of the guide is written"
+    by: 2026-11-15
+    effort: 21d
+    check: { adapter: manual }
+  - text: "Every photo from 2025 has been reviewed"
+    check: { adapter: manual, of: 1200, since: 2026-09-01 }
   - text: "The side project has a commit in the last fortnight"
+    standing: true
     check: { adapter: forge, repo: side-project, since: -14d, min: 1 }
   - text: "The target date still holds"
+    standing: true
     check: { adapter: manual }
 ```
 
-The system runs every non-manual claim on the deployment's interval, daily by default, and
-records the result against the goal. A result is one of three states, each with its own
-timestamp:
+`standing`, `by` and `effort` are keys of the claim, beside `text`, because they say what the claim
+means. `of` and `since`, like `min`, are arguments of its `check`, because they say how it is
+measured.
 
-| state | means |
+The system runs every non-manual claim on the deployment's interval, daily by default, and
+records what it measured against the goal: one of three states, each with its own timestamp, and
+for a counting claim the count and the target it was compared with.
+
+| measured | means |
 |---|---|
 | `pass` | the adapter returned evidence and the claim held |
 | `fail` | the adapter returned evidence and the claim did not hold |
 | `no-evidence` | the adapter could not answer — a credential expired, the source was unreachable, the query matched nothing it could count |
 
-Only `fail` is a contradiction. `no-evidence` is a fault in the deployment, reported by
-`/health` and shown in the view, and it never opens an interview as if the person were behind.
-A `pass` older than two intervals is shown as stale, not as passing, so one missed run does not
-change every goal's state but a scheduler that has stopped shows within two days.
+**End-state and standing claims.** Most claims say what will be true by a date: "the six tasks
+are done", "every photo has been reviewed". Before that date, a claim that does not hold yet is
+work still open, not a contradiction. Some claims say what should hold all the time: "a commit in
+the last fortnight", "the target date still holds". One of those not holding is a contradiction
+now. A claim is *standing* when it says `standing: true`, and a `date` claim is always standing,
+because its `before` and `after` are already its dates. Every other claim is *end-state*. Standing
+is said, or follows from the adapter, never inferred from a claim's arguments: a reader years later
+should not have to know that a rolling `since` changes what a claim means. So a claim with a
+rolling `since` (`-14d`) must say `standing: true`, and the kernel refuses one that does not,
+because a rolling window has no start to pace from.
+
+An end-state claim's deadline is its own `by`, which may not be later than the goal's, or else the
+goal's `by`, so a goal can set milestones ahead of its own date. Dates are compared in the
+kernel's timezone, its `TZ` setting, UTC when unset, so that a deadline ends when the person's day
+ends rather than when UTC's does.
+
+**Size.** How soon an unmet end-state claim needs attention depends on how much work it is, so
+each may say how big it is:
+
+- a *counting* claim — `tracker` with `done: true`, or `forge` — counts completed work. With a
+  `min` of 2 or more it measures its own progress: the count against `min`, over the window from
+  `since` to the deadline, and it must name `since`, because progress needs a start;
+- a *manual counting* claim names its total with `of` and the start of its window with `since`,
+  both required. Each answer records the count so far as a number beside its note, never inside
+  it, so the kernel need not read prose, and the claim passes when the count reaches `of`;
+- every other end-state claim is *yes-or-no*, because its work is either done or not: a manual
+  claim without `of`, a counting claim whose `min` is 1 or absent, and a tracker claim counting
+  open tasks, whose count can fall as well as rise and so is not progress. It may carry `effort`:
+  the person's estimate of how long the work will take them to get done, given the rest of their
+  life, as a number of calendar days written `<n>d`. Three days of work done over three weekends
+  is `effort: 21d`, not `3d`.
+
+A standing claim takes no `by` and no `effort`, because it has no deadline to work toward.
+`effort` belongs only to a yes-or-no claim, because a counting claim's pace is measured rather
+than estimated, and `of` only to a manual claim, because an adapter's total is its `min`. The
+kernel refuses a claim that breaks these rules, or a deadline that is not a date — the claim's
+`by`, or the goal's when a claim takes its deadline from it — when the goal is written, naming
+the claim by its position, as it refuses any other bad claim.
+
+**What a result means today** is derived whenever it is read, from what was measured, the claim's
+keys and the date. So a claim moves from open to behind, or to failed, on the day the arithmetic
+says so, not at the next run, and a manual claim, measured only when the person answers, moves
+with the calendar like the rest. An end-state claim with nothing measured yet counts as not met,
+so a manual claim nobody has answered is raised by its deadline like any other; a standing claim
+with nothing measured yet is `unchecked` until it is.
+
+| state | when |
+|---|---|
+| `pass` | the evidence holds |
+| `open` | an end-state claim not met yet, with its deadline ahead and its work on pace |
+| `behind` | an end-state claim not met yet whose pace says it may miss its deadline: a paced claim whose count is below half the work its window so far would expect, counted in whole items: the expected work and its half are each rounded down, or a yes-or-no claim with an `effort` and no more days left than that effort, counting the deadline day as one |
+| `fail` | a standing claim not met, or an end-state claim still not met after its deadline day |
+| `no-evidence` | as measured: a fault in the deployment |
+| `unchecked` | a standing claim with nothing measured yet |
+
+A counting claim's expected work assumes the work is spread evenly over its window and is counted
+in whole items, rounded down, and so is its half, because a claim cannot be behind on a fraction of
+an item: nothing is `behind` until a whole item of that half is due. Half the expected work is a deliberately loose test, because
+work arrives unevenly, and a test that fired at the first quiet week would teach the person to
+ignore it. A yes-or-no claim without an `effort` gives no early warning at all and fails only on
+its deadline, because a warning computed from an estimate nobody made would be a guess presented
+as a measurement. Where the arithmetic cannot run, the claim is raised rather than hidden: a
+deadline already on file that does not parse reads as `behind`, and its agenda item says the date
+could not be read, so the person corrects the date rather than the work. A claim already on file
+with a rolling `since` and no `standing` reads as `behind` too, and its agenda item asks whether it
+should hold all the time, because a rolling window has no start to pace from. A result recorded
+before counts were stored has no count, and its claim reads as a yes-or-no claim without an
+`effort` until the next run, or for a manual claim the next answer, measures it.
+
+Only `fail` is a contradiction, and `behind` is the warning before one; `open` is neither.
+`no-evidence` is a fault in the deployment, reported by `/health` and shown in the view, and it
+never opens an interview as if the person had fallen short. A `pass` older than two intervals is
+shown as stale, not as passing, so one missed run does not change every goal's state but a
+scheduler that has stopped shows within two days.
 
 A `manual` claim is asked at interview, and its answer is recorded with the kernel's
 claim-result operation, like an adapter's result. The answer's note is written to make sense on
 its own, quoting the person where their reply needs the question beside it, because the agenda
-line and the reflection show the note without the question that drew it. A review of the goal happens only if the person
-also confirms or corrects the goal itself, so whether the evidence is in stays separate from
+line and the reflection show the note without the question that drew it. An open manual claim is
+not on the agenda, but a check-in on its goal asks it, so a manual count is kept current before
+it falls behind. A review of the goal happens only if the person also confirms or corrects the
+goal itself, so whether the evidence is in stays separate from
 whether the goal is still right. A manual `fail` ranks equally with an adapter `fail`, so modules
 without adapters are not second-class.
 
@@ -613,17 +698,29 @@ after what they mean as well as what they said.
 
 **The agenda.** The kernel computes it from fields the record already has, so it is stateless:
 
-1. claims in `fail` — adapter and manual alike — ordered by the goal's `by` date, nearest first,
-   and then by how long the claim has been failing, because a goal due soon still has time to act
-   on;
-2. drafts: records governed by a `ratified-record` module that have never been reviewed, oldest
+1. claims in `fail` (§8.1) — standing claims not met and end-state claims past their deadline,
+   adapter and manual alike — ordered by the claim's deadline, or for a standing claim the goal's
+   `by`, nearest first, and then by how long the claim has been failing, because a goal due soon
+   still has time to act on;
+2. claims `behind` (§8.1), ordered by the claim's deadline, nearest first, because a warning is
+   worth most while there is time to act on it — except a claim whose goal was reviewed, or put
+   off with `later`, in the last 7 days, which waits between the stale records (4) and onboarding
+   (5) instead. The person has just been asked about that goal; a warning kept on the first line
+   after they have answered it would hold the one slot every session for as long as the work is
+   slow, and teach them to ignore the slot. Seven days is a week of sessions: long enough for the
+   line to move on, short enough that slow work comes back. A deferred claim still heads the line
+   when nothing else is due, because then there is nothing it keeps waiting. The kernel records
+   when a record was last put off, beside its snooze count, so a `later` defers it as a review
+   does. An `open` claim is never on the agenda: work with its time still ahead of it is not
+   something to ask about;
+3. drafts: records governed by a `ratified-record` module that have never been reviewed, oldest
    first — approvals left over from an earlier conversation, and preferences the model wrote in
    `memory`, which are due as soon as they are written;
-3. records past their kind's `freshness_days`, or past the date their kind's `due_field` names,
+4. records past their kind's `freshness_days`, or past the date their kind's `due_field` names,
    ordered by module priority and then by age;
-4. onboarding: kinds a module lists in `onboarding` of which nothing is on file, in module
+5. onboarding: kinds a module lists in `onboarding` of which nothing is on file, in module
    priority and then `onboarding` order;
-5. nothing, if none of these exists.
+6. nothing, if none of these exists.
 
 Within each reason, preferences sort last, native and crossing alike: a preference about how the
 assistant works is one the person changes when it bothers them, so re-confirming one matters less
@@ -631,26 +728,27 @@ than the rest of the record, and a preference the model inferred stays behind wh
 themselves. Onboarding keeps `identity`'s own order, because the first conversation is where
 preferences are set.
 
-Each item carries its reason — `fail`, `draft`, `stale` or `onboarding` — and the question for
-it: the kind's `draft`, `interview` or `first` prompt (§6). A failed claim's item names the
-failure and then asks the goal's `interview` question, or its `draft` question if the goal has
-never been reviewed, because a draft has no review to measure progress from. `no-evidence` claims are not on the
-agenda; they are faults (§8.1). A record the person has snoozed stays on the agenda with its snooze
-count, so a "later" is visible rather than silent.
+Each item carries its reason — `fail`, `behind`, `draft`, `stale` or `onboarding` — and the
+question for it: the kind's `draft`, `interview` or `first` prompt (§6). A failed or behind claim's
+item names what was measured — the failure, or for `behind` the count against its expected work, or
+the days left against the `effort` — and then asks the goal's `interview` question, or its `draft`
+question if the goal has never been reviewed, because a draft has no review to measure progress
+from. `no-evidence` and `unchecked` claims are not on the agenda: one is a fault and the other is
+not yet measured (§8.1). A record the person has snoozed stays on the agenda with its snooze count,
+so a "later" is visible rather than silent.
 
 **The first line of every session** is the top agenda item, rendered by the kernel with its
-question — *"G3, 'ship the guide by October': the claim 'three articles this quarter' failed on
-2026-09-20 (2 found). Still right?"* — and, when the record has been revised since it was last
-reviewed, its revision line from git: *"target lowered from 3 to 2 on 2026-09-04."* It is one
-item, never a list: a single question is something the assistant can raise and the person can
-answer in a sentence, while a list is a backlog the person has to sort; the rest of the agenda
-waits behind it for the interview, and one item fits the line's 256-byte reservation outside the
-modules' budgets (§10). That line is what
-bounds staleness to "the next session" without anyone remembering anything (§1), so the
-assistant raises its question once, early in the session, waiting for a natural break if the
-person opened with a task. It does not raise it again in that session once the person has
-answered, put it off or passed over it: a line nobody raises bounds nothing, and a line raised
-over and over is a nag the person learns to ignore. There is no
+question — *"G3, 'ship the guide by October': the claim 'three articles this quarter' is behind:
+none of 3 found, 2 expected by now, 10 days left. Still right?"* — and, when the record has been
+revised since it was last reviewed, its revision line from git: *"target lowered from 3 to 2 on
+2026-09-04."* It is one item, never a list: a single question is something the assistant can raise
+and the person can answer in a sentence, while a list is a backlog the person has to sort; the rest
+of the agenda waits behind it for the interview, and one item fits the line's 256-byte reservation
+outside the modules' budgets (§10). That line is what bounds staleness to "the next session"
+without anyone remembering anything (§1), so the assistant raises its question once, early in the
+session, waiting for a natural break if the person opened with a task. It does not raise it again
+in that session once the person has answered, put it off or passed over it: a line nobody raises
+bounds nothing, and a line raised over and over is a nag the person learns to ignore. There is no
 daemon, no status indicator and no notification, and this specification keeps refusing them,
 because each is a cue the person would have to notice.
 
@@ -672,11 +770,11 @@ deleted, so a wrong path or an interrupted conversation can be put right. The ru
 governing module, so a crossing preference the person has confirmed is frozen too; a refinement
 the assistant learns later becomes a new `memory/preference`, which the interview then asks about.
 
-**The conversation.** `/interview` runs in one of two ways, chosen by the top agenda item's
-reason: a *check-in* while the top item is a failed claim, a draft or a stale record, and *getting
-to know you* when the top item is onboarding. So leftover drafts and failed claims are raised
-before new topics, as the agenda's order intends, and one conversation can move from confirming
-drafts into getting to know the person.
+**The conversation.** `/interview` runs in one of two ways, chosen by the top agenda item's reason:
+a *check-in* while the top item is a failed or behind claim, a draft or a stale record, and
+*getting to know you* when the top item is onboarding. So leftover drafts and claims that need
+attention are raised before new topics, as the agenda's order intends, and one conversation can
+move from confirming drafts into getting to know the person.
 
 - *Getting to know you* walks topics: modules in priority order, each introduced by its `intro`,
   and within each module the kinds in `onboarding` order, opened with the kind's `lenses`, or its
@@ -709,9 +807,13 @@ tell which the person means, it asks once.
 
 **Reflect back.** When the person stops, or asks for it, the interview closes with the gap
 grouped by value, computed by the kernel's `reflect` tool (§4.1) and phrased by the interviewer,
-because the reflection is counts and dates that a model could get wrong unnoticed: for each `identity/value`, the goals that `serve` it and their claims'
-state, then the goals that serve no named value. *"You said family time matters most; the
-two goals that serve it have not been confirmed in 94 days, and the three that serve
+because the reflection is counts and dates that a model could get wrong unnoticed: for each
+`identity/value`, the goals that `serve` it and their claims' state, then the goals that serve no
+named value. Only `fail` and `behind` are the gap. An `open` claim is reported as work remaining,
+with its count and the days left, and never as a shortfall, because the reflection is the
+person's progress read back, and work not yet due is not missing. `no-evidence`, `unchecked` and
+a stale `pass` are reported as unknown, never as gap or progress. *"You said family time matters
+most; the two goals that serve it have not been confirmed in 94 days, and the three that serve
 'craft' are all on track."* The gap is the message, delivered without judgement.
 
 **On an empty record** the agenda holds only onboarding items, so the interview is getting to know
@@ -736,8 +838,9 @@ the enabled modules' budgets fit the cap and refuses to start otherwise. At rend
 whose output exceeds its budget is refused — its share renders as one line saying so — and the
 fault is reported by `/health`. Nothing is cut without being shown.
 
-The view is the same render as HTML at `/view/`, plus per-record freshness, per-claim state and
-age, each goal's revision line, snooze counts, and the fraction of claims that are `manual` —
+The view is the same render as HTML at `/view/`, plus per-record freshness, per-claim state as it
+reads today (§8.1), with `open` and `behind` shown apart from `fail`, and age, each goal's revision
+line, snooze counts, and the fraction of claims that are `manual` —
 the leading indicator that a module wants an adapter. The view is read-only, because anything
 that changes state goes through the kernel's validated write (§11). It binds to loopback and
 carries no authentication of its own; the deployment fronts it with whatever identity layer it
@@ -818,9 +921,13 @@ The system is accepted when one real deployment passes these, described in the s
 - **A topic with no module is kept, not lost.** Something the person volunteers that no enabled
   module holds becomes a `memory/thread`; when a module that covers it is enabled, the next
   interview opens with it, whatever module the thread named.
-- **The interview opens with evidence.** On a record where a goal's claim has gone false, the
+- **The interview opens with evidence.** On a record where a goal's claim has failed (§8.1), the
   first line of the next session's context is that contradiction, before `/interview` is
   invoked.
+- **Open work is not a failure.** A goal whose end-state claims are unmet, with their deadlines
+  ahead and their work on pace, has nothing on the agenda and nothing in the reflection's gap; one
+  whose count falls below half its expected work is the first line as `behind`; and the day after
+  its deadline it is `fail`.
 - **A stale record surfaces on its own.** A record left past its `freshness_days` while
   sessions continue appears as the first line of a session without anyone invoking anything.
 - **A broken adapter is not an accusation.** With the tracker's credential revoked, no claim
@@ -854,6 +961,9 @@ record is written under the new rules. It is still one milestone: nothing in it 
 
 `/done` (§8.2) is a skill that depends on nothing in the kernel; it shipped with M2.
 
+v1.9's claim dates (§16 BB–BF) are built, ahead of M3, because the view shows claim states and
+should not show work that is merely open as failing.
+
 ## 15. Open
 
 - Whether the outbox (writes queued while the kernel is unreachable) needs schema validation at
@@ -886,9 +996,9 @@ record is written under the new rules. It is still one milestone: nothing in it 
   confirmed, because its 450-byte budget has room for no more. A person with several confirmed
   preferences has no say in which one every session sees, and §9's ordering ranks preferences
   last for review, not for rendering.
-- **Habituation.** A person reliably behind on one goal is reliably greeted with it. Whether the
-  agenda needs a rotation rule is unknown until a deployment runs; the snooze count is the
-  measurement.
+- **Habituation.** A person reliably failing one claim is reliably greeted with it. v1.9 defers a
+  `behind` claim on a goal reviewed or put off in the last week (§9); whether `fail` needs the
+  same is unknown until a deployment runs, and the snooze count is the measurement.
 - **`/done`'s check blocks** run under "the working repository's tooling" (§8.2), which the
   product does not ship. For a second person they are documentation until a minimal runner does.
 - **The bet under the design**, stated as one: that having the gap reflected back changes what
@@ -1029,6 +1139,19 @@ Decided 2026-10-01, from what the M2 acceptance run showed on the live system.
 | AY | the assistant raises the first line's question once a session, early, and not again once it is answered, put off or passed over, because the line bounds staleness only if someone raises it, and raising it repeatedly would teach the person to ignore it | §9 |
 | AZ | a failed claim on a goal that has never been reviewed is followed by the goal's `draft` question, not its `interview` question, because the interview question asks about progress since a review that never happened | §9 |
 | BA | a review's question is the question the person was asked, with nothing the assistant said around it; a manual claim's note is written to make sense without its question, because the agenda line and the reflection show it on its own | §8.1, §9 |
+
+### Changes in v1.9
+
+Decided 2026-10-01, because a claim not met yet was read as failed before its deadline, by the
+agenda and by the reflection.
+
+| | change | sections |
+|---|---|---|
+| BB | a claim is end-state, true by a deadline, or standing, true all the time; it is standing only when it says `standing: true`, or always when its adapter is `date`, and a claim with a rolling `since` must say so, because before a deadline only a standing claim that does not hold is a contradiction, and a reader should not have to infer which a claim is from its arguments; `standing`, `by` and `effort` are keys of the claim, and `of` and `since` are arguments of its `check` | §8.1 |
+| BC | an end-state claim's deadline is its own `by`, no later than the goal's, or the goal's `by`, so a goal can set milestones; dates are compared in the kernel's `TZ`, UTC when unset | §8.1 |
+| BD | an end-state claim may say how big it is: a counting claim of completed work with a `min` of 2 or more names `since` and measures progress against `min`, a manual counting claim names `of` and `since` and its answers carry a count, and a yes-or-no claim may carry `effort` in calendar days; there is no default effort, because a warning from an estimate nobody made is a guess presented as a measurement | §8.1 |
+| BE | the stored result is what was measured, and the state it means today (`pass`, `open`, `behind`, `fail`) is derived whenever it is read, so a claim moves with the calendar and not only at a run; `behind` is a count below half its expected work, in whole items rounded down, or no more days left than the `effort`, loose on purpose because work arrives unevenly; an end-state claim never answered counts as not met, a standing one is `unchecked`, and where the arithmetic cannot run the claim is raised rather than hidden | §8.1 |
+| BF | the agenda gains `behind` after `fail`, nearest deadline first, and orders `fail` by the claim's deadline; a `behind` claim whose goal was reviewed or put off in the last 7 days waits between the stale records and onboarding, so a slow goal cannot hold the first line every session, and the kernel records when a record was last put off to make that possible; an `open` claim is never on the agenda; the reflection counts only `fail` and `behind` as the gap, reports `open` claims as work remaining and unmeasured ones as unknown | §9, §10, §13, §15 |
 
 ## Sources
 

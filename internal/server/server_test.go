@@ -698,7 +698,9 @@ func TestNewRegistersTheToolsForBothCallerClasses(t *testing.T) {
 	}
 }
 
-const serverGoalClaims = "- text: \"three articles\"\n  check: {adapter: tracker, label: article, since: 2026-07-01, min: 3}\n- text: \"date holds\"\n  check: {adapter: manual}\n- text: \"a commit\"\n  check: {adapter: forge, repo: a/b, since: -14d, min: 1}"
+// "date holds" is standing: an end-state claim with its deadline ahead reads
+// open and never reaches the agenda (§8.1), and a test below needs it to fail.
+const serverGoalClaims = "- text: \"three articles\"\n  check: {adapter: tracker, label: article, since: 2026-07-01, min: 3}\n- text: \"date holds\"\n  standing: true\n  check: {adapter: manual}\n- text: \"a commit\"\n  standing: true\n  check: {adapter: forge, repo: a/b, since: -14d, min: 1}"
 
 func writeServerGoal(t *testing.T, st *store.Store, rel, id, sc string) {
 	t.Helper()
@@ -917,5 +919,131 @@ func TestReflectIsRefusedToAConsumerAndServedToTheOwner(t *testing.T) {
 
 	if _, err := reflectFor(d, "desk", true, audienceFor(set, true)); err == nil {
 		t.Error("a consumer must be refused")
+	}
+}
+
+// §8.1: the claims tool shows today's state beside what was measured. An
+// open paced claim reads its count and days left, a yes-or-no claim past its
+// pace is behind, and a stale pass stays marked.
+func TestTheClaimsToolShowsTodaysStateAndWhatWasMeasured(t *testing.T) {
+	st := newServerStore(t)
+	set := testSet(t)
+	claims := "- text: \"three articles\"\n  by: 2026-10-31\n  check: {adapter: tracker, label: a, since: 2026-09-01, min: 3}\n" +
+		"- text: \"ship it\"\n  by: 2026-10-05\n  effort: 10d\n  check: {adapter: manual}\n" +
+		"- text: \"a commit\"\n  standing: true\n  check: {adapter: forge, repo: a/b, since: -14d, min: 1}"
+	if _, err := st.Write("telos/goal/g3.md", store.Record{Name: "g3", Description: "a goal", Module: "telos", Kind: "goal", Scope: "global",
+		Fields: map[string]string{"id": "G3", "title": "Ship", "ideal": "published", "by": "2026-12-01", "claims": claims}, Body: "b"}, "desk"); err != nil {
+		t.Fatal(err)
+	}
+	t0 := time.Date(2026, 9, 20, 4, 0, 0, 0, time.UTC)
+	two := 2
+	if _, err := st.RecordClaimResults("telos/goal/g3.md", []store.ClaimResult{
+		{Index: 0, Text: "three articles", Adapter: "tracker", State: store.Fail, Count: &two, Since: t0, Recorded: t0},
+		{Index: 1, Text: "ship it", Adapter: "manual", State: store.Fail, Since: t0, Recorded: t0},
+		{Index: 2, Text: "a commit", Adapter: "forge", State: store.Pass, Since: t0, Recorded: t0},
+	}, "kernel"); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 1, 4, 0, 0, 0, time.UTC)
+	d := Deps{Memory: st, Set: set, Now: func() time.Time { return now },
+		LastRun: func() (time.Time, bool) { return now.Add(-72 * time.Hour), true }, ClaimInterval: 24 * time.Hour}
+	out, err := claimsFor(d, "desk", audienceFor(set, false), "")
+	if err != nil || len(out.Claims) != 3 {
+		t.Fatalf("out=%+v err=%v", out, err)
+	}
+	c := out.Claims
+	if c[0].State != "open" || c[0].Measured != "fail" || c[0].Count == nil || *c[0].Count != 2 || c[0].Target == nil || *c[0].Target != 3 ||
+		c[0].Expected == nil || *c[0].Expected != 1 || c[0].Unreadable != "" || c[0].DaysLeft == nil || *c[0].DaysLeft != 31 || c[0].Deadline != "2026-10-31" {
+		t.Errorf("the paced claim = %+v", c[0])
+	}
+	if c[1].State != "behind" || c[1].Measured != "fail" || c[1].Effort == nil || *c[1].Effort != 10 {
+		t.Errorf("the yes-or-no claim = %+v", c[1])
+	}
+	if c[2].State != "pass" || c[2].Measured != "pass" || !c[2].Standing || !c[2].Stale {
+		t.Errorf("a stale standing pass keeps its mark: %+v", c[2])
+	}
+}
+
+// §8.1: a manual count is the answer to a claim with of; the state follows
+// from the count, so a session cannot say pass for a count under the target.
+func TestClaimResultRecordsAManualCount(t *testing.T) {
+	st := newServerStore(t)
+	set := testSet(t)
+	claims := "- text: \"ten sessions\"\n  check: {adapter: manual, of: 10, since: 2026-09-01}\n" +
+		"- text: \"date holds\"\n  standing: true\n  check: {adapter: manual}\n" +
+		"- text: \"standing count\"\n  standing: true\n  check: {adapter: manual, of: 10}"
+	if _, err := st.Write("telos/goal/g3.md", store.Record{Name: "g3", Description: "a goal", Module: "telos", Kind: "goal", Scope: "global",
+		Fields: map[string]string{"id": "G3", "title": "Train", "ideal": "fit", "by": "2026-12-01", "claims": claims}, Body: "b"}, "desk"); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 1, 4, 0, 0, 0, time.UTC)
+	d := Deps{Memory: st, Set: set, Now: func() time.Time { return now }}
+	own := audienceFor(set, false)
+	four, ten, neg := 4, 10, -1
+	rec := func(i int, state string, n *int) error {
+		_, err := recordClaimResult(d, "desk", false, own, claimResultIn{Goal: "telos/goal/g3.md", Index: i, State: state, Count: n})
+		return err
+	}
+	if err := rec(0, "fail", &four); err != nil {
+		t.Fatal(err)
+	}
+	res, _ := st.ClaimResults()
+	r := res["telos/goal/g3.md"][0]
+	if r.State != store.Fail || r.Count == nil || *r.Count != 4 || r.Target == nil || *r.Target != 10 {
+		t.Errorf("result = %+v", r)
+	}
+	if err := rec(0, "pass", &ten); err != nil {
+		t.Fatal(err)
+	}
+	res, _ = st.ClaimResults()
+	if r := res["telos/goal/g3.md"][0]; r.State != store.Pass || *r.Count != 10 {
+		t.Errorf("result = %+v", r)
+	}
+	for name, err := range map[string]error{
+		"pass under the target":         rec(0, "pass", &four),
+		"fail at the target":            rec(0, "fail", &ten),
+		"a count on a claim without of": rec(1, "pass", &four),
+		"a count on a standing claim":   rec(2, "fail", &four),
+		"a negative count":              rec(0, "fail", &neg),
+		"a manual count with no count":  rec(0, "fail", nil),
+	} {
+		if err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if err := rec(0, "no-evidence", nil); err != nil {
+		t.Errorf("no-evidence needs no count: %v", err)
+	}
+}
+
+// §8.1: the reflection marks an adapter's pass older than two claim
+// intervals as stale, so the interviewer can report it as unknown; a manual
+// pass is never stale by the schedule.
+func TestTheReflectionMarksAStaleAdapterPass(t *testing.T) {
+	st := newServerStore(t)
+	set := testSet(t)
+	writeServerGoal(t, st, "telos/goal/g3.md", "G3", "global")
+	t0 := time.Date(2026, 9, 20, 4, 0, 0, 0, time.UTC)
+	if _, err := st.RecordClaimResults("telos/goal/g3.md", []store.ClaimResult{
+		{Index: 0, Text: "three articles", Adapter: "tracker", State: store.Pass, Since: t0, Recorded: t0},
+		{Index: 1, Text: "date holds", Adapter: "manual", State: store.Pass, Since: t0, Recorded: t0},
+	}, "kernel"); err != nil {
+		t.Fatal(err)
+	}
+	now := t0.Add(96 * time.Hour)
+	last := now.Add(-72 * time.Hour)
+	d := Deps{Memory: st, Set: set, Now: func() time.Time { return now },
+		LastRun: func() (time.Time, bool) { return last, true }, ClaimInterval: 24 * time.Hour}
+	ref, err := reflectFor(d, "desk", false, audienceFor(set, false))
+	if err != nil || len(ref.Unserved) != 1 || len(ref.Unserved[0].Claims) != 3 {
+		t.Fatalf("ref=%+v err=%v", ref, err)
+	}
+	c := ref.Unserved[0].Claims
+	if !c[0].Stale || c[1].Stale || c[2].Stale {
+		t.Errorf("only the tracker pass is stale: %+v", c)
+	}
+	last = now.Add(-time.Hour)
+	if ref, _ := reflectFor(d, "desk", false, audienceFor(set, false)); ref.Unserved[0].Claims[0].Stale {
+		t.Error("a pass within two intervals of the last run is not stale")
 	}
 }

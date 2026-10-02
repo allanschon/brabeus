@@ -40,7 +40,7 @@ func (s *Store) commitAndPush(msg, caller string) (string, error) {
 // malformedError names every kernel-owned key on a record that failed to
 // parse, in the one wording Write, Review and Migrate all use: composing
 // over a stamp that did not parse would silently erase it — only a review
-// may move reviewed/retired/snoozes (§9) — so this refuses instead, naming
+// may move reviewed/retired/snoozes/snoozed (§9) — so this refuses instead, naming
 // what it saw and saying nothing was written.
 func malformedError(fm map[string]string, keys []string) error {
 	parts := make([]string, 0, len(keys))

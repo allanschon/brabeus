@@ -28,6 +28,7 @@ func TestValidateEnforcesEachAdaptersArguments(t *testing.T) {
 		{"tracker", map[string]string{"done": "true", "label": "article", "since": "2026-07-01", "min": "3"}},
 		{"forge", map[string]string{"repo": "side-project", "since": "-14d", "min": "1"}},
 		{"manual", nil},
+		{"manual", map[string]string{"of": "10", "since": "2026-09-01"}},
 	}
 	for _, o := range ok {
 		if err := Validate(o.adapter, o.args); err != nil {
@@ -51,7 +52,11 @@ func TestValidateEnforcesEachAdaptersArguments(t *testing.T) {
 		{"date", map[string]string{}, "before"},
 		{"date", map[string]string{"before": "31/12/2026"}, "before"},
 		{"date", map[string]string{"after": "2026-12-31", "before": "2026-01-01"}, "after"},
-		{"manual", map[string]string{"when": "later"}, "no arguments"},
+		{"manual", map[string]string{"when": "later"}, "when"},
+		{"manual", map[string]string{"of": "10"}, "since"},
+		{"manual", map[string]string{"since": "2026-09-01"}, "of"},
+		{"manual", map[string]string{"of": "0", "since": "2026-09-01"}, "of"},
+		{"manual", map[string]string{"of": "10", "since": "-7d"}, "date"},
 		{"wearable", map[string]string{}, "wearable"},
 	}
 	for _, b := range bad {
@@ -170,14 +175,22 @@ func TestABareRepositoryWithoutAnOwnerIsNoEvidenceBeforeAnyRequest(t *testing.T)
 // parser and then Validate — so the README's worked example is one the kernel
 // accepts, and none of its arguments needs a comma.
 func TestTheSpecsExampleClaimsParseAndValidate(t *testing.T) {
-	block := `- text: "At least three articles published since the quarter began"
+	block := `- text: "At least three articles published this quarter"
   check: { adapter: tracker, done: true, label: article, since: 2026-07-01, min: 3 }
+- text: "The first draft of the guide is written"
+  by: 2026-11-15
+  effort: 21d
+  check: { adapter: manual }
+- text: "Every photo from 2025 has been reviewed"
+  check: { adapter: manual, of: 1200, since: 2026-09-01 }
 - text: "The side project has a commit in the last fortnight"
+  standing: true
   check: { adapter: forge, repo: side-project, since: -14d, min: 1 }
 - text: "The target date still holds"
+  standing: true
   check: { adapter: manual }`
 	got, err := store.ParseClaims(block)
-	if err != nil || len(got) != 3 {
+	if err != nil || len(got) != 5 {
 		t.Fatalf("ParseClaims: %d claims, %v", len(got), err)
 	}
 	for i, c := range got {
@@ -185,7 +198,25 @@ func TestTheSpecsExampleClaimsParseAndValidate(t *testing.T) {
 			t.Errorf("claim %d (%s %v): %v", i+1, c.Adapter, c.Args, err)
 		}
 	}
-	if got[1].Args["repo"] != "side-project" || got[0].Args["label"] != "article" {
-		t.Errorf("parsed args: %v %v", got[0].Args, got[1].Args)
+	if got[3].Args["repo"] != "side-project" || got[0].Args["label"] != "article" {
+		t.Errorf("parsed args: %v %v", got[0].Args, got[3].Args)
+	}
+	if got[1].By != "2026-11-15" || got[1].Effort != "21d" || !got[3].Standing || !got[4].Standing {
+		t.Errorf("claim-level keys: %+v %+v %+v", got[1], got[3], got[4])
+	}
+}
+
+func intp(n int) *int { return &n }
+
+func TestCountedCarriesItsCountAndExhaustedDoesNotCountALowerBound(t *testing.T) {
+	if got, want := counted(3, 6), (Outcome{State: store.Fail, Detail: "3 found", Count: intp(3)}); !reflect.DeepEqual(got, want) {
+		t.Errorf("counted(3, 6) = %+v, want %+v", got, want)
+	}
+	got := exhausted(3, 6, 200)
+	if got.State != store.NoEvidence || got.Count != nil {
+		t.Errorf("exhausted(3, 6, 200) = %+v: a lower bound is not a count", got)
+	}
+	if got := exhausted(7, 6, 200); got.State != store.Pass || got.Count == nil || *got.Count != 7 {
+		t.Errorf("exhausted(7, 6, 200) = %+v", got)
 	}
 }

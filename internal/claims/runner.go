@@ -76,7 +76,7 @@ func (r *Runner) Run(ctx context.Context) (Report, error) {
 		rep.Claims += len(claims)
 		outcomes := make([]Outcome, len(claims))
 		for i, c := range claims {
-			if c.Adapter == "manual" {
+			if c.Adapter == store.AdapterManual {
 				continue
 			}
 			if err := ctx.Err(); err != nil {
@@ -101,12 +101,26 @@ func (r *Runner) Run(ctx context.Context) (Report, error) {
 			changed = 0
 			joined := store.JoinResults(claims, prev)
 			for i, c := range claims {
-				if c.Adapter == "manual" || joined[i].State == outcomes[i].State {
-					// An unchanged state keeps its detail as well as its
-					// since, so the count inside "2 found" moving within
-					// one state does not churn the results file.
+				if c.Adapter == store.AdapterManual {
 					continue
 				}
+				if !c.IsStanding() {
+					if target, ok := c.Paced(); ok {
+						joined[i].Target = &target
+					}
+				}
+				if joined[i].State == outcomes[i].State {
+					// An unchanged state keeps its since, and keeps its
+					// detail while the count is the same, so a run that
+					// finds what the last one found writes nothing. The
+					// count is what pace reads (spec §8.1), so when it
+					// moves within one state it is brought current.
+					if !sameCount(joined[i].Count, outcomes[i].Count) {
+						joined[i].Detail, joined[i].Count = outcomes[i].Detail, outcomes[i].Count
+					}
+					continue
+				}
+				joined[i].Count = outcomes[i].Count
 				joined[i].State, joined[i].Detail = outcomes[i].State, outcomes[i].Detail
 				joined[i].Since, joined[i].Recorded = now, now
 				changed++
@@ -271,4 +285,12 @@ func StatusErrors(r *Runner) int {
 		return 0
 	}
 	return r.Errors()
+}
+
+// sameCount reports whether two optional counts are both absent or equal.
+func sameCount(a, b *int) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }

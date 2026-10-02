@@ -79,7 +79,7 @@ func (s *Store) Review(rel string, in ReviewInput, caller string) (string, error
 	}
 	r, meta := ParseRecord(string(old))
 	// A kernel-owned key that failed to parse must stop the review rather
-	// than be silently dropped: compose only emits reviewed/retired/snoozes
+	// than be silently dropped: compose only emits reviewed/retired/snoozes/snoozed
 	// when they're non-zero, so composing anyway would erase whichever one
 	// did not parse — and only a review may move them (§9). Same rule and
 	// wording as Write's refusal.
@@ -161,6 +161,7 @@ func (s *Store) Review(rel string, in ReviewInput, caller string) (string, error
 		meta.Retired, meta.Reviewed = stamp, stamp
 	case Later:
 		meta.Snoozes++
+		meta.Snoozed = stamp
 	}
 
 	content := compose(r, meta, fieldOrder)

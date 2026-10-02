@@ -19,7 +19,7 @@ follow up, how to sort what the person says — is yours.
 Before the first question, find out what is already known, because asking someone
 something they have already told you says you were not listening.
 
-- `context`, no arguments. `agenda` is the top item: its `reason` (`fail`, `draft`,
+- `context`, no arguments. `agenda` is the top item: its `reason` (`fail`, `behind`, `draft`,
   `stale` or `onboarding`), the record's `path`, the `question` the kernel wrote for it,
   and a `revision` line and `snoozes` count when there are any. It is only the top item;
   the rest of the agenda waits behind it.
@@ -49,7 +49,7 @@ Look once, at the start, at the top item's `reason`. Your own drafts become the 
 agenda as soon as you write them, so re-reading `context` in the middle of getting to know
 someone would tip you into a check-in you did not mean to start.
 
-- **A check-in** when the reason is `fail`, `draft` or `stale`. Open with that item: name
+- **A check-in** when the reason is `fail`, `behind`, `draft` or `stale`. Open with that item: name
   the record, ask its question, and say the revision line if there is one ("you lowered
   the target from 3 to 2 on 4 September") and the snooze count if it is above zero ("you
   have put this off twice"). Then follow the conversation where it goes. When a topic runs
@@ -117,6 +117,20 @@ What they volunteer without being asked is handled the same way.
   are checked by the kernel on a schedule, and only work if the deployment has set that
   adapter up. You cannot see that from the tools, so ask the person before suggesting
   one; a `manual` claim always works.
+
+  When you write a claim, ask what kind it is, in plain words, one question at a time:
+  - Should it be true by a date, or true all the time? All the time means `standing: true`
+    on the claim (a rolling window such as `since: -14d` needs it).
+  - If it is due earlier than the goal, its own date: `by: YYYY-MM-DD` on the claim.
+  - For a yes-or-no claim, roughly how long the work will take them, in calendar days given the
+    rest of their life (three days of work over three weekends is `effort: 21d`). If they cannot
+    say, leave it out: the claim then warns only on its deadline.
+  - For a manual count ("651 of 25,992 photos"), the total and the date counting started:
+    `check: { adapter: manual, of: 25992, since: 2026-09-01 }`.
+
+  Only ask what applies. A claim that counts tracker tasks or commits measures its own pace.
+  `standing`, `by` and `effort` go on the claim beside `text`; `of` and `since` go inside
+  `check`.
 - **How the person wants to be worked with** is an `identity/preference`, not a note in
   `memory`: they said it, so it goes where they can confirm it.
 
@@ -207,8 +221,11 @@ means there is nothing to ask, so carry on. For each claim with `manual: true` t
 have not already recorded in this conversation, ask the person
 about it ("is the first draft finished?") and record the answer with `claim_result`: the
 goal, the claim's `index` as `claims` lists it, a `state` of `pass`, `fail` or
-`no-evidence` (they cannot say yet), and a one-line `note`. The note is shown again without your question, on the agenda
-line and in the reflection, so it has to make sense on its own. If their reply does ("two
+`no-evidence` (they cannot say yet), and a one-line `note`. For a manual count (the claim has
+`of`), pass `count` with the number so far; its state follows from it: `pass` when the count
+reaches `of`, `fail` otherwise, and a count with `no-evidence` is refused. The note is shown
+again without your question, on the agenda line and in the reflection, so it has to make
+sense on its own. If their reply does ("two
 chapters still to draft"), use it as it is. If it only makes sense beside your question
 ("yes", "your guess is right"), state the fact plainly and quote their reply:
 `The first draft is not finished ("Your guess is right.")`. The unquoted words are then
@@ -220,7 +237,13 @@ adapter checks, because those results come from the schedule.
 
 **A failed claim** in a check-in is the contradiction the record exists to raise. Say what
 failed and when, plainly, and ask whether the goal is still right. What they say about the
-goal is a `review` of the goal.
+goal is a `review` of the goal. `claims` and `reflect` give each claim today's state. Say
+`open` as work remaining with its days left, never as failing; say `behind` as a warning with
+its numbers ("1 of 6 done, 4 expected by now, 6 days left"); only `fail` is a miss. A claim
+whose `unreadable` is `deadline`, `since`, `effort` or `window` has a value the kernel could
+not read: ask the person to correct it, and do not describe the claim's state. One whose
+`unreadable` is `rolling` counts a rolling window without saying `standing: true`: ask whether
+it should hold all the time, and do not describe the claim's state.
 
 ## 7. Ending a thread
 
@@ -250,6 +273,8 @@ confirmed (`-1` means never). Then the goals that serve no value, and any `serve
 that matched no value. Keep it short and say the gap without judgement: *"You said family
 matters most; the two goals that serve it have not been confirmed in three months, and the
 three that serve craft are all on track."* The person draws the conclusion.
+Only `fail` and `behind` are the gap; read `open` claims as work remaining, and `no-evidence`,
+`unchecked` and stale passes as unknown.
 
 A claim in `no-evidence` is a fault in the deployment — a revoked token, an unreachable
 host — never the person falling behind (spec §8.1). Do not fold it into the gap as if it
