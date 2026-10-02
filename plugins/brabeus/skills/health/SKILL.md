@@ -10,9 +10,9 @@ machine: reaching across the network is what made the previous checker
 unreliable — it was blind to a sleeping laptop and reported "could not reach it"
 as a failure, so it was red most nights for a boring reason.
 
-Run all eight checks and give one verdict. Six of them look for failures that nothing
-else would show — a module or the standing instructions over their byte budget (check 0),
-instructions not reaching subagents (check 7), an outbox write the kernel
+Run all eight checks and give one verdict. Five of them look for six failures that nothing
+else would show — a module over its byte budget and the standing instructions over theirs
+(both check 0), instructions not reaching subagents (check 7), an outbox write the kernel
 rejected (check 3), the claim schedule not running (check 4) and an adapter that cannot
 answer (check 5) — because each one leaves the record quietly wrong rather than visibly
 broken.

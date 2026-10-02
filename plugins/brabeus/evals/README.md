@@ -30,7 +30,7 @@ grader fails its case and the run exits 1.
 ## When to run it, and what it costs
 
 Run it when the `interview` skill changes and before a release, not in CI: every case is a real
-model conversation on your account. One run of each of the thirteen cases cost $3.72 and
+model conversation on your account. One run of each of the fourteen cases cost $3.95 and
 took about eight minutes on 2026-10-02, with the default model and a Sonnet judge. `--runs 2`
 doubles both and shows whether a judged verdict holds. Pass `--max-cost-usd` to cap a run.
 
