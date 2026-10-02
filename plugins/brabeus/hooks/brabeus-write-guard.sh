@@ -2,8 +2,9 @@
 # PreToolUse guard, two arms.
 #   1. UNCONDITIONAL: the saved copies of the person's instructions
 #      (${CLAUDE_PLUGIN_DATA:-~/.claude/plugins/data/brabeus}/instructions/) are written only by
-#      the session-start hook, so text the person never confirmed cannot reach a subagent as
-#      their instructions. Write/Edit and the Bash write patterns are both covered.
+#      the session-start hook. The guard refuses the assistant's Write/Edit/NotebookEdit and its
+#      common Bash write forms, which stops an accidental write of text the person never
+#      confirmed; it is pattern-based, so it is not a barrier against a deliberate bypass.
 #   2. CONDITIONAL on a working-memory module: memory belongs in the store, not in per-machine
 #      scratch. The rest of this header describes that arm.
 #

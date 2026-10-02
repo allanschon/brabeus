@@ -117,9 +117,10 @@ flowchart TB
 
 The diagram is deliberate about six things:
 
-- **The plugin is thin.** It has three hooks, one of them conditional in part, and a few skills. Installing
-  it changes nothing in the assistant's global configuration except the plugin's own
-  registration (spec §3.2).
+- **The plugin is thin.** It has three hooks and a few skills. `SessionStart` and `SubagentStart`
+  always run; the `PreToolUse` guard always refuses writes to the saved instructions, and refuses
+  writes to scratch only when a working-memory module is enabled. Installing it changes nothing in
+  the assistant's global configuration except the plugin's own registration (spec §3.2).
 - **The kernel is the only writer** to the working clone, and the clone is the only path to the
   repository. The claims runner is part of the kernel, so a claim result reaches the clone
   through the kernel's claim-result operation like any other change (spec §8.1).
@@ -159,7 +160,7 @@ flowchart LR
         review["<b>Review</b><br/><i>question, verdict and answer into the commit;<br/>the only path that moves reviewed</i>"]
         claims["<b>Claims runner (M2)</b><br/><i>declared adapters, data-only arguments;<br/>pass · fail · no-evidence, each timestamped</i>"]
         adapters["<b>Adapters (M2)</b><br/><i>tracker · forge · date · manual;<br/>one implementation per backend</i>"]
-        agenda["<b>Agenda</b><br/><i>fails by the claim's deadline, then behind, then drafts, then stale<br/>by priority and age, deferred behind, then onboarding; preferences last<br/>in each; snoozes counted; open and no-evidence excluded</i>"]
+        agenda["<b>Agenda</b><br/><i>fails by the claim's deadline, then behind, then drafts, then stale<br/>by priority and age, deferred behind, then onboarding; preferences last<br/>in each; then a budget item for instructions over budget; snoozes counted; open and no-evidence excluded</i>"]
         context["<b>Context renderer</b><br/><i>agenda line in reserved space,<br/>then module templates in priority order;<br/>2 KB hard cap; per-module budgets;<br/>overflow refused, never truncated</i>"]
         view["<b>View (M3)</b><br/><i>the same render as HTML, plus freshness,<br/>claim state, revision lines, snooze counts,<br/>manual fraction; read-only; loopback</i>"]
     end

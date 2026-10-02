@@ -9,15 +9,15 @@ the Greek games.
 
 ## Status
 
-The specification is at v1.10 (`docs/personal-context-system-v1.md`). Milestones M0, M1 and M2
-are built. Modules load and validate, and every write names a module and a kind. The context
-block renders from the person's records with the agenda's question as its first line. Goals carry
-claims, which the kernel checks against a task tracker, a git forge or a date, or asks the person
-to answer. The person's confirmed preferences and register reach every session and every subagent
-it starts as standing instructions. The interview is a
-conversation: it drafts the record in the person's words, confirms each draft through `review`,
-and closes with a reflection by value. M3, a read-only view, and M4, the `health` and `finance`
-modules, are planned. Section 14 of the specification lists what each milestone delivers.
+The specification is at v1.10 (`docs/personal-context-system-v1.md`). Milestones M0, M1 and M2 are
+built. Modules load and validate, and every write names a module and a kind. The context block
+renders from the person's records with the agenda's question as its first line. Goals carry claims,
+which the kernel checks against a task tracker, a git forge or a date, or asks the person to answer.
+The person's confirmed preferences and register reach every session and every subagent it starts as
+standing instructions. The interview is a conversation: it drafts the record in the person's words,
+confirms each draft through `review`, and closes with a reflection by value. M3, a read-only view,
+and M4, the `health` and `finance` modules, are planned. Section 14 of the specification lists what
+each milestone delivers.
 
 ## What is here
 
@@ -144,10 +144,12 @@ for each machine and project.
 The harness replaces a hook's text of more than 10,000 characters with a path to a file the model
 is not asked to read, so the plugin keeps each injection under 9,800 characters. Past that it
 drops whole records from the end and names them on a last line, `Not delivered, over the hook's
-limit:`, which `/health` also reports.
+limit:`, which the `/health` skill also reports, reading it from the saved copy.
 
-The write guard refuses the assistant's own writes to the saved copies, whatever the kernel's
-profiles say, so text the person never confirmed cannot reach a subagent as their instructions.
+The write guard refuses the assistant's Write, Edit and NotebookEdit on the saved copies and its
+common Bash write forms, whatever the kernel's profiles say. That stops an accidental write of text
+the person never confirmed; the Bash patterns can be walked around deliberately, so it is not a
+barrier against a determined bypass.
 
 ## Claims
 

@@ -10,7 +10,7 @@ kernel. How that image is deployed and updated is each deployment's own concern.
 opinions about content. Everything it stores belongs to a module, and every module runs under one
 of a small set of profiles the kernel defines (§1.1).
 
-C4 diagrams of the system at v1.8 — context, containers, kernel components, and the interview
+C4 diagrams of the system at v1.10 — context, containers, kernel components, and the interview
 as a sequence — are in [`personal-context-system-c4.md`](personal-context-system-c4.md). A
 plain-language description for someone who might use it rather than build it is
 [`personal-context-system-plain.md`](personal-context-system-plain.md).
@@ -952,10 +952,11 @@ already runs.
   it hides, it does not remove. Anything that must not be in another person's clone is in a
   repository that person cannot clone, which means a separate kernel instance. The kernel never
   offers to filter its way out of that.
-- **The saved instructions are written only by the plugin.** The copy the plugin keeps for
-  subagents and offline sessions (§4.2) is readable and writable only by the person, and the
-  guard refuses the assistant's own writes to it, so text that was never confirmed cannot reach
-  a subagent as the person's instructions.
+- **The saved instructions are written only by the plugin.** The copy the plugin keeps for subagents
+  and offline sessions (§4.2) is readable and writable only by the person. The guard refuses the
+  assistant's Write, Edit and NotebookEdit on it and its common Bash write forms, which stops an
+  accidental write of text that was never confirmed; it is pattern-based, so a deliberate bypass is
+  not prevented.
 - **Ratification is a kernel fact.** `reviewed` moves only through `review` (§9), which
   carries the question and the answer into the commit. The model cannot mark a record confirmed
   by writing it.
