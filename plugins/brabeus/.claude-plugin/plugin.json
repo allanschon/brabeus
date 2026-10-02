@@ -1,7 +1,7 @@
 {
   "name": "brabeus",
   "description": "Brabeus client for Claude Code: the context block at session start, a routing guard decided from the kernel, an outbox drain, server registration, and the interview, done and health skills.",
-  "version": "0.3.19",
+  "version": "0.3.20",
   "author": {
     "name": "allanschon"
   }

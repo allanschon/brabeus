@@ -2,7 +2,7 @@
 
 **Working name: Brabeus.** See §16.
 
-**Status: v1.10. M0, M1 and M2 are built, as are v1.9's claim dates; v1.10's instructions are not built yet (§14).**
+**Status: v1.10. M0, M1 and M2 are built, as are v1.9's claim dates and v1.10's instructions (§14).**
 
 This document describes a system built on the kernel this repository already contains: a
 private store with hybrid retrieval, a Claude Code plugin, and a Dockerfile that builds the
@@ -941,11 +941,13 @@ already runs.
   read-only consumer is identified like any caller and sees only modules whose `audience` is `any`,
   on every path that names a module: records, search, the block, the instructions and the `modules`
   tool. A forbidden module contributes nothing, not even its name, because the name of a module the
-  person added is itself something they may not want a reader to know. The four core modules are
-  `self` and cannot be made otherwise by configuration (§7). An unidentified caller is refused
-  before any tool runs, so it sees nothing. This rule exists because, in the server this system is
-  built on, the fail-closed default for an unidentified caller is `global` scope, and `global` is
-  where health and finance records live.
+  person added is itself something they may not want a reader to know. An instruction is read
+  through its governing module: a working-memory preference that crosses into `identity` reaches a
+  consumer neither as an instruction nor in the size of identity's budget, whatever audience
+  `memory` declares. The four core modules are `self` and cannot be made otherwise by configuration
+  (§7). An unidentified caller is refused before any tool runs, so it sees nothing. This rule exists
+  because, in the server this system is built on, the fail-closed default for an unidentified caller
+  is `global` scope, and `global` is where health and finance records live.
 - **The repository is the boundary beneath the kernel** (§3.8). Audience is a read-time filter;
   it hides, it does not remove. Anything that must not be in another person's clone is in a
   repository that person cannot clone, which means a separate kernel instance. The kernel never
@@ -1052,8 +1054,8 @@ record is written under the new rules. It is still one milestone: nothing in it 
 v1.9's claim dates (§16 BB–BF) are built, ahead of M3, because the view shows claim states and
 should not show work that is merely open as failing.
 
-v1.10's instructions (§16 BG–BP) are to be built ahead of M3 too, so that the subagents that build
-M3 work by the person's confirmed preferences.
+v1.10's instructions (§16 BG–BP) are built ahead of M3 too, so that the subagents that build M3 work
+by the person's confirmed preferences.
 
 ## 15. Open
 

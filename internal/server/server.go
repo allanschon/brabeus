@@ -12,7 +12,7 @@ import (
 	"github.com/allanschon/brabeus/internal/store"
 )
 
-const Version = "0.5.0"
+const Version = "0.6.0"
 
 // pickRepo resolves the repo argument. notebook is the current name for the
 // person's own notes repository; projects is the same store under its older

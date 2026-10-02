@@ -1,7 +1,7 @@
 # The personal context system — C4 diagrams
 
 These diagrams accompany [`personal-context-system-v1.md`](personal-context-system-v1.md) at
-v1.9. They describe the same system as the specification at four levels of detail, and where they
+v1.10. They describe the same system as the specification at four levels of detail, and where they
 disagree, the specification is correct. Components carry the specification's descriptive names.
 
 The diagrams show the whole design, not only what is built. An element tagged with a milestone,
@@ -70,14 +70,14 @@ flowchart TB
 
     subgraph assistant_host ["The assistant, on each of the person's machines"]
         cc["Claude Code"]
-        plugin["<b>Plugin</b><br/><i>SessionStart hook: injects the context block, drains the outbox,<br/>resolves scope keys · PreToolUse guard: only when a working-memory module is enabled ·<br/>skills: /interview, /done (M2), /health, plus any a module contributes</i>"]
+        plugin["<b>Plugin</b><br/><i>SessionStart hook: injects the context block and the instructions, saves the session's copy, drains the outbox,<br/>resolves scope keys · SubagentStart hook: injects the saved copy into each subagent ·<br/>PreToolUse guard: refuses writes to the saved copies; scratch writes only when a working-memory module is enabled ·<br/>skills: /interview, /done (M2), /health, plus any a module contributes</i>"]
         outbox[("Outbox<br/><i>writes queued while the kernel is unreachable</i>")]
         cc --- plugin
         plugin --- outbox
     end
 
     subgraph kernel_host ["The kernel host — one container, or two"]
-        kernel["<b>Kernel</b><br/><i>Go, one static binary · MCP over HTTP · the only writer</i><br/>store · retrieval · identity · profiles · modules · context · claims (M2) · agenda · review · budgets · audience · view (M3)"]
+        kernel["<b>Kernel</b><br/><i>Go, one static binary · MCP over HTTP · the only writer</i><br/>store · retrieval · identity · profiles · modules · context · instructions · claims (M2) · agenda · review · budgets · audience · view (M3)"]
         embed["Embedding sidecar<br/><i>local model, loopback only,<br/>never published</i>"]
         modules[("Module manifests<br/><i>memory · identity · telos · health · finance ·<br/>any module a deployment adds</i>")]
         clone[("Working clone<br/><i>of the record repository</i>")]
@@ -117,7 +117,7 @@ flowchart TB
 
 The diagram is deliberate about six things:
 
-- **The plugin is thin.** It has two hooks, one of them conditional, and a few skills. Installing
+- **The plugin is thin.** It has three hooks, one of them conditional in part, and a few skills. Installing
   it changes nothing in the assistant's global configuration except the plugin's own
   registration (spec §3.2).
 - **The kernel is the only writer** to the working clone, and the clone is the only path to the
@@ -166,8 +166,10 @@ flowchart LR
 
     mcp[/"MCP endpoint<br/>search · read · list · write · delete · review · context ·<br/>modules (M2) · reflect (M2) · claims (M2) · claim_result (M2)"/]
     health[/"/healthz + the four silent failures"/]
+    instr[/"GET /instructions<br/>the person's instructions, for the plugin's hooks"/]
 
     mcp --> identity --> audience
+    instr --> identity
     audience --> retrieval
     audience --> store
     store --> schema --> credref
@@ -190,7 +192,7 @@ flowchart LR
     classDef comp fill:#85bbf0,stroke:#5d82a8,color:#000
     classDef iface fill:#fff,stroke:#5d82a8,color:#000
     class identity,audience,profiles,modloader,schema,credref,store,retrieval,migrate,review,claims,adapters,agenda,context,view comp
-    class mcp,health iface
+    class mcp,health,instr iface
 ```
 
 For someone reading the diagram for the first time: a request enters at the MCP endpoint, is

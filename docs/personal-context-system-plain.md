@@ -72,7 +72,9 @@ that isn't you. When people ask why this isn't just a folder of notes, this is t
 about two kilobytes, roughly half a page — assembled from your record. The first line of that
 block is the one thing the system most wants to ask you about, if there is one: a goal whose
 evidence says it isn't going the way you said, or something on file that hasn't been confirmed
-in a while. You can ignore it. It'll be there next time too.
+in a while. You can ignore it. It'll be there next time too. Every preference you have confirmed,
+and the register you chose for how to be spoken to, reaches every conversation, and every helper
+agent it starts, in full. When they grow too long, the assistant asks which can be merged.
 
 **Behind the scenes, on a schedule**, the system checks the claims attached to your goals. A
 claim is a small, testable statement — "at least three articles published this quarter" — with a

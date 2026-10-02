@@ -153,11 +153,14 @@ Relationships:
   even its name.
 - **Assistant integration** (downstream). The block is served as plain text at `GET /context`
   and as the `context` tool: an open host service whose published language is the block's text.
+  The instructions are served as JSON at `GET /instructions` under the same identity and
+  authentication, scope- and audience-filtered the same way.
 
 ### Assistant integration
 
-Assistant integration owns what happens on the person's machine around the session: injecting the block at session
-start, the write guard, the outbox and its drain, the `health` skill, and the MCP registration.
+Assistant integration owns what happens on the person's machine around the session: injecting the
+block and the person's instructions at session start, giving each subagent the session's saved copy
+of them, the write guard, the outbox and its drain, the `health` skill, and the MCP registration.
 The `interview` skill ships in the same plugin but belongs to the Interview.
 
 It lives in `plugins/brabeus`.
@@ -196,8 +199,8 @@ Relationships:
 - **Schema** (upstream). Conforms to the module set, read through the `modules` tool.
 - **Record** (upstream). Writes and rewrites drafts and threads through the `write` tool, and
   deletes a thread once a module that covers it holds a draft from it (§7).
-- **Context block** (upstream). The person's register renders in the block like any ratified
-  record, which is how it reaches every session, not just the interview.
+- **Context block** (upstream). The person's register is an instruction, delivered in full beside
+  the block, which is how it reaches every session and subagent, not just the interview.
 - **Claude Code** (external). The Interview runs as a skill in the person's session.
 
 ### Deployment
