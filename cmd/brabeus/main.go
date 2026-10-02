@@ -239,9 +239,15 @@ func main() {
 		log.Fatalf("auth: %v", err)
 	}
 
+	insGuarded, err := server.AuthMiddleware(server.RefuseUnidentified(server.InstructionsHandler(deps, id, consumers), id, consumers), authMode, authToken)
+	if err != nil {
+		log.Fatalf("auth: %v", err)
+	}
+
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", guarded)
 	mux.Handle("/context", ctxGuarded)
+	mux.Handle("/instructions", insGuarded)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, healthz(server.Version, id.Mode(), set, claims.Status(runner), claims.StatusErrors(runner)))
 	})
