@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
-# PreToolUse guard: memory belongs in the store, not in per-machine scratch.
+# PreToolUse guard, two arms.
+#   1. UNCONDITIONAL: the saved copies of the person's instructions
+#      (${CLAUDE_PLUGIN_DATA:-~/.claude/plugins/data/brabeus}/instructions/) are written only by
+#      the session-start hook, so text the person never confirmed cannot reach a subagent as
+#      their instructions. Write/Edit and the Bash write patterns are both covered.
+#   2. CONDITIONAL on a working-memory module: memory belongs in the store, not in per-machine
+#      scratch. The rest of this header describes that arm.
 #
 # WHY THIS EXISTS. Claude keeps an auto-memory per machine at
 # ~/.claude/projects/<escaped-path>/memory/. That tier is per-machine by construction, so the
@@ -32,8 +38,88 @@ set -uo pipefail
 payload=$(cat)
 tool=$(printf '%s' "$payload" | jq -r '.tool_name // empty' 2>/dev/null)
 
-# CONDITIONAL SINCE M1. hooks.json is static, so the guard decides here. The session-start
-# hook writes the kernel's profiles to this file; scratch is denied only where a
+deny() {
+  jq -cn --arg r "$1" \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+  exit 0
+}
+
+# The Write/Edit path, made absolute with . and .. collapsed textually: the file need not
+# exist, so realpath is not an option, and a path check that can be walked around with .. is
+# not a check. Prints nothing when the call names no path.
+norm_path() {
+  local fp
+  fp=$(printf '%s' "$payload" | jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' 2>/dev/null)
+  [ -z "$fp" ] && return 0
+  case "$fp" in
+    "~"*) fp="$HOME${fp#\~}" ;;
+    /*)   ;;
+    *)    fp="$PWD/$fp" ;;
+  esac
+  printf '%s' "$fp" | awk -F/ '{n=0; for(i=1;i<=NF;i++){ if($i=="."||$i==""){continue} if($i==".."){if(n>0)n--; continue} p[++n]=$i } s=""; for(i=1;i<=n;i++) s=s"/"p[i]; print (s==""?"/":s)}'
+}
+
+# A heredoc BODY is data the command writes, not commands it runs, and it is dropped. The
+# heredoc HEADER survives, so `cat > <path> <<EOF` is still seen. Then one line, so a body
+# cannot hide the redirect that opened it. Sets $flat.
+flatten_cmd() {
+  local c
+  c=$(printf '%s\n' "$1" | awk '
+    !inh {
+      print
+      if (match($0, /<<-?[ \t]*[\047\042]?[A-Za-z_][A-Za-z0-9_]*[\047\042]?/)) {
+        tag = substr($0, RSTART, RLENGTH)
+        sub(/^<<-?[ \t]*/, "", tag); gsub(/[\047\042]/, "", tag)
+        inh = 1
+      }
+      next
+    }
+    { t = $0; sub(/^[ \t]+/, "", t); sub(/[ \t]+$/, "", t); if (t == tag) inh = 0 }
+  ')
+  flat=$(printf '%s' "$c" | tr '\n' ' ')
+}
+
+# Does the flattened command WRITE to a path matching regex $1? Each pattern names a way of
+# writing. Reads are absent on purpose.
+writes_to() {
+  local P="$1"
+  rx() { printf '%s' "$flat" | grep -qE "$1"; }
+  rx ">>?[[:space:]]*${P}" \
+  || rx "tee([[:space:]]+-[^[:space:]]+)*[[:space:]]+${P}" \
+  || rx "sed[^|;&]*-i[^|;&]*${P}" \
+  || rx "(cp|mv|install|touch|ln)[[:space:]][^|;&]*${P}" \
+  || rx "dd[^|;&]*of=${P}"
+}
+
+# ARM 1, UNCONDITIONAL. The saved copies of the person's instructions are written only by the
+# session-start hook. Text the person never confirmed must not reach a subagent as their
+# instructions, so no profile, no override and no unreachable kernel lifts this.
+DATA_DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/brabeus}"
+COPIES="${DATA_DIR%/}/instructions/"
+COPIES_REASON='The saved instructions are written only by the plugin'"'"'s session-start hook, so text the person never confirmed cannot reach a subagent as their instructions. Change an instruction through the interview.'
+case "$tool" in
+Write|Edit|NotebookEdit)
+  fp=$(norm_path)
+  case "$fp" in
+    "$COPIES"*) deny "$COPIES_REASON" ;;
+  esac
+  ;;
+Bash)
+  cmd=$(printf '%s' "$payload" | jq -r '.tool_input.command // empty' 2>/dev/null)
+  if [ -n "$cmd" ]; then
+    flatten_cmd "$cmd"
+    esc=$(printf '%s' "$COPIES" | sed 's/[][\.*^$+?(){}|\/]/\\&/g')
+    P="[^ ]*${esc}"
+    case "$COPIES" in
+      "$HOME"/*) P="[^ ]*(${esc}|(~|\\\$HOME|\\\$\\{HOME\\})$(printf '%s' "${COPIES#"$HOME"}" | sed 's/[][\.*^$+?(){}|\/]/\\&/g'))" ;;
+    esac
+    writes_to "$P" && deny "$COPIES_REASON"
+  fi
+  ;;
+esac
+
+# ARM 2, CONDITIONAL SINCE M1. hooks.json is static, so the guard decides here. The
+# session-start hook writes the kernel's profiles to this file; scratch is denied only where a
 # working-memory module is enabled. No file means the kernel was unreachable, and a
 # session must not lose its store and its scratch at once: allow.
 RUNTIME="${XDG_RUNTIME_DIR:-/tmp/brabeus-$(id -u)}/brabeus"
@@ -43,12 +129,6 @@ PROFILES="$RUNTIME/profiles"
 if ! grep -qx 'working-memory' "$PROFILES" 2>/dev/null; then
   exit 0
 fi
-
-deny() {
-  jq -cn --arg r "$1" \
-    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
-  exit 0
-}
 
 REASON='Memory belongs in the shared store, not in this machine'"'"'s scratch directory.
 
@@ -65,16 +145,8 @@ it. Design: docs/personal-context-system-v1.md'
 
 case "$tool" in
 Write|Edit|NotebookEdit)
-  fp=$(printf '%s' "$payload" | jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' 2>/dev/null)
+  fp=$(norm_path)
   [ -z "$fp" ] && exit 0
-  case "$fp" in
-    "~"*) fp="$HOME${fp#\~}" ;;
-    /*)   ;;
-    *)    fp="$PWD/$fp" ;;
-  esac
-  # Collapse . and .. textually: the file need not exist, so realpath is not an option, and a
-  # path check that can be walked around with .. is not a check.
-  fp=$(printf '%s' "$fp" | awk -F/ '{n=0; for(i=1;i<=NF;i++){ if($i=="."||$i==""){continue} if($i==".."){if(n>0)n--; continue} p[++n]=$i } s=""; for(i=1;i<=n;i++) s=s"/"p[i]; print (s==""?"/":s)}')
   case "$fp" in
     "$HOME"/.claude/projects/*/memory/*) deny "$REASON" ;;
   esac
@@ -85,38 +157,11 @@ Bash)
   [ -z "$cmd" ] && exit 0
   case "$cmd" in *MEMORYGUARD_OVERRIDE=*) exit 0 ;; esac
 
-  # NARROWED 2026-09-07. A heredoc BODY is data the command writes, not commands it runs,
-  #    and it is dropped before matching. Measured false positive: writing a plan document that
-  #    QUOTED the scratch path was denied, because flattening makes `[^|;&]*` span the whole
-  #    document, so a `cp` or `sed -i` anywhere matched a path mentioned anywhere later.
-  # The heredoc HEADER survives, so `cat > <memory-path> <<EOF` is still caught — which is
-  #    exactly what the flattening below exists to protect. Proven by three cases in the test.
-  cmd=$(printf '%s\n' "$cmd" | awk '
-    !inh {
-      print
-      if (match($0, /<<-?[ \t]*[\047\042]?[A-Za-z_][A-Za-z0-9_]*[\047\042]?/)) {
-        tag = substr($0, RSTART, RLENGTH)
-        sub(/^<<-?[ \t]*/, "", tag); gsub(/[\047\042]/, "", tag)
-        inh = 1
-      }
-      next
-    }
-    { t = $0; sub(/^[ \t]+/, "", t); sub(/[ \t]+$/, "", t); if (t == tag) inh = 0 }
-  ')
-
-  # One line, so a heredoc body cannot hide the redirect that opened it.
-  flat=$(printf '%s' "$cmd" | tr '\n' ' ')
-  P='[^ ]*\.claude/projects/[^ ]*/memory/'
-  rx() { printf '%s' "$flat" | grep -qE "$1"; }
-
-  # Each pattern names a way of WRITING to that path. Reads are absent on purpose.
-  if rx ">>?[[:space:]]*${P}" \
-  || rx "tee([[:space:]]+-[^[:space:]]+)*[[:space:]]+${P}" \
-  || rx "sed[^|;&]*-i[^|;&]*${P}" \
-  || rx "(cp|mv|install|touch|ln)[[:space:]][^|;&]*${P}" \
-  || rx "dd[^|;&]*of=${P}"; then
-    deny "$REASON"
-  fi
+  # NARROWED 2026-09-07: the heredoc body is dropped before matching (see flatten_cmd).
+  #    Measured false positive: writing a plan document that QUOTED the scratch path was denied,
+  #    because flattening makes `[^|;&]*` span the whole document. Proven by three cases in the test.
+  flatten_cmd "$cmd"
+  writes_to '[^ ]*\.claude/projects/[^ ]*/memory/' && deny "$REASON"
   exit 0
   ;;
 esac

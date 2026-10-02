@@ -12,6 +12,8 @@
 # Usage: .claude/hooks/brabeus-write-guard.test.sh [path-to-guard]
 set -uo pipefail
 GUARD="${1:-$(dirname "${BASH_SOURCE[0]}")/brabeus-write-guard.sh}"
+unset CLAUDE_PLUGIN_DATA
+C="$HOME/.claude/plugins/data/brabeus/instructions"
 M="$HOME/.claude/projects/$(printf '%s' "$PWD" | sed 's|/|-|g')/memory"
 
 # The guard decides per session from the kernel's profiles. The session-start hook
@@ -105,6 +107,28 @@ check deny  "working-memory listed denies again"     Write "$M/some-fact.md"
 printf 'ratified-record\n' > "$XDG_RUNTIME_DIR/brabeus/profiles-s1"
 SID=s1 check allow "own session file (ratified only) allows"  Write "$M/some-fact.md"
 SID=s2 check deny  "another session falls back to shared"     Write "$M/some-fact.md"
+
+# ── the saved instructions are written only by the session-start hook ───────────────────────
+# Unconditional: decided without the profiles file, so it holds where no working-memory module
+# is enabled and where the kernel was unreachable.
+printf 'ratified-record\n' > "$PROFILES"
+check deny  "write a saved instructions copy"  Write "$C/s1.json"
+check deny  "edit a saved instructions copy"   Edit  "$C/s1.json"
+check deny  "dot-dot cannot escape the copies" Write "$C/../instructions/s1.json"
+check deny  "cat into a saved copy"            Bash "cat > $C/s1.json"
+check deny  "sed -i a saved copy"              Bash "sed -i 's/a/b/' $C/s1.json"
+check deny  "cp into the copies dir"           Bash "cp x $C/"
+check deny  "tilde form of a copy"             Bash "echo x > ~/.claude/plugins/data/brabeus/instructions/s1.json"
+check deny  "HOME form of a copy"              Bash 'echo x > $HOME/.claude/plugins/data/brabeus/instructions/s1.json'
+check allow "cat a saved copy"                 Bash "cat $C/s1.json"
+check allow "list the copies dir"              Bash "ls $C"
+check allow "a sibling directory"              Write "$HOME/.claude/plugins/data/brabeus/other/s1.json"
+CLAUDE_PLUGIN_DATA=/srv/pd check deny  "CLAUDE_PLUGIN_DATA moves the copies (Write)" Write "/srv/pd/instructions/s1.json"
+CLAUDE_PLUGIN_DATA=/srv/pd check deny  "CLAUDE_PLUGIN_DATA moves the copies (Bash)"  Bash "cp x /srv/pd/instructions/"
+CLAUDE_PLUGIN_DATA=/srv/pd check allow "the default path is then not a copy"        Write "$C/s1.json"
+rm -f "$PROFILES"
+check deny  "no profiles file still denies a copy" Write "$C/s1.json"
+printf 'working-memory\n' > "$PROFILES"
 
 echo
 echo "$((pass+fail)) cases · $pass ok · $fail failed"
