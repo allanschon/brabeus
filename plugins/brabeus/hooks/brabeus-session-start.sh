@@ -143,7 +143,7 @@ else
 fi
 
 read -r -d '' ROUTING <<CTX || true
-Durable facts go to the brabeus MCP server's \`write\` tool (module, kind, scope, path), never to a file under ~/.claude/projects/*/memory/. $SCOPE_KEYS \`context\` is the block above, and its first line is what the person's record is asking. Unless it says nothing is due, raise that question with the person once, briefly: early in your first reply, or at the first natural break if they opened with a task. Do not raise it again this session once they have answered it, put it off or passed over it. An answer to that first line given outside \`/interview\` is recorded with \`review\`, whose \`question\` is the first line's question exactly as the block gives it, with nothing added; this rule is for the first line only, and \`/interview\` sets its own for drafts. \`/interview\` works through the rest of the agenda, confirming with \`review\` and recording a manual claim's answer with \`claim_result\`. If the server is unreachable, queue a frontmattered file in ~/.claude/memory-outbox/ and the next session drains it.
+Durable facts go to the brabeus MCP server's \`write\` tool (module, kind, scope, path), never to a file under ~/.claude/projects/*/memory/. $SCOPE_KEYS \`context\` is the block above, and its first line is what the person's record is asking. Unless it says nothing is due, raise that question with the person once, briefly: early in your first reply, or at the first natural break if they opened with a task. Do not raise it again this session once they have answered it, put it off or passed over it. An answer to that first line given outside \`/interview\` is recorded with \`review\`, whose \`question\` is the first line's question exactly as the block gives it, with nothing added; a first line that names a module and no record (the budget item) is answered in conversation, or worked through in \`/interview\`, and is not recorded with \`review\`; this rule is for the first line only, and \`/interview\` sets its own for drafts. \`/interview\` works through the rest of the agenda, confirming with \`review\` and recording a manual claim's answer with \`claim_result\`. If the server is unreachable, queue a frontmattered file in ~/.claude/memory-outbox/ and the next session drains it.
 CTX
 
 # 4. the person's instructions (spec §4.2, §10): fetched after the drain, so a
@@ -155,10 +155,10 @@ SCOPE="machine/$MACHINE"; [ -n "$PROJECT" ] && SCOPE="$SCOPE project/$PROJECT"
 INSTR_URL="${BRABEUS_URL:-}/instructions"; [ -n "$PROJECT" ] && INSTR_URL="${INSTR_URL}?project=$PROJECT"
 if [ -n "$sid" ]; then
   if [ -n "$block" ] && json=$(curl -sf --max-time 5 ${auth[@]+"${auth[@]}"} "$INSTR_URL" 2>/dev/null); then
-    printf '%s' "$json" | python3 "$INSTR_PY" save "$DATA" "$sid" "$SCOPE" 2>/dev/null \
-      || python3 "$INSTR_PY" fallback "$DATA" "$sid" "$SCOPE" >/dev/null 2>&1 || true
+    printf '%s' "$json" | python3 "$INSTR_PY" save "$DATA" "$sid" "$SCOPE" "${BRABEUS_URL:-}" 2>/dev/null \
+      || python3 "$INSTR_PY" fallback "$DATA" "$sid" "$SCOPE" "${BRABEUS_URL:-}" >/dev/null 2>&1 || true
   else
-    python3 "$INSTR_PY" fallback "$DATA" "$sid" "$SCOPE" >/dev/null 2>&1 || true
+    python3 "$INSTR_PY" fallback "$DATA" "$sid" "$SCOPE" "${BRABEUS_URL:-}" >/dev/null 2>&1 || true
   fi
 fi
 

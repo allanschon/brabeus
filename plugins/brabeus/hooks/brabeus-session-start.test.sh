@@ -76,6 +76,12 @@ check "the saved copy exists, mode 600"     '[ "$(stat -c %a "$DATA/s1.json")" =
 check "the saved copy is scoped and whole"  '[ "$(jq -r .records[0].text "$DATA/s1.json")" = "Rule A." ] && [ "$(jq -r .scope "$DATA/s1.json")" != null ]'
 check "/instructions was requested"         'grep -q "^/instructions$" "$REQLOG"'
 
+# A fallback uses only copies made from the same kernel. The stub's own copy does not
+# qualify for an unreachable URL, so first no copy matches, then one made from that URL does.
+out=$(cd "$WORKDIR" && printf '{"session_id":"s1b0"}' | BRABEUS_URL="http://127.0.0.1:1" bash "$HOOK")
+ctx=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')
+check "offline: a copy from another kernel does not stand in" '! printf "%s" "$ctx" | grep -q "Rule A\."'
+jq '.kernel = "http://127.0.0.1:1"' "$DATA/s1.json" > "$DATA/s1a.json"
 out=$(cd "$WORKDIR" && printf '{"session_id":"s1b"}' | BRABEUS_URL="http://127.0.0.1:1" bash "$HOOK")
 ctx=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')
 check "offline: the newest saved copy stands in, labelled" 'printf "%s" "$ctx" | grep -q "Instructions from the saved copy of" && printf "%s" "$ctx" | grep -q "Rule A\."'

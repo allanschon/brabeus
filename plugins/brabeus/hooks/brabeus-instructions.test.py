@@ -9,6 +9,7 @@ spec = importlib.util.spec_from_file_location(
 instr = importlib.util.module_from_spec(spec); spec.loader.exec_module(instr)
 
 DAY = 86400
+K = "http://kernel-a"
 X = "machine/box project/o--r"
 Y = "machine/box"
 
@@ -32,8 +33,8 @@ class Base(unittest.TestCase):
         with mock.patch("sys.stdin", io.StringIO(stdin)), redirect_stdout(out):
             code = instr.main(["x", *args])
         return code, out.getvalue()
-    def save(self, sid, scope, records, opening="OPEN"):
-        self.assertEqual(self.run_cmd("save", self.d, sid, scope, stdin=kernel(records, opening))[0], 0)
+    def save(self, sid, scope, records, opening="OPEN", kernel_url=K):
+        self.assertEqual(self.run_cmd("save", self.d, sid, scope, kernel_url, stdin=kernel(records, opening))[0], 0)
     def doc(self, sid):
         with open(os.path.join(self.d, sid + ".json")) as f:
             return json.load(f)
@@ -49,8 +50,8 @@ class Save(Base):
         self.assertEqual(stat.S_IMODE(os.stat(p).st_mode), 0o600)
         self.assertEqual(stat.S_IMODE(os.stat(self.d).st_mode), 0o700)
         doc = self.doc("s1")
-        self.assertEqual(set(doc), {"fetched", "scope", "opening", "records", "omitted"})
-        self.assertEqual((doc["scope"], doc["opening"], doc["omitted"]), (X, "OPEN", []))
+        self.assertEqual(set(doc), {"fetched", "scope", "kernel", "opening", "records", "omitted"})
+        self.assertEqual((doc["scope"], doc["kernel"], doc["opening"], doc["omitted"]), (X, K, "OPEN", []))
         self.assertRegex(doc["fetched"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
         self.save("s1", X, [rec(1)], opening="NEW")
         self.assertEqual(self.doc("s1")["opening"], "NEW")
@@ -67,7 +68,7 @@ class SaveRefusals(Base):
     def test_non_object_or_bad_records_write_nothing(self):
         for body in ("not json", "[1]", '"x"', '{"opening":"o","records":"x"}', ""):
             with mock.patch("sys.stderr", io.StringIO()):
-                self.assertEqual(self.run_cmd("save", self.d, "s1", X, stdin=body)[0], 1, body)
+                self.assertEqual(self.run_cmd("save", self.d, "s1", X, K, stdin=body)[0], 1, body)
             self.assertFalse(os.path.exists(os.path.join(self.d, "s1.json")))
 
 
@@ -76,7 +77,7 @@ class Fallback(Base):
         self.save("old", X, [rec(0)], "OLD"); self.age("old", 3)
         self.save("new", X, [rec(1)], "NEW"); self.age("new", 1)
         self.save("other", Y, [rec(2)], "OTHER")
-        code, out = self.run_cmd("fallback", self.d, "sid", X)
+        code, out = self.run_cmd("fallback", self.d, "sid", X, K)
         self.assertEqual(code, 0)
         self.assertEqual(out.strip(), self.doc("new")["fetched"][:10])
         doc = self.doc("sid")
@@ -91,14 +92,29 @@ class Fallback(Base):
             with open(os.path.join(self.d, sid + ".json"), "w") as fh:
                 json.dump(doc, fh)
         self.age("B", 2)
-        self.run_cmd("text", self.d, "A", "80")  # drops a record, rewrites A just now
+        self.run_cmd("text", self.d, "A", "80", "main")  # drops a record, rewrites A just now
         self.assertNotEqual(self.doc("A")["omitted"], [])
-        self.assertEqual(self.run_cmd("fallback", self.d, "sid", X)[1].strip(), "2026-01-03")
+        self.assertEqual(self.run_cmd("fallback", self.d, "sid", X, K)[1].strip(), "2026-01-03")
         self.assertEqual(self.doc("sid")["opening"], "B")
+
+    def test_only_copies_from_the_same_kernel_count(self):
+        self.save("a", X, [rec(0)], "A", kernel_url="http://kernel-a"); self.age("a", 3)
+        self.save("b", X, [rec(1)], "B", kernel_url="http://kernel-b")
+        code, _ = self.run_cmd("fallback", self.d, "sid", X, "http://kernel-a")
+        self.assertEqual((code, self.doc("sid")["opening"]), (0, "A"))
+        self.assertEqual(self.run_cmd("fallback", self.d, "sid2", X, "http://kernel-c"), (1, ""))
+
+    def test_a_copy_without_a_kernel_never_matches(self):
+        self.save("old", X, [rec(0)])
+        doc = self.doc("old"); del doc["kernel"]
+        with open(os.path.join(self.d, "old.json"), "w") as fh:
+            json.dump(doc, fh)
+        self.assertEqual(self.run_cmd("fallback", self.d, "sid", X, K), (1, ""))
+        self.assertEqual(self.run_cmd("fallback", self.d, "sid", X, ""), (1, ""))
 
     def test_none_exits_1_silently(self):
         self.save("other", Y, [rec(0)])
-        self.assertEqual(self.run_cmd("fallback", self.d, "sid", X), (1, ""))
+        self.assertEqual(self.run_cmd("fallback", self.d, "sid", X, K), (1, ""))
         self.assertFalse(os.path.exists(os.path.join(self.d, "sid.json")))
 
 
@@ -120,7 +136,7 @@ class Text(Base):
 
     def test_whole_records_and_closing_line(self):
         self.save("s1", X, [rec(0, 4000), rec(1, 4000), rec(2, 4000)])
-        code, out = self.run_cmd("text", self.d, "s1", "9800")
+        code, out = self.run_cmd("text", self.d, "s1", "9800", "main")
         out = out.rstrip("\n")
         self.assertLessEqual(len(out), 9800)
         self.assertIn("a" * 4000, out); self.assertIn("b" * 4000, out)
@@ -128,6 +144,13 @@ class Text(Base):
         self.assertTrue(out.endswith("\n\nNot delivered, over the hook's limit: identity/preference/r2.md."))
         self.assertEqual(self.doc("s1")["omitted"], ["identity/preference/r2.md"])
         self.assertEqual(stat.S_IMODE(os.stat(os.path.join(self.d, "s1.json")).st_mode), 0o600)
+
+    def test_only_the_main_form_writes_omitted(self):
+        self.save("s1", X, [rec(0, 2500), rec(1, 2500), rec(2, 2500)])
+        self.run_cmd("text", self.d, "s1", "6300", "main")
+        self.assertEqual(self.doc("s1")["omitted"], ["identity/preference/r2.md"])
+        self.run_cmd("text", self.d, "s1", "9800")
+        self.assertEqual(self.doc("s1")["omitted"], ["identity/preference/r2.md"])
 
     def test_everything_fits(self):
         self.save("s1", X, [rec(0), rec(1)])
@@ -148,7 +171,7 @@ class Text(Base):
 
     def test_same_day_fallback_is_labelled_and_counts_toward_cap(self):
         self.save("old", X, [rec(0)])
-        self.run_cmd("fallback", self.d, "sid", X)
+        self.run_cmd("fallback", self.d, "sid", X, K)
         day = self.doc("sid")["fetched"][:10]
         label = "Instructions from the saved copy of %s; the kernel could not be reached." % day
         out = self.run_cmd("text", self.d, "sid", "9800")[1]

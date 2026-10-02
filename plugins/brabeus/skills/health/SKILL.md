@@ -11,8 +11,8 @@ unreliable — it was blind to a sleeping laptop and reported "could not reach i
 as a failure, so it was red most nights for a boring reason.
 
 Run all eight checks and give one verdict. Six of them look for failures that nothing
-else would show — a module over its byte budget (check 0), the standing instructions over
-their budget (check 0) or not reaching subagents (check 7), an outbox write the kernel
+else would show — a module or the standing instructions over their byte budget (check 0),
+instructions not reaching subagents (check 7), an outbox write the kernel
 rejected (check 3), the claim schedule not running (check 4) and an adapter that cannot
 answer (check 5) — because each one leaves the record quietly wrong rather than visibly
 broken.
@@ -31,15 +31,15 @@ share of the block is one line saying so, and every session is missing what it
 would have said. Report it by module name; it is a template or budget problem,
 not a data problem.
 
+If the first line is `agenda: nothing due` and you
+know a record is old, that is worth saying: the agenda is computed from what
+this machine may see.
+
 The same output has `instructions`, one entry per module that delivers the person's
 standing instructions, each with `bytes` and `budget`. A module whose `bytes` exceed its
 `budget` is a fault: name it with both numbers ("identity: 5120 of 4096 bytes"). Every session
 and subagent is being handed more than the module agreed to, and the interview's `budget`
 agenda item is how the person trims it.
-
-If the first line is `agenda: nothing due` and you
-know a record is old, that is worth saying: the agenda is computed from what
-this machine may see.
 
 ## 1. Is the guard actually refusing?
 
@@ -143,19 +143,22 @@ delete or rewrite anything from this check.
 
 ## 7. Are the instructions reaching subagents?
 
-Each session saves the instructions it delivered, and a subagent reads that copy. Find the
-newest file:
+Each session saves the instructions it delivered, and a subagent reads that copy. Read this
+session's own:
 
 ```bash
-ls -t "${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/brabeus}/instructions/"*.json 2>/dev/null | head -1
+f=${CLAUDE_PLUGIN_DATA:+$CLAUDE_PLUGIN_DATA/instructions/$CLAUDE_CODE_SESSION_ID.json}
+[ -n "$f" ] || f=$(ls ~/.claude/plugins/data/*/instructions/"$CLAUDE_CODE_SESSION_ID".json 2>/dev/null | head -1)
+cat "$f" 2>/dev/null
 ```
 
-Read it. A non-empty `omitted` is a fault: it lists instruction records that were over what
-one hook may inject, so they reach no session or subagent. Name the paths in it. No file at
-all, while the kernel answers (check 0), is also a fault: the session-start hook is not saving
-copies, and a subagent starts without the person's instructions. A `fallback` in the file only
-means the copy came from the last saved fetch because the kernel was unreachable then; say so,
-and do not count it as a fault.
+The harness gives hooks a data directory of their own, `~/.claude/plugins/data/<plugin>-<marketplace>`,
+and the Bash tool does not see `CLAUDE_PLUGIN_DATA`, so the glob finds the copy there. No copy for
+this session, while the kernel answers (check 0), is a fault: the session-start hook is not saving
+copies, and a subagent starts without the person's instructions. A non-empty `omitted` is a fault:
+it lists instruction records that were over what one hook may inject, so they reach no session or
+subagent. Name the paths in it. `fallback: true` only means the copy came from the last saved fetch
+because the kernel was unreachable then; say so, and do not count it as a fault.
 
 ## Reporting
 

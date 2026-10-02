@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """The session's saved copy of the person's standing instructions.
 
-  save DIR SID SCOPE < kernel-json   write DIR/SID.json from the kernel's /instructions reply
-  fallback DIR SID SCOPE             copy the newest saved copy for SCOPE to DIR/SID.json
+  save DIR SID SCOPE KERNEL < json   write DIR/SID.json from the kernel's /instructions reply
+  fallback DIR SID SCOPE KERNEL      copy the newest saved copy for SCOPE made from KERNEL
+                                     to DIR/SID.json
   text DIR SID CAP [main]            print what to inject, within CAP characters;
-                                     with `main`, say nothing when there is no usable copy
+                                     with `main`, say nothing when there is no usable copy,
+                                     and record in the copy what was cut (`omitted`)
 
 WHY A COPY, AND WHY PER SESSION. A subagent starts without the session-start
 text, so it is given the instructions from this copy instead of asking the
@@ -14,7 +16,9 @@ among them), so each session has its own file, DIR/<session_id>.json, and a
 subagent reads only its own session's. SCOPE ("machine/<host>" plus
 " project/<owner>--<repo>" when the cwd names one) lets a session that starts
 offline reuse the newest copy made for the same machine and project; that
-copy is marked "fallback" so the text says where it came from.
+copy is marked "fallback" so the text says where it came from. A copy also
+records the kernel URL it came from, and a fallback uses only copies from the
+same kernel: a throwaway kernel's copies must never stand in for a real one's.
 
 WHY WHOLE RECORDS. The harness replaces a hook's string over 10,000 characters
 with a path to a file and does not ask the model to read it, so an overlong
@@ -90,7 +94,7 @@ def prune(d, now=None):
                 pass
 
 
-def cmd_save(d, sid, scope):
+def cmd_save(d, sid, scope, kernel_url):
     try:
         kernel = json.load(sys.stdin)
     except ValueError:
@@ -99,18 +103,18 @@ def cmd_save(d, sid, scope):
         sys.stderr.write("save: the reply is not an instructions object\n")
         return 1
     fetched = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    write_copy(d, sid, {"fetched": fetched, "scope": scope,
+    write_copy(d, sid, {"fetched": fetched, "scope": scope, "kernel": kernel_url,
                         "opening": kernel.get("opening", ""),
                         "records": kernel.get("records") or [], "omitted": []})
     prune(d)
     return 0
 
 
-def cmd_fallback(d, sid, scope):
+def cmd_fallback(d, sid, scope, kernel_url):
     best = None
     for p in copies(d):
         doc = load(p)
-        if doc and doc.get("scope") == scope:
+        if doc and doc.get("scope") == scope and doc.get("kernel") == kernel_url:
             m = freshness(doc, p)
             if best is None or m > best[0]:
                 best = (m, doc)
@@ -155,7 +159,9 @@ def cmd_text(d, sid, cap, who="subagent"):
             print(UNAVAILABLE)
         return 0
     out, dropped = render(doc, int(cap))
-    if dropped != (doc.get("omitted") or []):
+    # Only the main session's text records what was cut: its cap is the smaller,
+    # and a subagent's wider cap must not erase that record.
+    if who == "main" and dropped != (doc.get("omitted") or []):
         write_copy(d, sid, dict(doc, omitted=dropped))
     if out:
         print(out)
@@ -167,9 +173,9 @@ def main(argv):
         sys.stderr.write(__doc__)
         return 2
     cmd, args = argv[1], argv[2:]
-    if len(args) not in ((3, 4) if cmd == "text" else (3,)) or (len(args) == 4 and args[3] != "main") or not args[1] or os.path.basename(args[1]) != args[1] or args[1].startswith("."):
+    if len(args) not in ((3, 4) if cmd == "text" else (4,)) or (cmd == "text" and len(args) == 4 and args[3] != "main") or not args[1] or os.path.basename(args[1]) != args[1] or args[1].startswith("."):
         sys.stderr.write("usage: brabeus-instructions.py %s DIR SID %s\n"
-                         % (cmd, "CAP [main]" if cmd == "text" else "SCOPE"))
+                         % (cmd, "CAP [main]" if cmd == "text" else "SCOPE KERNEL"))
         return 2
     return {"save": cmd_save, "fallback": cmd_fallback, "text": cmd_text}[cmd](*args)
 

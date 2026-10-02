@@ -97,7 +97,7 @@ writes_to() {
 # instructions, so no profile, no override and no unreachable kernel lifts this.
 DATA_DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/brabeus}"
 COPIES="${DATA_DIR%/}/instructions/"
-COPIES_REASON='The saved instructions are written only by the plugin'"'"'s session-start hook, so text the person never confirmed cannot reach a subagent as their instructions. Change an instruction through the interview.'
+COPIES_REASON='The saved instructions are written only by the plugin'"'"'s session-start hook, from what the person confirmed. Change an instruction through the interview.'
 case "$tool" in
 Write|Edit|NotebookEdit)
   fp=$(norm_path)

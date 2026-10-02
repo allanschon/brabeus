@@ -133,13 +133,14 @@ are 5120 of 4096 bytes. Which can be merged or retired?" A `later` on it is not 
 review's commit, under `Delivered:`.
 
 The plugin's `SessionStart` hook fetches the instructions after it drains the outbox and puts
-them in the session's context after the block. It saves them as that session's copy at
-`${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/brabeus}/instructions/<session_id>.json`, mode
-600. The `SubagentStart` hook gives every subagent that session's copy, with no network call; a
-subagent whose session has no copy is told the instructions are unavailable. If the kernel is
-unreachable at start, the newest copy for the same machine and project stands in, labelled with
-its date and saved as the session's own. Copies older than 30 days are deleted, except the newest
-for each machine and project.
+them in the session's context after the block. It saves them as that session's copy in the
+plugin's data directory, which the harness sets for hooks:
+`~/.claude/plugins/data/<plugin>-<marketplace>/instructions/<session id>.json`, mode 600. The
+`SubagentStart` hook gives every subagent that session's copy, with no network call; a subagent
+whose session has no copy is told the instructions are unavailable. If the kernel is unreachable
+at start, the newest copy for the same machine and project, made from the same kernel, stands in,
+labelled with its date and saved as the session's own. Copies older than 30 days are deleted,
+except the newest for each machine and project.
 
 The harness replaces a hook's text of more than 10,000 characters with a path to a file the model
 is not asked to read, so the plugin keeps each injection under 9,800 characters. Past that it
