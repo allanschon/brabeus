@@ -35,6 +35,10 @@ class H(BaseHTTPRequestHandler):
             if self.headers.get("Authorization") != "Bearer " + "t" * 12:
                 self.send_response(401); self.end_headers(); return
             body = b"agenda: [identity/value family] Still one of the things you weigh decisions against?\nidentity:\n- value: family first\n"
+        elif base == "/instructions":
+            if self.headers.get("Authorization") != "Bearer " + "t" * 12:
+                self.send_response(401); self.end_headers(); return
+            body = b'{"opening":"OPEN","records":[{"module":"identity","path":"identity/preference/a.md","text":"Rule A."}],"sizes":[]}'
         else:
             self.send_response(404); self.end_headers(); return
         self.send_response(200); self.send_header("Content-Type", "text/plain; charset=utf-8"); self.end_headers(); self.wfile.write(body)
@@ -49,6 +53,7 @@ check() { if eval "$2"; then pass=$((pass+1)); printf 'ok   %s\n' "$1"; else fai
 # ── reachable kernel, no project (cwd is not a git repository) ─────────────────────────────────
 out=$(cd "$WORKDIR" && printf '{"session_id":"s1","hook_event_name":"SessionStart"}' | BRABEUS_URL="http://127.0.0.1:$port" BRABEUS_TOKEN="$(printf 't%.0s' $(seq 12))" bash "$HOOK")
 ctx=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')
+ctx0="$ctx"
 check "emits valid SessionStart JSON"         '[ "$(printf "%s" "$out" | jq -r .hookSpecificOutput.hookEventName)" = SessionStart ]'
 check "the block is the first context"       '[ "$(printf "%s" "$ctx" | head -1)" = "agenda: [identity/value family] Still one of the things you weigh decisions against?" ]'
 check "the routing reminder follows"         'printf "%s" "$ctx" | grep -q "brabeus.*write"'
@@ -59,6 +64,25 @@ check "profiles read up to claims=, ignoring errors= after it" '[ "$(cat "$PROFI
 check "per-session profiles file written"    '[ "$(cat "$PROFILES-s1")" = "$(cat "$PROFILES")" ]'
 check "no project outside a git repository"  'printf "%s" "$ctx" | grep -q "cwd names no project"'
 check "no project query sent to /context"    '! tail -1 "$REQLOG" | grep -q "project="'
+
+# ── the person's instructions ──────────────────────────────────────────────────────────────────
+DATA="$HOME/.claude/plugins/data/brabeus/instructions"
+check "the instructions follow the block's first line" '[ "$(printf "%s" "$ctx0" | grep -n "Rule A\." | cut -d: -f1)" -gt 1 ]'
+check "the instructions come before the routing text" '[ "$(printf "%s" "$ctx0" | grep -n "Rule A\." | cut -d: -f1)" -lt "$(printf "%s" "$ctx0" | grep -n "Durable facts" | cut -d: -f1)" ]'
+check "the saved copy exists, mode 600"     '[ "$(stat -c %a "$DATA/s1.json")" = 600 ]'
+check "the saved copy is scoped and whole"  '[ "$(jq -r .records[0].text "$DATA/s1.json")" = "Rule A." ] && [ "$(jq -r .scope "$DATA/s1.json")" != null ]'
+check "/instructions was requested"         'grep -q "^/instructions$" "$REQLOG"'
+
+out=$(cd "$WORKDIR" && printf '{"session_id":"s1b"}' | BRABEUS_URL="http://127.0.0.1:1" bash "$HOOK")
+ctx=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')
+check "offline: the newest saved copy stands in, labelled" 'printf "%s" "$ctx" | grep -q "Instructions from the saved copy of" && printf "%s" "$ctx" | grep -q "Rule A\."'
+check "offline: the session gets its own copy" '[ -f "$DATA/s1b.json" ] && [ "$(jq -r .fallback "$DATA/s1b.json")" = true ]'
+
+SAVED_HOME="$HOME"; export HOME="$(mktemp -d)"
+out=$(cd "$WORKDIR" && printf '{"session_id":"s1c"}' | BRABEUS_URL="http://127.0.0.1:1" bash "$HOOK")
+ctx=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')
+check "offline, no copy: no instructions, no unavailable line" '! printf "%s" "$ctx" | grep -q "Rule A\." && ! printf "%s" "$ctx" | grep -q "unavailable to this agent"'
+rm -rf "$HOME"; export HOME="$SAVED_HOME"
 
 # ── the project key: cwd is a git repository with an ssh origin ────────────────────────────────
 REPO="$(mktemp -d)"
