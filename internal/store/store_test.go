@@ -111,8 +111,8 @@ func testModulesWith(t *testing.T, enabled ...string) *module.Set {
 	  "summary":"summary.md.tmpl"}`)
 	write("identity", `{"name":"identity","version":1,"profile":"ratified-record","priority":5,"budget_bytes":400,
 	  "kinds":{"value":{"fields":["statement"],"freshness_days":365,"interview":"Still one of the things you weigh decisions against?","first":"What do you weigh decisions against?"},
-	           "preference":{"fields":["statement"],"freshness_days":120}},
-	  "onboarding":["value"],"summary":"summary.md.tmpl"}`)
+	           "preference":{"fields":["statement"],"optional":["source"],"instructions":true,"freshness_days":120}},
+	  "instructions_budget_bytes":4096,"onboarding":["value"],"summary":"summary.md.tmpl"}`)
 	set, err := module.Load(dir, enabled)
 	if err != nil {
 		t.Fatal(err)

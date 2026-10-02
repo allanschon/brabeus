@@ -316,3 +316,10 @@ func TestKindOrdersReviewedFirstAndFirstCaps(t *testing.T) {
 		t.Errorf("first 9 = %d", n)
 	}
 }
+
+func TestAgendaLineNamesAModuleOnlyItem(t *testing.T) {
+	line, _ := AgendaLine([]agenda.Item{{Module: "identity", Reason: agenda.Budget, Question: "Q?"}})
+	if line != "agenda: [identity] Q?" {
+		t.Errorf("line = %q", line)
+	}
+}

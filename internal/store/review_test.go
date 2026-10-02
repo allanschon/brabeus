@@ -432,3 +432,42 @@ func TestLessByReviewOrdersConfirmedFirstThenMostRecentlyReviewedThenUnreviewedB
 		t.Error("an older draft must not sort before a more recently updated one")
 	}
 }
+
+func TestReviewOfAnInstructionRecordsTheDeliveredText(t *testing.T) {
+	s := newTestStore(t, newTestRemote(t))
+	const rel = "identity/preference/ask.md"
+	if _, err := s.Write(rel, Record{Name: "ask", Description: "ask", Module: "identity", Kind: "preference", Scope: "global",
+		Fields: map[string]string{"statement": "ask"}, Body: "Answer the ask."}, "m"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Review(rel, ReviewInput{Question: "Right?", Verdict: Later, Answer: "Not now."}, "m"); err != nil {
+		t.Fatal(err)
+	}
+	if msg := run(t, s.Dir, "log", "-1", "--format=%B"); strings.Contains(msg, "Delivered:") {
+		t.Errorf("a later approves nothing:\n%s", msg)
+	}
+	if _, err := s.Review(rel, ReviewInput{Question: "Right?", Verdict: Confirmed, Answer: "Yes."}, "m"); err != nil {
+		t.Fatal(err)
+	}
+	if msg := run(t, s.Dir, "log", "-1", "--format=%B"); !strings.Contains(msg, "\n\nDelivered:\nAnswer the ask.") {
+		t.Errorf("a confirmation records the delivered text:\n%s", msg)
+	}
+	if _, err := s.Review(rel, ReviewInput{Question: "Right?", Verdict: Corrected, Answer: "Shorter.", Body: "Answer, then stop."}, "m"); err != nil {
+		t.Fatal(err)
+	}
+	msg := run(t, s.Dir, "log", "-1", "--format=%B")
+	if !strings.Contains(msg, "\n\nDelivered:\nAnswer, then stop.") || strings.Contains(msg, "Answer the ask.") {
+		t.Errorf("a correction records the corrected text:\n%s", msg)
+	}
+	if !strings.Contains(msg, "A: Shorter.\n\nDelivered:\nAnswer, then stop.\n\nReviewed through the kernel") {
+		t.Errorf("the block sits between the answer and the trailer line:\n%s", msg)
+	}
+
+	writeValue(t, s, "identity/value/family.md", "family time")
+	if _, err := s.Review("identity/value/family.md", ReviewInput{Question: "Still?", Verdict: Confirmed, Answer: "Yes."}, "m"); err != nil {
+		t.Fatal(err)
+	}
+	if msg := run(t, s.Dir, "log", "-1", "--format=%B"); strings.Contains(msg, "Delivered:") {
+		t.Errorf("a value is not delivered:\n%s", msg)
+	}
+}

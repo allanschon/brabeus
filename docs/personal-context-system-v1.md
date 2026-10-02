@@ -760,16 +760,17 @@ preferences are set.
 
 Each item carries its reason — `fail`, `behind`, `draft`, `stale`, `onboarding` or `budget` — and
 the question for it: the kind's `draft`, `interview` or `first` prompt (§6). For a record of a kind
-marked `instructions`, the kernel ends the question with the record's body exactly as it will be
-delivered, so the recorded question holds what was approved. A `budget` item concerns only the
-instructions (a block share over its budget is a fault, §10), and its question is the kernel's
-own, which gives their size against their budget. A failed or behind claim's item names what was
-measured — the failure, or for `behind` the count against its expected work, or the days left
-against the `effort` — and then asks the goal's `interview` question, or its `draft`
-question if the goal has never been reviewed, because a draft has no review to measure progress
-from. `no-evidence` and `unchecked` claims are not on the agenda: one is a fault and the other is
-not yet measured (§8.1). A record the person has snoozed stays on the agenda with its snooze count,
-so a "later" is visible rather than silent.
+marked `instructions`, the agenda item carries the record's body beside its question, exactly as it
+will be delivered, so the interviewer shows it; and a review that confirms or corrects such a record
+writes that text into its commit, so the commit holds what was approved. A `budget` item concerns
+only the instructions (a block share over its budget is a fault, §10), and its question is the
+kernel's own, which gives their size against their budget. A failed or behind claim's item names
+what was measured — the failure, or for `behind` the count against its expected work, or the days
+left against the `effort` — and then asks the goal's `interview` question, or its `draft` question
+if the goal has never been reviewed, because a draft has no review to measure progress from.
+`no-evidence` and `unchecked` claims are not on the agenda: one is a fault and the other is not yet
+measured (§8.1). A record the person has snoozed stays on the agenda with its snooze count, so a
+"later" is visible rather than silent.
 
 **The first line of every session** is the top agenda item, rendered by the kernel with its
 question — *"G3, 'ship the guide by October': the claim 'three articles this quarter' is behind:
@@ -1250,7 +1251,7 @@ line of the block, and the subagents doing the work started without them.
 | BH | a `ratified-record` kind may be marked `instructions`; the bodies of its confirmed records are delivered in full to every session and every subagent, beside the block, scope-filtered as the block is, with a budget of their own, `instructions_budget_bytes`, outside the 2 KB cap; `identity` marks `preference` and `register`, with one budget of 4096 bytes, and its summary renders neither, because the instructions carry them all | §1.1, §4.1, §6, §7, §10, §13, §14 |
 | BI | over budget, the instructions are still delivered in full, because cutting them would drop confirmed rules silently from the agents doing the work; the excess is a `budget` item, last on the agenda, after onboarding, because it is housekeeping and must not keep real work waiting, and a fault `/health` reports; it is a check that runs, which asks rather than refuses; a `later` on it is not recorded, because it names a module, not a record, and it returns at the next session with nothing else due | §3.4, §4.1, §4.2, §9, §10, §13, §15 |
 | BJ | the plugin gains a `SubagentStart` hook, which injects the instructions `SessionStart` saved, with no network call; the copy is kept per session and stamped with its time and scope, because sessions in different projects run side by side on one machine; `SessionStart` drains the outbox before it fetches; offline, the most recent copy for the same scope stands in, says how old it is and becomes the session's copy; an empty set injects nothing, and no copy at all tells a subagent the instructions are unavailable; a session's instructions are as of its most recent start; copies older than 30 days are deleted, except the newest per scope; the guard refuses the assistant's writes to them | §4.2, §10, §11 |
-| BK | a kind marked `instructions` declares `source`, and the interviewer's label goes there, never in the body, because the body is what every session receives; the kernel's question for such a record ends with its body exactly as it will be delivered, so the recorded question holds what was approved; labels in preferences confirmed before v1.10 are moved by `corrected` reviews at release | §6, §7, §9, §10 |
+| BK | a kind marked `instructions` declares `source`, and the interviewer's label goes there, never in the body, because the body is what every session receives; the agenda item carries the body beside the question, and the review's commit records the delivered text, because the first line is capped at 256 bytes and could not carry a body; labels in preferences confirmed before v1.10 are moved by `corrected` reviews at release | §6, §7, §9, §10 |
 | BL | §15's question of which preference the block shows is closed by BH: every confirmed preference is delivered, and the block no longer has to choose | §15 |
 | BM | the harness caps one hook's output (10,000 characters in Claude Code), and the plugin applies the cap, because it belongs to the harness: past it, whole records are delivered in order up to the limit, with a line naming those left out and a `/health` fault | §4.2, §10 |
 | BN | the delivered text opens by saying how an agent resolves a conflict between its task and an instruction: the instruction wins on anything that cannot be undone or reaches beyond the working copy, because the task was written by the model and the instruction confirmed by the person; the task wins on anything else, because a rule written for a conversation would otherwise stall a subagent told to act; and either way the agent reports the conflict | §10 |

@@ -591,3 +591,58 @@ func TestTheQuestionNamesWhatWasMeasured(t *testing.T) {
 		t.Errorf("draft follow-up: %+v", items)
 	}
 }
+
+// instructionSet is identity marking preference as instructions, with the
+// budget the test names.
+func instructionSet(budget int) *module.Set {
+	return &module.Set{Modules: []module.Manifest{
+		{Name: "identity", Profile: module.RatifiedRecord, Priority: 5, Onboarding: []string{"value"}, InstructionsBudgetBytes: budget,
+			Kinds: map[string]module.Kind{
+				"value":      {Fields: []string{"statement"}, First: "What do you weigh decisions against?"},
+				"preference": {Fields: []string{"statement"}, Optional: []string{"source"}, Instructions: true, Draft: "Is this right as written?"},
+			}},
+	}}
+}
+
+func TestABudgetItemComesLast(t *testing.T) {
+	now := at("2026-10-01T00:00:00Z")
+	p := rec("identity/preference/p.md", "identity", "preference", nil, "2026-09-30T00:00:00Z", "2026-09-30T00:00:00Z", 0)
+	p.Body = "This rule is longer than ten bytes."
+	items := Compute(instructionSet(10), []store.Stored{p}, nil, now)
+	if len(items) != 2 {
+		t.Fatalf("want the onboarding gap and the budget item, got %+v", items)
+	}
+	last := items[len(items)-1]
+	want := "The identity instructions every session receives are 35 of 10 bytes. Which can be merged or retired?"
+	if last.Reason != Budget || last.Module != "identity" || last.Kind != "" || last.Question != want {
+		t.Errorf("last item = %+v", last)
+	}
+	if items[0].Reason != Onboarding {
+		t.Errorf("onboarding must precede the budget item: %+v", items)
+	}
+	for _, it := range Compute(instructionSet(4096), []store.Stored{p}, nil, now) {
+		if it.Reason == Budget {
+			t.Errorf("under budget must raise no budget item: %+v", it)
+		}
+	}
+}
+
+func TestAnInstructionDraftCarriesItsBody(t *testing.T) {
+	now := at("2026-10-01T00:00:00Z")
+	p := rec("identity/preference/p.md", "identity", "preference", nil, "2026-09-30T00:00:00Z", "", 0)
+	p.Body = "Rule."
+	v := rec("identity/value/v.md", "identity", "value", nil, "2026-09-30T00:00:00Z", "", 0)
+	v.Body = "Family."
+	for _, it := range Compute(instructionSet(4096), []store.Stored{p, v}, nil, now) {
+		switch it.Path {
+		case p.Path:
+			if it.Reason != Draft || it.Body != "Rule." {
+				t.Errorf("preference draft = %+v", it)
+			}
+		case v.Path:
+			if it.Body != "" {
+				t.Errorf("a value is not delivered, so its item carries no body: %+v", it)
+			}
+		}
+	}
+}
