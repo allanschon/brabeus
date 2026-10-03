@@ -1,0 +1,20 @@
+<ol class="goals">
+{{- range .Records}}
+<li class="goal blueprint" id="{{.Name}}">
+  <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+  <header class="goal__head">
+    <span class="goal__id">{{.ID}}</span>
+    <h3 class="goal__title">{{or .Fields.title .Description}}</h3>
+    {{- if .Fields.by}}
+    <p class="goal__deadline"><span>by <time datetime="{{.Fields.by}}">{{.Fields.by}}</time></span>{{with .DaysLeft}}<span class="goal__days">{{.}} days left</span>{{else}}{{if .DaysPast}}<span class="goal__days">{{.DaysPast}} days past</span>{{end}}{{end}}</p>
+    {{- end}}
+  </header>
+  {{- if .Serves}}
+  <p class="goal__serves"><span class="goal__label">Serves</span>{{range .Serves}}{{if .Href}}<a href="{{.Href}}">{{.Name}}</a>{{else}}<span>{{.Name}}</span>{{end}}{{end}}</p>
+  {{- end}}
+  {{template "claims" .}}
+  {{template "revision" .}}
+  {{template "record-meta" .}}
+</li>
+{{- end}}
+</ol>

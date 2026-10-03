@@ -402,3 +402,62 @@ func TestAgendaLineSplitsItsReference(t *testing.T) {
 		t.Errorf("empty agenda = %+v", a)
 	}
 }
+
+// §13: a telos goal shows its claims, with behind apart from fail, and its
+// revision line, through the module's own view template.
+func TestTheTelosGoalTemplateShowsClaimsAndRevision(t *testing.T) {
+	set := shipped(t)
+	r, err := New(set)
+	if err != nil {
+		t.Fatal(err)
+	}
+	man, _ := set.Module("telos")
+	days := 20
+	g := Record{Module: "telos", Kind: "goal", Name: "cull", ID: "G1", Scope: "global", ScopeKind: "global",
+		Fields:   map[string]string{"id": "G1", "title": "Cull photos", "by": "2026-12-31"},
+		DaysLeft: &days,
+		Claims: []Claim{
+			{Goal: "telos/goal/cull.md", ID: "G1", Text: "all reviewed", State: "behind"},
+			{Text: "labelled", State: "fail"}},
+		Revision: "target raised from 5 to 6",
+		Serves:   []Ref{{Name: "sharing", Href: "/view/identity/#sharing"}, {Name: "plainvalue"}}}
+	var buf bytes.Buffer
+	if err := r.Module(&buf, ModulePage{Module: man, Kinds: Kinds(set, "telos", []Record{g}, now)}); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{`<ol class="goals">`, `id="cull"`, "G1", "Cull photos", "2026-12-31", "20 days left",
+		"claim--behind", "claim--fail", "target raised from 5 to 6", `<a href="/view/identity/#sharing">sharing</a>`, "plainvalue"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("goal page lacks %q", want)
+		}
+	}
+	if strings.Contains(out, `href="">`) || strings.Contains(out, "render-failure") {
+		t.Errorf("the shipped template failed or linked nothing:\n%s", out)
+	}
+	if n := strings.Count(out, `id="kind-goal"`); n != 1 {
+		t.Errorf("the template drew its own section: %d", n)
+	}
+}
+
+// The shipped modules lay values, currents and ideals out as cards.
+func TestShippedValuesCurrentsAndIdealsAreCards(t *testing.T) {
+	set := shipped(t)
+	r, err := New(set)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for mod, rec := range map[string]Record{
+		"identity": {Module: "identity", Kind: "value", Name: "v", Fields: map[string]string{"statement": "Keep it simple"}},
+		"telos":    {Module: "telos", Kind: "current", Name: "c", Fields: map[string]string{"dimension": "sleep", "text": "seven hours"}},
+	} {
+		man, _ := set.Module(mod)
+		var buf bytes.Buffer
+		if err := r.Module(&buf, ModulePage{Module: man, Kinds: Kinds(set, mod, []Record{rec}, now)}); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(buf.String(), "layout-cards") {
+			t.Errorf("%s is not laid out as cards", mod)
+		}
+	}
+}
