@@ -265,8 +265,8 @@ which milestone delivers each. None of it knows what a `goal` or a `trap` is.
 | identity | who is calling, from the network layer or a token |
 | **profiles** | the closed set in §1.1; each module's manifest names one and the kernel enforces its bundle — who may write, whether records are rendered or searched, whether `review` is required, the audience default |
 | **modules** | loads module manifests; exposes each module's kinds, interview prompts and summary template, and serves the module set to the plugin through a read-only `modules` tool, which lists to a caller only the modules it may read (§11); refuses a manifest that does not validate |
-| **context** | renders a size-capped session block from the enabled `ratified-record` modules' templates, and beside it the instructions: the body of every confirmed record of a kind its module marks `instructions` (§10) |
-| **claims** | runs the evidence adapters itself, on the deployment's interval, and stores what each measured — pass, fail or no evidence, each with its own timestamp, and a count where the claim counts — through the kernel's claim-result operation; what a result means today (`open`, `behind`, `fail` and the rest) is derived from that and the date whenever it is read (§8.1) |
+| **context** | renders a size-capped session block from the enabled `ratified-record` modules' templates, and beside it the instructions: the text of every confirmed record of a kind its module marks `instructions` (§6, §10) |
+| **claims** | runs the evidence adapters itself, on the deployment's interval, and stores what each measured — pass, fail or no evidence, each with its own timestamp, and a count where the claim counts — through the kernel's claim-result operation; what a result means today (`open`, `behind`, `fail` and the rest) is derived from that and the date whenever it is read (§8.1), and a read-only `claims` tool returns each claim with that state, what was last measured and when the checks last ran |
 | **agenda** | computes what is due — failed claims, claims behind, drafts, stale records, onboarding, instructions over their budget — and renders the top item, with its question, as the first line of the context block (§9) |
 | **review** | a distinct operation carrying the question asked, a verdict and the person's answer in their own words; the only path that moves `reviewed` (§9) |
 | **reflect** | a read-only tool that computes the gap by value — each value, the goals that serve it with their claim states and days since confirmed, and the goals that serve none — for the interview to phrase (§9) |
@@ -282,7 +282,7 @@ inside the plugin and change nothing in the assistant's own configuration (§3.2
 
 | hook | does |
 |---|---|
-| `SessionStart` | always, in this order: resolves the scope keys (machine, project) that the block, the instructions and any `working-memory` module filter on; drains the offline outbox, so a confirmation queued offline is in this session's instructions; fetches the context block and the instructions from the kernel and injects them as one text, the block first, within the harness's cap (§10); and saves the instructions as this session's copy, stamped with when they were fetched and for which scope, in the plugin's own data directory, readable and writable only by the person (§11). When the kernel is unreachable it injects the most recent saved copy for the same scope, says how old it is, and saves that as this session's copy. It runs again when a session is resumed or compacted, so a session's instructions are as of its most recent start. It deletes saved copies more than 30 days old, except the newest for each scope |
+| `SessionStart` | always, in this order: resolves the scope keys (machine, project) that the block, the instructions and any `working-memory` module filter on; drains the offline outbox, so a confirmation queued offline is in this session's instructions; reads the enabled profiles from the kernel's health line and saves them for the `PreToolUse` guard, so the guard's decision matches the kernel's modules; fetches the context block and the instructions from the kernel and injects them as one text, the block first, then the instructions within the harness's cap (§10), then a short routing text; and saves the instructions as this session's copy, stamped with when they were fetched, for which scope and from which kernel, in the plugin's own data directory, readable and writable only by the person (§11). The routing text states the session's scope keys and where durable notes go, and carries §9's rules for the first line — raise it once, and record an answer with `review`, its question exactly as the block gives it — because a rule addressed to the model has to reach the model, and the block's own text is the kernel's. When the kernel does not answer, it injects the most recent saved copy for the same scope from the same kernel, says how old it is, and saves that as this session's copy; a copy from another kernel never stands in, so a throwaway kernel's instructions cannot reach a real session. It runs again when a session is resumed or compacted, so a session's instructions are as of its most recent start. It deletes saved copies more than 30 days old, except the newest for each scope |
 | `SubagentStart` | always: injects this session's saved instructions into every subagent as it starts, so a subagent works by the person's instructions as the main session does; it reads the saved copy and makes no network call. An empty set, as on a deployment where no kind is marked `instructions`, injects nothing; no copy at all injects one line saying the instructions are unavailable, rather than nothing |
 | `PreToolUse` | always: denies the assistant's own writes to the saved instructions, so nothing but `SessionStart` puts text into what subagents receive. When a `working-memory` module is enabled, it also denies writes to the assistant's built-in per-machine memory path, so working notes have one home; on a deployment with no working memory that part does nothing, and the model keeps its built-in scratch |
 
@@ -309,14 +309,23 @@ maintained by the same write. A private git repository is the only persistence, 
 commit and push, in that order, is the only write path. All of that is the server this system is
 built on.
 
-This specification adds four fields:
+The server already composes `name`, `description`, `scope` and `updated`. This specification adds
+seven fields. The first three are said by the caller; the last four are stamps only the kernel
+writes, because each records something the person did, and a field the agenda runs on must not be
+movable by a write the kernel cannot attribute (§9):
 
 | field | meaning |
 |---|---|
 | `module` | which module's schema this file obeys, e.g. `telos` |
 | `kind` | the module-defined kind, e.g. `goal`, `belief`, `account` |
 | `id` | a stable short identifier for kinds that need to be referred to across edits (`G3` stays `G3` when edited or retired) |
-| `reviewed` | the date the person last confirmed the content. Moved only by the `review` operation (§9), never by `write`; distinct from `updated`, which any write bumps |
+| `reviewed` | when the person last confirmed the content, as a full UTC timestamp. Moved only by the `review` operation (§9), never by `write`; distinct from `updated`, which any write bumps |
+| `retired` | when the person said the record no longer applies. Set by a `retired` review, which moves `reviewed` too, because retiring is an answer to a question; a retired record is never rendered or asked about again |
+| `snoozes` | how many times the person has answered `later`, so a question they keep putting off is visible as one (§9) |
+| `snoozed` | when the person last answered `later`, so a `later` defers a `behind` claim as a review does (§9) |
+
+A kind may declare none of these as a field except `id`, so that a kind whose records are referred
+to across edits can require one (§6).
 
 A record in a `ratified-record` module lives at `<module>/<kind>/<slug>.md`. A `working-memory`
 module declares its layout (§6): `kind`, the same rule, or `free`, the store's existing tree, in
@@ -435,13 +444,14 @@ has passed and the record has not been reviewed since; the agenda lists it as `s
 kind's `interview` question. `first` is the question asked when nothing of the kind is on file
 (§9); `timeless` exempts the kind from the freshness lint (§1.1). A `ratified-record` module's
 `onboarding` lists the kinds to ask for, in order, when none of that kind is on file; each named
-kind must carry `first`, because onboarding asks exactly that question. `id` is the one reserved
-record field a kind may also declare, so that a kind whose records are referred to across edits
-can require one (§5).
+kind must carry `first`, because onboarding asks exactly that question. `id` is the one field the
+kernel composes that a kind may also declare (§5).
 
 A `ratified-record` kind may declare `instructions: true`, which makes the confirmed records of
 that kind the person's instructions for how to work with them: the kernel delivers each one's
-body, in full, to every session and every subagent (§10). A module that marks a kind must declare
+text, in full, to every session and every subagent (§10). A record's text is its body, or, when
+the body is empty, the value of its kind's first declared field, because a preference written as
+its `statement` is still what the person confirmed. A module that marks a kind must declare
 `instructions_budget_bytes`, the size its instructions should stay within. The instructions are
 delivered outside the 2 KB block, and their budget is not counted against the block's cap. A
 `working-memory` module may declare neither, because what the model writes for itself is
@@ -760,8 +770,8 @@ preferences are set.
 
 Each item carries its reason — `fail`, `behind`, `draft`, `stale`, `onboarding` or `budget` — and
 the question for it: the kind's `draft`, `interview` or `first` prompt (§6). For a record of a kind
-marked `instructions`, the agenda item carries the record's body beside its question, exactly as it
-will be delivered, so the interviewer shows it; and a review that confirms or corrects such a record
+marked `instructions`, the agenda item carries the record's text beside its question, exactly as it
+will be delivered (§6), so the interviewer shows it; and a review that confirms or corrects such a record
 writes that text into its commit, so the commit holds what was approved. A `budget` item concerns
 only the instructions (a block share over its budget is a fault, §10), and its question is the
 kernel's own, which gives their size against their budget. A failed or behind claim's item names
@@ -825,8 +835,8 @@ rewritten until it is confirmed. What the person volunteers is handled the same 
 anything asked for it. What no enabled module can hold becomes a `memory/thread` naming the module
 it seems to belong in (§7). The interviewer labels what it contributes — an inference, a suggested
 date, a strategy of its own — so that nothing it added reads as the person's word; on a kind marked
-`instructions` the label goes in the record's `source` field, never its body, because the body is
-what every session and subagent receives (§10). It challenges where it should: an entry that belongs
+`instructions` the label goes in the record's `source` field, never in its text, because the text is
+what every session and subagent receives (§6, §10). It challenges where it should: an entry that belongs
 to another kind, a goal nobody could measure, a contradiction with something on file, a statement
 that implies more than it says. Drafts are offered for approval one at a time or together, and each
 approval is a `review` carrying the question that was asked and the person's answer. Nothing is
@@ -879,7 +889,7 @@ fault is reported by `/health`. Nothing is cut without being shown.
 `instructions` (§6), such as `identity/preference`, says how the person wants every session to
 work, and a subagent starts with neither the main session's conversation nor the
 block, so a rule only the block carries is broken by the agent doing the work. The kernel renders,
-beside the block, the body of every confirmed record of such a kind, scope-filtered as the block
+beside the block, the text of every confirmed record of such a kind (§6), scope-filtered as the block
 is, in module priority and then by path, so the text is determined by the confirmed records in
 scope; the plugin injects it into the main session and into every subagent (§4.2). A session's
 instructions are as of its most recent start: one confirmed during a session reaches the sessions
@@ -1260,6 +1270,7 @@ line of the block, and the subagents doing the work started without them.
 | BN | the delivered text opens by saying how an agent resolves a conflict between its task and an instruction: the instruction wins on anything that cannot be undone or reaches beyond the working copy, because the task was written by the model and the instruction confirmed by the person; the task wins on anything else, because a rule written for a conversation would otherwise stall a subagent told to act; and either way the agent reports the conflict | §10 |
 | BO | the instructions are a path the audience rule covers, so a consumer receives only those of modules declared `any`, and `identity/preference` reaches only the person's own sessions; the saved copy is readable and writable only by the person, and written only by the plugin | §11 |
 | BP | §13 gains an acceptance case: a preference confirmed on one machine reaches the next session on another and a subagent it starts, checked by a case in the plugin's eval suite in which the subagent quotes it, and an over-budget set is still delivered in full | §13 |
+| BQ | an instruction's delivered text is its body, or, when the body is empty, its kind's first declared field, because `identity`'s `preference` and `register` declare a `statement`, and a preference written there is still what the person confirmed; the interviewer's label is kept out of that text, wherever it comes from | §4.1, §6, §9, §10 |
 
 ## Sources
 

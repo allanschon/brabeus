@@ -38,7 +38,7 @@ flowchart TB
     person -- "talks to, in sessions;<br/>answers the interview" --> assistant
     person -. "reads the view (M3)<br/>(through the identity layer)" .-> idp
     idp -.-> system
-    assistant -- "MCP: search, read, write, review, context" --> system
+    assistant -- "MCP: search, read, write, review, context;<br/>the block and the instructions at session start" --> system
     consumer -. "MCP: search, read, list only;<br/>never write; audience-filtered" .-> system
     system -- "pull, commit, push" --> githost
     system -. "runs claims against (M2)" .-> tracker
@@ -96,7 +96,7 @@ flowchart TB
     consumer["Read-only consumer"]
 
     person --> cc
-    plugin -- "MCP" --> kernel
+    plugin -- "MCP; /context, /instructions, /healthz" --> kernel
     person -. "browser" .-> idp
     idp -. "/view/, read-only (M3)" .-> kernel
     consumer -. "MCP, read tools only" .-> kernel
@@ -166,7 +166,7 @@ flowchart LR
     end
 
     mcp[/"MCP endpoint<br/>search · read · list · write · delete · review · context ·<br/>modules (M2) · reflect (M2) · claims (M2) · claim_result (M2)"/]
-    health[/"/healthz + the four silent failures"/]
+    health[/"/healthz, and the kernel's four of the six<br/>silent failures /health reports"/]
     instr[/"GET /instructions<br/>the person's instructions, for the plugin's hooks"/]
 
     mcp --> identity --> audience
@@ -226,12 +226,12 @@ sequenceDiagram
     Note over S,T: on a schedule, independent of any session
     S->>T: run each non-manual claim
     T-->>S: evidence, or nothing
-    S->>K: record the result through the claim-result operation, when a claim's state changes
+    S->>K: record the result through the claim-result operation, when a claim's state, detail or count changes
 
     Note over A,K: every session start
-    A->>K: context
-    K->>K: compute agenda: fails, drafts, stale by priority and age, onboarding, with preferences last in each
-    K-->>A: 2 KB block, first line is the top agenda item with its question and, if revised since last reviewed, its revision line
+    A->>K: context, instructions
+    K->>K: compute agenda: fails, behind, drafts, stale by priority and age, deferred behind, onboarding, then budget, with preferences last in each
+    K-->>A: 2 KB block, first line is the top agenda item with its question and, if revised since last reviewed, its revision line, and the instructions beside it
     A-->>P: the assistant raises the line's question once, early, and not again that session
 
     Note over P,K: /interview, or the person picks up the first line
