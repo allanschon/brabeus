@@ -1,7 +1,7 @@
 # The personal context system — C4 diagrams
 
 These diagrams accompany [`personal-context-system-v1.md`](personal-context-system-v1.md) at
-v1.10. They describe the same system as the specification at four levels of detail, and where they
+v1.11. They describe the same system as the specification at four levels of detail, and where they
 disagree, the specification is correct. Components carry the specification's descriptive names.
 
 The diagrams show the whole design, not only what is built. An element tagged with a milestone,
@@ -162,7 +162,7 @@ flowchart LR
         adapters["<b>Adapters (M2)</b><br/><i>tracker · forge · date · manual;<br/>one implementation per backend</i>"]
         agenda["<b>Agenda</b><br/><i>fails by the claim's deadline, then behind, then drafts, then stale<br/>by priority and age, deferred behind, then onboarding; preferences last<br/>in each; then a budget item for instructions over budget; snoozes counted; open and no-evidence excluded</i>"]
         context["<b>Context renderer</b><br/><i>agenda line in reserved space,<br/>then module templates in priority order;<br/>2 KB hard cap; per-module budgets;<br/>overflow refused, never truncated</i>"]
-        view["<b>View (M3)</b><br/><i>the same render as HTML, plus freshness,<br/>claim state, revision lines, snooze counts,<br/>manual fraction; read-only; loopback</i>"]
+        view["<b>View (M3)</b><br/><i>home: the block, instructions, what is due,<br/>what is behind, faults; a page per module<br/>in its declared layout or view template;<br/>GET only, no script; loopback</i>"]
     end
 
     mcp[/"MCP endpoint<br/>search · read · list · write · delete · review · context ·<br/>modules (M2) · reflect (M2) · claims (M2) · claim_result (M2)"/]
@@ -184,6 +184,8 @@ flowchart LR
     agenda --> store
     context --> agenda
     view -.-> context
+    view -.-> agenda
+    view -. "layouts and view templates" .-> modloader
     review --> store
     migrate --> store
     modloader --> health
