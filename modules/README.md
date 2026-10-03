@@ -72,13 +72,13 @@ one, because its records are notes, listed by name and description and never lai
 `view` takes one of two forms, and declaring both is refused.
 
 ```json
-"view": {"layout": "cards", "title": "dimension", "fields": ["text"], "group_by": "dimension", "sort": "dimension"}
+"view": {"layout": "cards", "title": "dimension", "fields": ["text"], "sort": "dimension"}
 "view": {"template": "view/goal.html.tmpl"}
 ```
 
 The first names one of the kernel's layouts, `cards`, `table` or `list`. `title` is the field that
-heads each record, `fields` are the others to show, `group_by` and `sort` name a field. Every field
-a view names must be one the kind declares. The second names a template file inside the module,
+heads each record, `fields` are the others to show, and `sort` names the field the records are
+sorted by. Every field a view names must be one the kind declares. The second names a template file inside the module,
 ending `.html.tmpl`, which renders the whole kind itself.
 
 A kind with no `view` is a `list` titled by its first declared field, showing every declared field,
@@ -100,10 +100,14 @@ The kernel prints the section heading itself, so a template renders the records 
 `Record` carries `Path`, `Module`, `Kind`, `Name`, `Description`, `ID`, `Scope` and `Revision`
 (strings); `Fields`, a map from each declared field to its text; `Body`, the record's markdown
 already rendered to safe HTML; `Snoozes` and `Snoozed`; `Claims`, a goal's claims with their
-measured state; `Serves`, a list of `Name` and `Href`; and four values the kernel works out because
+measured state; `Serves`, a list of `Name` and `Href`; and the values the kernel works out because
 a template cannot: `ScopeKind` (`global`, `machine` or `project`), `Freshness` (`Reviewed`, `Age`,
 `Every`, `Unconfirmed`, `Overdue`, and `Class`, which is `draft`, `unknown`, `due` or empty),
-`DaysLeft` (whole days to a `by` date, nil when there is none or it has passed) and `DaysPast`.
+`DaysLeft` (whole days to a `by` date, nil when there is none or it has passed), `DaysPast`, and
+`DaysText`, the same days as the page says them: `2 days left`, `1 day left`, `due today`, `1 day
+past`, or empty. `Anchor` is the record's id on its page, `r-<kind>-<name>`; give the element
+that holds a record `id="{{.Anchor}}"`, because every link to the record the kernel makes, from
+`Serves`, a claim or the agenda, ends in that fragment.
 
 A template has three functions and no others beyond `html/template`'s own: `first`, which takes a
 count and a record list and returns that many records; `date`, which formats a time as
@@ -174,20 +178,20 @@ not listed here is not promised to stay.
          "view": {"template": "view/goal.html.tmpl"}, ...}
 ```
 
-The template draws each goal as a card. It counts the days to `by` from `.DaysLeft` and
-`.DaysPast`, which the kernel supplies, links each name in `.Serves` to the record it names when one
-is visible, and leaves claims, revision and the footer to the kernel's partials.
+The template draws each goal as a card. It prints the days to `by` from `.DaysText`, which the
+kernel supplies, gives each goal its `.Anchor` as its id, links each name in `.Serves` to the record
+it names when one is visible, and leaves claims, revision and the footer to the kernel's partials.
 
 ```gotemplate
 <ol class="goals">
 {{- range .Records}}
-<li class="goal blueprint" id="{{.Name}}">
+<li class="goal blueprint" id="{{.Anchor}}">
   <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
   <header class="goal__head">
     <span class="goal__id">{{.ID}}</span>
     <h3 class="goal__title">{{or .Fields.title .Description}}</h3>
     {{- if .Fields.by}}
-    <p class="goal__deadline"><span>by <time datetime="{{.Fields.by}}">{{.Fields.by}}</time></span>{{with .DaysLeft}}<span class="goal__days">{{.}} days left</span>{{else}}{{if .DaysPast}}<span class="goal__days">{{.DaysPast}} days past</span>{{end}}{{end}}</p>
+    <p class="goal__deadline"><span>by <time datetime="{{.Fields.by}}">{{.Fields.by}}</time></span>{{with .DaysText}}<span class="goal__days">{{.}}</span>{{end}}</p>
     {{- end}}
   </header>
   {{- if .Serves}}

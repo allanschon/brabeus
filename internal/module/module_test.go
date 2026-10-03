@@ -467,7 +467,8 @@ func TestAViewKeyIsALayoutOrATemplateAndNamesOnlyDeclaredFields(t *testing.T) {
 		{"both", `{"goal": {"fields": ["title"], "view": {"layout": "list", "template": "view/goal.html.tmpl"}}}`, "both a template and a layout"},
 		{"unknown layout", `{"goal": {"fields": ["title"], "view": {"layout": "grid"}}}`, `layout "grid"`},
 		{"undeclared field", `{"goal": {"fields": ["title"], "view": {"layout": "table", "fields": ["owner"]}}}`, `"owner" is not a field of this kind`},
-		{"undeclared group", `{"goal": {"fields": ["title"], "view": {"layout": "list", "group_by": "area"}}}`, `"area" is not a field of this kind`},
+		{"group_by", `{"goal": {"fields": ["title"], "view": {"layout": "list", "group_by": "title"}}}`, "group_by is not supported yet; use sort (spec §6)"},
+		{"group_by with a template", `{"goal": {"fields": ["title"], "view": {"template": "view/goal.html.tmpl", "group_by": "title"}}}`, "group_by is not supported yet"},
 		{"escaping template", `{"goal": {"fields": ["title"], "view": {"template": "../x.html.tmpl"}}}`, "inside the module"},
 		{"unknown view key", `{"goal": {"fields": ["title"], "view": {"layout": "list", "colour": "red"}}}`, "unknown field"},
 	} {

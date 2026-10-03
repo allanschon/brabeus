@@ -18,7 +18,7 @@ import (
 
 // Claim is one claim as the claims tool reports it today (spec §8.1).
 type Claim struct {
-	Goal, GoalHref, ID, Title         string // GoalHref is the goal's anchor on its module's page
+	Goal, GoalHref, ID, Title         string // GoalHref is the goal's anchor on its page, empty when it has none
 	Index                             int
 	Text, State, Measured, Adapter    string
 	Manual, Stale                     bool
@@ -30,6 +30,9 @@ type Claim struct {
 	Progress  *Progress // nil unless the claim has both a count and a target
 	SinceDate string    // YYYY-MM-DD, or empty when Since does not parse
 }
+
+// DaysText is the claim's days left as the page says them.
+func (c Claim) DaysText() string { return daysText(c.DaysLeft, 0) }
 
 // Progress is a claim's count against its target, as integers for a
 // <progress> bar and as grouped figures for its label; Tick marks an
@@ -118,6 +121,54 @@ type Record struct {
 	DaysPast int
 }
 
+// Anchor is the record's id on its page (see the package function).
+func (r Record) Anchor() string { return Anchor(r.Kind, r.Name) }
+
+// DaysText is the days to or since the record's "by" date as the page says
+// them: "2 days left", "1 day left", "due today", "1 day past", or empty
+// when it has none. A template cannot dereference DaysLeft to compare it.
+func (r Record) DaysText() string { return daysText(r.DaysLeft, r.DaysPast) }
+
+func daysText(left *int, past int) string {
+	plural := func(n int, what string) string {
+		if n == 1 {
+			return "1 day " + what
+		}
+		return strconv.Itoa(n) + " days " + what
+	}
+	switch {
+	case left != nil && *left == 0:
+		return "due today"
+	case left != nil:
+		return plural(*left, "left")
+	case past > 0:
+		return plural(past, "past")
+	}
+	return ""
+}
+
+// Anchor is a record's id on the page that lists it, and the fragment of
+// every link to it. It joins the kind and the record's name behind "r-",
+// which no kernel id starts with, so a record cannot take the id of a
+// kernel section, and two kinds on one page sharing a name stay apart.
+func Anchor(kind, name string) string { return "r-" + kind + "-" + name }
+
+// Href is the link to a record: its anchor on the page PageModule names.
+func Href(set *module.Set, r store.Stored) string {
+	return "/view/" + PageModule(set, r) + "/#" + Anchor(r.Kind, r.Name)
+}
+
+// Links maps each record's path to its Href. Claims and agenda items name
+// their record by path, and one with no entry here has no page the caller
+// can open, so it is shown as text.
+func Links(set *module.Set, recs []store.Stored) map[string]string {
+	out := make(map[string]string, len(recs))
+	for _, r := range recs {
+		out[r.Path] = Href(set, r)
+	}
+	return out
+}
+
 // KindPage is one kind's section of a module page.
 type KindPage struct {
 	Module, Kind string
@@ -157,9 +208,9 @@ func scopeKind(sc string) string {
 func BuildRecords(set *module.Set, recs []store.Stored, claims []Claim, md func(string) template.HTML, now time.Time) []Record {
 	sorted := append([]store.Stored{}, recs...)
 	sort.SliceStable(sorted, func(i, j int) bool { return store.LessByReview(sorted[i], sorted[j]) })
-	byName := map[string]string{} // record name -> page href
+	byName := map[string]string{} // record name -> page href, for serves
 	for _, r := range sorted {
-		byName[r.Name] = "/view/" + PageModule(set, r) + "/#" + r.Name
+		byName[r.Name] = Href(set, r)
 	}
 	byGoal := map[string][]Claim{}
 	for _, c := range claims {

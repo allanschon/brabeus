@@ -116,6 +116,9 @@ type Home struct {
 	Behind       []Claim
 	Faults       Faults
 	Now          time.Time
+	// Links maps a record's path to its link (see Links), for the due
+	// items and the agenda line.
+	Links map[string]string
 }
 
 // ModulePage is one module's page: its kinds in their layouts, or, for a
@@ -234,7 +237,7 @@ type agendaLine struct {
 	Question  string
 }
 
-func agendaOf(p block.Part, items []agenda.Item) agendaLine {
+func agendaOf(p block.Part, items []agenda.Item, links map[string]string) agendaLine {
 	line := strings.TrimRight(p.Text, "\n")
 	a := agendaLine{Line: line}
 	rest, ok := strings.CutPrefix(line, "agenda: [")
@@ -247,23 +250,25 @@ func agendaOf(p block.Part, items []agenda.Item) agendaLine {
 	}
 	a.Ref, a.Question = "["+ref+"]", q
 	if top, ok := agenda.Top(items); ok {
-		a.Href = itemHref(top)
+		a.Href = itemHref(top, links)
 	}
 	return a
 }
 
-// itemHref is where an agenda item's record is listed: its anchor on its
-// module's page, or the instructions on the home page for a budget item.
-func itemHref(it agenda.Item) string {
+// itemHref is where an agenda item points: its record's link from links,
+// the instructions on the home page for a budget item, or the module's
+// page for an onboarding item, which names no record. A record with no
+// link has no page the caller can open, so it gets none.
+func itemHref(it agenda.Item, links map[string]string) string {
 	switch {
 	case it.Reason == agenda.Budget:
 		return "#instructions"
+	case it.Path != "":
+		return links[it.Path]
 	case it.Module == "":
 		return ""
-	case it.Kind == "" || it.Name == "":
-		return "/view/" + it.Module + "/"
 	}
-	return "/view/" + it.Module + "/#" + it.Name
+	return "/view/" + it.Module + "/"
 }
 
 // share is one module's part of the block: its first line as the key, and
@@ -313,7 +318,7 @@ type dueItem struct {
 	Href, Label string
 }
 
-func dueOf(it agenda.Item) dueItem {
+func dueOf(it agenda.Item, links map[string]string) dueItem {
 	label := it.Path
 	switch {
 	case it.Module != "" && it.Kind == "" && it.Reason == agenda.Budget:
@@ -328,7 +333,7 @@ func dueOf(it agenda.Item) dueItem {
 			label += " " + it.Name
 		}
 	}
-	return dueItem{Item: it, Href: itemHref(it), Label: label}
+	return dueItem{Item: it, Href: itemHref(it, links), Label: label}
 }
 
 // faultReadings are the faults with the figures their readings show.
@@ -361,7 +366,7 @@ func (r *Renderer) Home(w io.Writer, h Home) error {
 	for _, p := range h.Parts {
 		n += len(p.Text)
 		if p.Module == "" {
-			d.Agenda = agendaOf(p, h.Due)
+			d.Agenda = agendaOf(p, h.Due, h.Links)
 		} else {
 			d.Shares = append(d.Shares, shareOf(p))
 		}
@@ -378,7 +383,7 @@ func (r *Renderer) Home(w io.Writer, h Home) error {
 		d.Instructions = append(d.Instructions, instruction{Kind: kind, HTML: r.Markdown(in.Text)})
 	}
 	for _, it := range h.Due {
-		d.Due = append(d.Due, dueOf(it))
+		d.Due = append(d.Due, dueOf(it, h.Links))
 	}
 	d.Behind = annotate(h.Behind)
 	d.Faults = faultReadings{Faults: h.Faults}

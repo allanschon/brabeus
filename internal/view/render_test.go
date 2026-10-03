@@ -195,7 +195,7 @@ func ip(n int) *int { return &n }
 
 // fullHome exercises every section of the home page.
 func fullHome() Home {
-	behind := Claim{Goal: "telos/goal/g.md", GoalHref: "/view/telos/#g", ID: "G1", Title: "Plant the beds", Text: "all planted",
+	behind := Claim{Goal: "telos/goal/g.md", GoalHref: "/view/telos/#r-goal-g", ID: "G1", Title: "Plant the beds", Text: "all planted",
 		State: "behind", Adapter: "manual", Manual: true, Count: ip(3), Target: ip(1200), Expected: ip(400), DaysLeft: ip(20),
 		Since: "2026-09-28T09:00:00Z"}
 	return Home{
@@ -205,8 +205,9 @@ func fullHome() Home {
 		Sizes:        []instructions.Size{{Module: "identity", Bytes: 5000, Budget: 4096}},
 		Due:          []agenda.Item{{Path: "telos/goal/g.md", Module: "telos", Kind: "goal", ID: "G1", Name: "g", Reason: agenda.Behind, Question: "Still right?"}},
 		Behind:       []Claim{behind},
+		Links:        map[string]string{"telos/goal/g.md": "/view/telos/#r-goal-g"},
 		Faults: Faults{Manual: 1, Total: 3, LastRun: "2026-10-03T08:00:00Z", Interval: "24h",
-			NoEvidence: []Claim{{GoalHref: "/view/telos/#h", ID: "G2", Text: "tasks done", State: "no-evidence", Detail: "check could not run"}},
+			NoEvidence: []Claim{{GoalHref: "/view/telos/#r-goal-h", ID: "G2", Text: "tasks done", State: "no-evidence", Detail: "check could not run"}},
 			Block:      []block.Fault{{Module: "telos", Bytes: 700, Budget: 600}}},
 		Now: time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC),
 	}
@@ -228,8 +229,8 @@ func TestAFullHomeShowsEverySection(t *testing.T) {
 		`<a class="site-nav__link" href="/view/" aria-current="page">Home</a>`,
 		`site-nav__group--notes`, `>Memory</a>`,
 		`Your record as of Saturday, 3 October 2026`,
-		`<a href="/view/telos/#g">[telos/goal G1]</a>`,
-		`reason reason--behind`, `<a class="due__record" href="/view/telos/#g">telos/goal G1</a>`,
+		`<a href="/view/telos/#r-goal-g">[telos/goal G1]</a>`,
+		`reason reason--behind`, `<a class="due__record" href="/view/telos/#r-goal-g">telos/goal G1</a>`,
 		`behind-entry behind-entry--behind`, `G1 · Plant the beds`,
 		`<progress class="bar bar--behind" value="3" max="1200">3 of 1,200</progress>`,
 		`<progress class="bar bar--tick" value="400" max="1200" aria-hidden="true"></progress>`,
@@ -394,11 +395,16 @@ func TestKindsTitlesEachKind(t *testing.T) {
 
 func TestAgendaLineSplitsItsReference(t *testing.T) {
 	items := []agenda.Item{{Path: "telos/goal/g.md", Module: "telos", Kind: "goal", ID: "G1", Name: "g", Reason: agenda.Behind}}
-	a := agendaOf(block.Part{Text: "agenda: [telos/goal G1] Still right?\n"}, items)
-	if a.Ref != "[telos/goal G1]" || a.Href != "/view/telos/#g" || a.Question != "Still right?" {
+	links := map[string]string{"telos/goal/g.md": "/view/telos/#r-goal-g"}
+	a := agendaOf(block.Part{Text: "agenda: [telos/goal G1] Still right?\n"}, items, links)
+	if a.Ref != "[telos/goal G1]" || a.Href != "/view/telos/#r-goal-g" || a.Question != "Still right?" {
 		t.Errorf("agenda = %+v", a)
 	}
-	if a := agendaOf(block.Part{Text: "agenda: nothing due\n"}, nil); a.Ref != "" || a.Line != "agenda: nothing due" {
+	// A record with no visible page is named, never linked.
+	if a := agendaOf(block.Part{Text: "agenda: [telos/goal G1] Still right?\n"}, items, nil); a.Href != "" {
+		t.Errorf("an unlisted record is linked: %+v", a)
+	}
+	if a := agendaOf(block.Part{Text: "agenda: nothing due\n"}, nil, nil); a.Ref != "" || a.Line != "agenda: nothing due" {
 		t.Errorf("empty agenda = %+v", a)
 	}
 }
@@ -426,7 +432,7 @@ func TestTheTelosGoalTemplateShowsClaimsAndRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := buf.String()
-	for _, want := range []string{`<ol class="goals">`, `id="cull"`, "G1", "Cull photos", "2026-12-31", "20 days left",
+	for _, want := range []string{`<ol class="goals">`, `id="r-goal-cull"`, "G1", "Cull photos", "2026-12-31", "20 days left",
 		"claim--behind", "claim--fail", "target raised from 5 to 6", `<a href="/view/identity/#sharing">sharing</a>`, "plainvalue"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("goal page lacks %q", want)
@@ -459,5 +465,100 @@ func TestShippedValuesCurrentsAndIdealsAreCards(t *testing.T) {
 		if !strings.Contains(buf.String(), "layout-cards") {
 			t.Errorf("%s is not laid out as cards", mod)
 		}
+	}
+}
+
+// Spec §10: two kinds on one page may share a record name; each record
+// keeps its own id, and none is a kernel id.
+func TestTwoKindsSharingANameGetDistinctIds(t *testing.T) {
+	set := shipped(t)
+	r, err := New(set)
+	if err != nil {
+		t.Fatal(err)
+	}
+	man, _ := set.Module("telos")
+	recs := BuildRecords(set, []store.Stored{
+		stored("telos/mission/due.md", "telos", "mission", now),
+		stored("telos/problem/due.md", "telos", "problem", now),
+	}, nil, plain, now)
+	var buf bytes.Buffer
+	if err := r.Module(&buf, ModulePage{Module: man, Kinds: Kinds(set, "telos", recs, now)}); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{`id="r-mission-due"`, `id="r-problem-due"`} {
+		if strings.Count(out, want) != 1 {
+			t.Errorf("want one %s:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, `id="due"`) {
+		t.Error("a record took the kernel's due id")
+	}
+}
+
+// A count of days reads as English: one day, today, and past.
+func TestDaysReadAsEnglish(t *testing.T) {
+	for _, c := range []struct {
+		left *int
+		past int
+		want string
+	}{
+		{ip(0), 0, "due today"}, {ip(1), 0, "1 day left"}, {ip(2), 0, "2 days left"},
+		{nil, 1, "1 day past"}, {nil, 2, "2 days past"}, {nil, 0, ""},
+	} {
+		if got := (Record{DaysLeft: c.left, DaysPast: c.past}).DaysText(); got != c.want {
+			t.Errorf("record left %v past %d = %q, want %q", c.left, c.past, got, c.want)
+		}
+		if c.left != nil {
+			if got := (Claim{DaysLeft: c.left}).DaysText(); got != c.want {
+				t.Errorf("claim left %d = %q, want %q", *c.left, got, c.want)
+			}
+		}
+	}
+	set := shipped(t)
+	r, err := New(set)
+	if err != nil {
+		t.Fatal(err)
+	}
+	man, _ := set.Module("telos")
+	for _, c := range []struct {
+		left *int
+		past int
+		want string
+	}{{ip(0), 0, "due today"}, {ip(1), 0, "1 day left"}, {ip(2), 0, "2 days left"}, {nil, 1, "1 day past"}} {
+		g := Record{Module: "telos", Kind: "goal", Name: "g", Fields: map[string]string{"by": "2026-10-03"}, DaysLeft: c.left, DaysPast: c.past}
+		var buf bytes.Buffer
+		if err := r.Module(&buf, ModulePage{Module: man, Kinds: Kinds(set, "telos", []Record{g}, now)}); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(buf.String(), `<span class="goal__days">`+c.want+`</span>`) {
+			t.Errorf("goal page lacks %q:\n%s", c.want, buf.String())
+		}
+	}
+	h := fullHome()
+	h.Behind[0].DaysLeft = ip(1)
+	var buf bytes.Buffer
+	if err := r.Home(&buf, h); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "1 day left · checked by hand") {
+		t.Errorf("home's behind entry lacks the singular day")
+	}
+}
+
+// A due item whose record has no visible page is named, never linked.
+func TestADueItemWithNoPageIsText(t *testing.T) {
+	r, err := New(shipped(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := fullHome()
+	h.Links = nil
+	var buf bytes.Buffer
+	if err := r.Home(&buf, h); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), `<span class="due__record">telos/goal G1</span>`) {
+		t.Errorf("an unlinked due item is not text:\n%s", buf.String())
 	}
 }

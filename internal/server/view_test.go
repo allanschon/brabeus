@@ -3,9 +3,11 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/allanschon/brabeus/internal/store"
 	"github.com/allanschon/brabeus/internal/view"
 )
 
@@ -29,12 +31,92 @@ func get(h http.Handler, method, path string) *httptest.ResponseRecorder {
 	return w
 }
 
-// §13: nothing in the view can change anything.
+// §11, §13: nothing in the view can change anything, and its routes accept
+// GET only, so HEAD is refused too.
 func TestTheViewRefusesEveryMethodButGet(t *testing.T) {
 	h, _ := viewServer(t, nil)
-	for _, m := range []string{"POST", "PUT", "DELETE", "PATCH"} {
-		if w := get(h, m, "/view/"); w.Code != http.StatusMethodNotAllowed {
-			t.Errorf("%s /view/ = %d, want 405", m, w.Code)
+	for _, m := range []string{"HEAD", "POST", "PUT", "DELETE", "PATCH"} {
+		for _, p := range []string{"/view/", "/view/telos/", "/view/static/view.css"} {
+			w := get(h, m, p)
+			if w.Code != http.StatusMethodNotAllowed || w.Header().Get("Allow") != "GET" {
+				t.Errorf("%s %s = %d, Allow %q; want 405, Allow GET", m, p, w.Code, w.Header().Get("Allow"))
+			}
+			if w.Header().Get("Content-Security-Policy") != CSP {
+				t.Errorf("%s %s lacks the CSP", m, p)
+			}
+		}
+	}
+}
+
+// mountView mounts the view as main does, so the test exercises the chain
+// a deployment runs.
+func mountView(t *testing.T, d Deps, id fakeIdentity, mode, token string) http.Handler {
+	t.Helper()
+	vr, err := view.New(d.Set)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := GuardedView(d, vr, id, nil, mode, token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	MountView(mux, g)
+	return mux
+}
+
+// §11: the refusals and the redirect are view responses too, so they carry
+// the headers; only the outermost wrapper can see them.
+func TestTheViewsRefusalsAndRedirectCarryTheSecurityHeaders(t *testing.T) {
+	_, d := viewServer(t, nil)
+	for _, c := range []struct {
+		name     string
+		h        http.Handler
+		path     string
+		code     int
+		location string
+	}{
+		{"unidentified", mountView(t, d, fakeIdentity{}, "none", ""), "/view/", http.StatusForbidden, ""},
+		{"no token", mountView(t, d, fakeIdentity{name: "desk"}, "bearer", "a-token"), "/view/", http.StatusUnauthorized, ""},
+		{"redirect", mountView(t, d, fakeIdentity{name: "desk"}, "none", ""), "/view", http.StatusMovedPermanently, "/view/"},
+	} {
+		w := get(c.h, "GET", c.path)
+		if w.Code != c.code || w.Header().Get("Location") != c.location {
+			t.Errorf("%s: %d to %q, want %d to %q", c.name, w.Code, w.Header().Get("Location"), c.code, c.location)
+		}
+		if w.Header().Get("Content-Security-Policy") != CSP || w.Header().Get("X-Content-Type-Options") != "nosniff" ||
+			w.Header().Get("Referrer-Policy") != "no-referrer" {
+			t.Errorf("%s: headers = %v", c.name, w.Header())
+		}
+	}
+}
+
+// §10: every in-page link lands on an id the target page emits, even when
+// a record's name is not its file name.
+func TestEveryRecordLinkLandsOnAnId(t *testing.T) {
+	h, d := viewServer(t, nil)
+	if _, err := d.Memory.Write("identity/value/kin.md", store.Record{Name: "family-first", Description: "kin first", Module: "identity",
+		Kind: "value", Scope: "global", Fields: map[string]string{"statement": "Kin first."}, Body: "b"}, "desk"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Memory.Write("telos/goal/file-name.md", store.Record{Name: "launch-guide", Description: "a goal", Module: "telos", Kind: "goal",
+		Scope: "global", Fields: map[string]string{"id": "G7", "title": "Launch the guide", "ideal": "out", "by": "2026-12-01",
+			"claims": serverGoalClaims, "serves": "family-first"}, Body: "b"}, "desk"); err != nil {
+		t.Fatal(err)
+	}
+	link := regexp.MustCompile(`href="(/view/[a-z]+/)#([^"]+)"`)
+	seen := map[string]bool{}
+	for _, page := range []string{"/view/", "/view/telos/"} {
+		for _, m := range link.FindAllStringSubmatch(get(h, "GET", page).Body.String(), -1) {
+			seen[m[1]+"#"+m[2]] = true
+			if target := get(h, "GET", m[1]).Body.String(); !strings.Contains(target, `id="`+m[2]+`"`) {
+				t.Errorf("%s links to %s#%s, which has no such id", page, m[1], m[2])
+			}
+		}
+	}
+	for _, want := range []string{"/view/telos/#" + view.Anchor("goal", "launch-guide"), "/view/identity/#" + view.Anchor("value", "family-first")} {
+		if !seen[want] {
+			t.Errorf("no link to %s among %v", want, seen)
 		}
 	}
 }

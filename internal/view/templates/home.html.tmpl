@@ -85,7 +85,7 @@
       {{- template "progress" .}}
       <p class="behind-entry__meta">
         {{- if eq .State "fail"}}{{with .Deadline}}Deadline <time datetime="{{.}}">{{.}}</time>. {{end}}This contradicts the record.
-        {{- else}}{{with .DaysLeft}}{{.}} days left · {{end}}{{if .Manual}}checked by hand{{else}}{{.Adapter}}{{end}}{{with .SinceDate}} · since <time datetime="{{.}}">{{.}}</time>{{end}}{{end -}}
+        {{- else}}{{with .DaysText}}{{.}} · {{end}}{{if .Manual}}checked by hand{{else}}{{.Adapter}}{{end}}{{with .SinceDate}} · since <time datetime="{{.}}">{{.}}</time>{{end}}{{end -}}
       </p>
     </li>
     {{- end}}

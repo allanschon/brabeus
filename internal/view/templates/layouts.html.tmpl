@@ -7,7 +7,7 @@ fields follow it as text. */ -}}
 {{define "layout-cards"}}{{$v := .View}}{{$others := false}}{{range $v.Fields}}{{if ne . $v.Title}}{{$others = true}}{{end}}{{end -}}
 <ul class="layout-cards">
   {{- range .Records}}{{$r := .}}
-  <li class="record blueprint{{if .Freshness.Unconfirmed}} record--draft{{end}}" id="{{.Name}}">
+  <li class="record blueprint{{if .Freshness.Unconfirmed}} record--draft{{end}}" id="{{.Anchor}}">
     <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
     {{if $others}}<p class="record__key">{{or (index .Fields $v.Title) .Description}}</p>{{else}}<h3 class="record__title">{{or (index .Fields $v.Title) .Description}}</h3>{{end}}
     {{- range $v.Fields}}{{if ne . $v.Title}}{{with index $r.Fields .}}
@@ -23,7 +23,7 @@ fields follow it as text. */ -}}
 {{define "layout-list"}}{{$v := .View}}{{$others := false}}{{range $v.Fields}}{{if ne . $v.Title}}{{$others = true}}{{end}}{{end -}}
 <ul class="layout-list">
   {{- range .Records}}{{$r := .}}
-  <li class="record" id="{{.Name}}">
+  <li class="record" id="{{.Anchor}}">
     {{if $others}}<h3 class="record__title">{{or (index .Fields $v.Title) .Description}}</h3>{{else}}<p class="record__body">{{or (index .Fields $v.Title) .Description}}</p>{{end}}
     {{- range $f := $v.Fields}}{{if ne $f $v.Title}}{{with index $r.Fields $f}}
     <p class="record__key">{{$f}}</p>
@@ -41,13 +41,13 @@ fields follow it as text. */ -}}
   <thead><tr><th scope="col">{{.Title}}</th>{{range $v.Fields}}{{if ne . $v.Title}}<th scope="col">{{.}}</th>{{end}}{{end}}<th scope="col">Confirmed</th><th scope="col">Scope</th></tr></thead>
   <tbody>
     {{- range .Records}}{{$r := .}}
-    <tr class="record" id="{{.Name}}"><th scope="row">{{or (index .Fields $v.Title) .Description}}</th>{{range $v.Fields}}{{if ne . $v.Title}}<td data-label="{{.}}">{{index $r.Fields .}}</td>{{end}}{{end}}<td data-label="Confirmed">{{template "freshness" .}}</td><td data-label="Scope">{{template "scope" .}}</td></tr>
+    <tr class="record" id="{{.Anchor}}"><th scope="row">{{or (index .Fields $v.Title) .Description}}</th>{{range $v.Fields}}{{if ne . $v.Title}}<td data-label="{{.}}">{{index $r.Fields .}}</td>{{end}}{{end}}<td data-label="Confirmed">{{template "freshness" .}}</td><td data-label="Scope">{{template "scope" .}}</td></tr>
     {{- end}}
   </tbody>
 </table>{{end}}
 
 {{define "memory-list"}}{{/* a working-memory page's notes, one scope's worth */}}<ul class="note-list">
   {{- range .}}
-  <li class="note" id="{{.Name}}"><p class="note__title">{{or .Description .Name}}</p>{{template "scope" .}}</li>
+  <li class="note" id="{{.Anchor}}"><p class="note__title">{{or .Description .Name}}</p>{{template "scope" .}}</li>
   {{- end}}
 </ul>{{end}}

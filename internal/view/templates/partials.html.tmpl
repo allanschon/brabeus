@@ -31,7 +31,7 @@ Each receives a Record unless it says otherwise. */ -}}
 
 {{define "freshness"}}{{with .Freshness}}
 {{- if .Unconfirmed}}<span class="freshness freshness--draft"><svg class="icon" aria-hidden="true"><use href="#i-draft"></use></svg>Unconfirmed draft</span>
-{{- else}}<span class="freshness{{with .Class}} freshness--{{.}}{{end}}">{{if .Overdue}}<svg class="icon" aria-hidden="true"><use href="#i-stale"></use></svg>{{end}}confirmed <time datetime="{{date .Reviewed}}" title="{{date .Reviewed}}">{{if eq .Age 0}}today{{else if eq .Age 1}}1 day ago{{else}}{{.Age}} days ago{{end}}</time>{{if .Every}} · re-ask after {{.Every}} days{{if .Overdue}}, now due{{end}}{{end}}</span>
+{{- else}}<span class="freshness{{with .Class}} freshness--{{.}}{{end}}">{{if .Overdue}}<svg class="icon" aria-hidden="true"><use href="#i-stale"></use></svg>{{end}}confirmed <time datetime="{{date .Reviewed}}" title="{{date .Reviewed}}">{{if eq .Age 0}}today{{else if eq .Age 1}}1 day ago{{else}}{{.Age}} days ago{{end}}</time>{{if .Every}} · re-ask after {{if eq .Every 1}}1 day{{else}}{{.Every}} days{{end}}{{if .Overdue}}, now due{{end}}{{end}}</span>
 {{- end}}{{end}}{{end}}
 
 {{define "snoozes"}}{{if .Snoozes}}<span class="snoozes"><svg class="icon" aria-hidden="true"><use href="#i-snooze"></use></svg>“later” ×{{.Snoozes}} · {{if .Snoozed.IsZero}}date of last not recorded{{else}}last <time datetime="{{date .Snoozed}}">{{date .Snoozed}}</time>{{end}}</span>{{end}}{{end}}

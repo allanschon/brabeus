@@ -81,7 +81,7 @@ type View struct {
 	Layout   string   `json:"layout,omitempty"`
 	Title    string   `json:"title,omitempty"`
 	Fields   []string `json:"fields,omitempty"`
-	GroupBy  string   `json:"group_by,omitempty"`
+	GroupBy  string   `json:"group_by,omitempty"` // refused until the view groups records; kept so the refusal names it
 	Sort     string   `json:"sort,omitempty"`
 	Template string   `json:"template,omitempty"`
 }
@@ -105,8 +105,13 @@ func (k Kind) ViewOrDefault() View {
 }
 
 func (v View) validate(k Kind) error {
+	// The view does not group records yet, so a declared group_by would be
+	// believed in force and ignored.
+	if v.GroupBy != "" {
+		return fmt.Errorf("group_by is not supported yet; use sort (spec §6)")
+	}
 	if v.Template != "" {
-		if v.Layout != "" || v.Title != "" || len(v.Fields) > 0 || v.GroupBy != "" || v.Sort != "" {
+		if v.Layout != "" || v.Title != "" || len(v.Fields) > 0 || v.Sort != "" {
 			return fmt.Errorf("declares both a template and a layout; use one (spec §6)")
 		}
 		clean := filepath.ToSlash(filepath.Clean(v.Template))
@@ -126,7 +131,7 @@ func (v View) validate(k Kind) error {
 	for _, f := range append(append([]string{}, k.Fields...), k.Optional...) {
 		declared[f] = true
 	}
-	for _, f := range append(append([]string{}, v.Fields...), v.Title, v.GroupBy, v.Sort) {
+	for _, f := range append(append([]string{}, v.Fields...), v.Title, v.Sort) {
 		if f != "" && !declared[f] {
 			return fmt.Errorf("%q is not a field of this kind", f)
 		}

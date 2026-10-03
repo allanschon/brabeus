@@ -471,9 +471,9 @@ belongs to the kernel (§3.9, §9).
 **A `ratified-record` kind may declare how the view lays it out** (§10), with a `view` key in one
 of two forms. The first names a layout from a closed set the kernel owns — `cards`, `table` or
 `list` — and, optionally, which declared fields it shows and in what order (`fields`), which
-field titles a record (`title`), and which field groups and sorts the records (`group_by`,
-`sort`); each named field must be one the kind declares. The second names a template the module
-ships, `{"template": "view/<kind>.html.tmpl"}`, for a kind whose records a generic layout cannot
+field titles a record (`title`), and which field sorts the records (`sort`); each named field
+must be one the kind declares. The second names a template the module ships,
+`{"template": "view/<kind>.html.tmpl"}`, for a kind whose records a generic layout cannot
 show, such as a goal with its claims beside it. A `view` that declares both is refused, because
 the author would believe one of them in force and it would not be. A kind with no `view` key is
 laid out as a `list`, titled by its first declared field and showing every declared field, so a
@@ -968,8 +968,8 @@ The home page carries five things:
 - **The block**, exactly as the `context` tool renders it for the caller's scope keys, from the
   same render, so the view cannot disagree with what a session receives. Today a caller's keys
   include its machine; a caller that carries no machine gets the block for the keys it does carry.
-  The block is markdown, and the view renders it with raw HTML disabled, so a record cannot put
-  markup on the page. Each module's summary links to that module's page.
+  The view shows the block line by line as escaped text, so a record cannot put markup on the
+  page. Each module's summary links to that module's page.
 - **The instructions**, the same text the plugin delivers (§6), behind a heading that gives their
   size against `instructions_budget_bytes`.
 - **What is due**: the whole agenda in the kernel's order, each item with its reason and its
@@ -1008,11 +1008,12 @@ identity layer it already runs.
 - **One writer.** The kernel is the only process that commits to the record, so two writers can
   never produce conflicting changes.
 - **Scope on read.** A record scoped to one machine is not returned on another unless asked for
-  explicitly. The server enforces this, not a convention the model is asked to follow (§3.3).
-  A module's page in the view is such a request, made by the route rather than a parameter: it
-  shows the person's own callers records from every scope, each labelled, because the page is the
-  person reading their record rather than a session receiving its context (§10). A read-only
-  consumer's view stays scope-filtered, as its searches are.
+  explicitly. The server enforces this, not a convention the model is asked to follow (§3.3). The
+  view is such a request, made by the route rather than a parameter: a module's page, and the
+  claims the home page lists as behind and as faults, show the person's own callers records from
+  every scope, each labelled, because the page is the person reading their record rather than a
+  session receiving its context (§10). A read-only consumer's view stays scope-filtered, as its
+  searches are.
 - **Secrets refused at the boundary.** The record's git host must scan every push for secrets
   and reject on a hit. The kernel additionally refuses a write that matches a small set of
   credential shapes before it reaches git. Both are boundaries; neither is a warning.
