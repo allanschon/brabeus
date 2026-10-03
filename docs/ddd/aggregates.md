@@ -13,7 +13,7 @@ computed from the records and the module set each time they are asked for. Terms
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | root       | the record: one markdown file (`store.Stored`)                                                                                                          |
 | identity   | its path in the store, canonicalised (`store.MemoryPath`)                                                                                               |
-| inside     | content (`store.Record`: name, description, module, kind, id, scope, fields, body) and stamps (`store.Meta`: `updated`, `reviewed`, `retired`, snoozes) |
+| inside     | content (`store.Record`: name, description, module, kind, id, scope, fields, body) and stamps (`store.Meta`: `updated`, `reviewed`, `retired`, `snoozes`, `snoozed`) |
 | repository | the store (`store.Store`): `Write`, `Review`, `Delete`, `Records`, `Search`, `Migrate`                                                                  |
 | context    | Record, with Ratification's verdicts applied through `Store.Review`                                                                                     |
 
@@ -23,7 +23,7 @@ write rather than edited in place.
 
 Two operations change a record, and they own different halves of it. A write sets content and
 moves `updated`; it carries the other stamps through unchanged. A review applies a verdict: it
-moves `reviewed`, `retired` or the snooze count, and on `corrected` replaces content too. No
+moves `reviewed`, `retired` or the snooze stamps, and on `corrected` replaces content too. No
 other path changes a record except `Delete`, which removes it, and the one-time migration, which
 retags it.
 
@@ -35,11 +35,12 @@ A record in a ratified-record module has a lifecycle, and its stamps are the sta
 | ratified | `reviewed` set, not retired | a review, `confirmed` or `corrected` | as the person's word |
 | retired  | `retired` set               | a review, `retired`                  | never                |
 
-A `later` verdict leaves the state as it was and counts a snooze, so a deferral stays visible
-(spec §9). A write to a draft keeps it a draft, which is what lets the interview rewrite drafts
-freely until the person confirms one (spec §9). A write to a ratified record also keeps its state,
-so reworded content can go on reading as confirmed; [`invariants.md`](invariants.md) describes that
-gap.
+A `later` verdict leaves the state as it was, counts a snooze and records when, so a deferral stays
+visible and a `behind` claim on the goal waits a week (spec §9). A write to a draft keeps it a
+draft, which is what lets the interview rewrite drafts freely until the person confirms one, and a
+draft may be deleted. A ratified or retired record refuses both: its content changes only through a
+`corrected` review, and it leaves only through a `retired` one, because otherwise the assistant could
+reword what the person confirmed and it would still render as confirmed (spec §9).
 
 A `memory/thread` is a record like any other. Its `belongs_to` field is a guess at a module, not a
 reference, because the interview writes it before the module exists and the module may never
@@ -74,7 +75,7 @@ own path, which is not a record and is never indexed or listed.
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | root     | the module set (`module.Set`)                                                                                                                                                 |
 | identity | the deployment: one set per kernel instance, loaded at start                                                                                                                  |
-| inside   | manifests (`module.Manifest`), each with its kinds (`module.Kind`), its mode's bundle (`module.Bundle`) and, from M2, its `intro` and each kind's `lenses` and draft question |
+| inside   | manifests (`module.Manifest`), each with its kinds (`module.Kind`), its mode's bundle (`module.Bundle`), from M2 its `intro` and each kind's `lenses` and draft question, and from v1.10 its `instructions_budget_bytes` and which kinds are `instructions` |
 | factory  | `module.Load`, which validates every manifest and then the set as a whole                                                                                                     |
 | context  | Schema                                                                                                                                                                        |
 

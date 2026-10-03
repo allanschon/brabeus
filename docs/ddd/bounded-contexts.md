@@ -100,7 +100,7 @@ Relationships:
 - **Context block** (downstream). The top agenda item becomes the agenda line.
 - **Interview** (downstream). Reads the agenda, each item with its reason and question, and the
   facts `reflect` returns; returns answers through `review`.
-- **Intent** (upstream, M2). Failed claims head the agenda.
+- **Intent** (upstream, M2). Failed claims head the agenda, and behind claims follow them.
 
 ### Retrieval
 
@@ -170,8 +170,8 @@ Relationships:
 - **Claude Code** (external, upstream). The plugin is the anti-corruption layer between
   Claude Code's hooks and the kernel: it turns a session start into a block fetch, a write to
   scratch into a denial, and an unreachable kernel into queued outbox files.
-- **The kernel** (upstream). Conforms to the MCP tools and to the text of `/context` and
-  `/healthz`. The write guard decides from the `profiles=` field of the `/healthz` line, which is
+- **The kernel** (upstream). Conforms to the MCP tools, to the text of `/context` and
+  `/healthz`, and to the JSON of `/instructions`. The write guard decides from the `profiles=` field of the `/healthz` line, which is
   unversioned text rather than a published contract, so a change to that line's wording could
   change what the guard does without anything failing.
 
@@ -282,8 +282,8 @@ flowchart LR
     callers -- "forbidden modules" --> blockctx
     callers -- "forbidden modules" --> retrieval
     ratification -- "agenda line" --> blockctx
-    intent -. "failed claims" .-> ratification
-    blockctx -- "OHS: /context, context tool" --> plugin
+    intent -. "failed and behind claims" .-> ratification
+    blockctx -- "OHS: /context, /instructions,<br/>context tool" --> plugin
     plugin -- "ACL" --> cc
     ratification -- "agenda; review" --> interview
     schema -. "OHS: modules tool" .-> interview
