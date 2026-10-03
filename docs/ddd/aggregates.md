@@ -75,7 +75,7 @@ own path, which is not a record and is never indexed or listed.
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | root     | the module set (`module.Set`)                                                                                                                                                 |
 | identity | the deployment: one set per kernel instance, loaded at start                                                                                                                  |
-| inside   | manifests (`module.Manifest`), each with its kinds (`module.Kind`), its mode's bundle (`module.Bundle`), from M2 its `intro` and each kind's `lenses` and draft question, and from v1.10 its `instructions_budget_bytes` and which kinds are `instructions` |
+| inside   | manifests (`module.Manifest`), each with its kinds (`module.Kind`), its mode's bundle (`module.Bundle`), from M2 its `intro` and each kind's `lenses` and draft question, and from v1.10 its `instructions_budget_bytes` and which kinds are `instructions`, and from v1.11 each kind's `view` |
 | factory  | `module.Load`, which validates every manifest and then the set as a whole                                                                                                     |
 | context  | Schema                                                                                                                                                                        |
 

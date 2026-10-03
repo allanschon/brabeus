@@ -452,3 +452,57 @@ func TestInstructionKindFollowsTheCrossing(t *testing.T) {
 		t.Error("a nil set governs nothing")
 	}
 }
+
+func ratified(kinds string) string {
+	return `{"name": "telos", "version": 1, "profile": "ratified-record", "priority": 10,
+	  "budget_bytes": 600, "summary": "summary.md.tmpl", "kinds": ` + kinds + `}`
+}
+
+// Spec §6: a kind declares a layout from the kernel's closed set, or a
+// template it ships, never both; every field it names must be its own.
+func TestAViewKeyIsALayoutOrATemplateAndNamesOnlyDeclaredFields(t *testing.T) {
+	for _, c := range []struct{ name, kinds, err string }{
+		{"layout", `{"goal": {"fields": ["title", "by"], "view": {"layout": "cards", "title": "title", "fields": ["by"]}}}`, ""},
+		{"template", `{"goal": {"fields": ["title"], "view": {"template": "view/goal.html.tmpl"}}}`, ""},
+		{"both", `{"goal": {"fields": ["title"], "view": {"layout": "list", "template": "view/goal.html.tmpl"}}}`, "both a template and a layout"},
+		{"unknown layout", `{"goal": {"fields": ["title"], "view": {"layout": "grid"}}}`, `layout "grid"`},
+		{"undeclared field", `{"goal": {"fields": ["title"], "view": {"layout": "table", "fields": ["owner"]}}}`, `"owner" is not a field of this kind`},
+		{"group_by", `{"goal": {"fields": ["title"], "view": {"layout": "list", "group_by": "title"}}}`, "group_by is not supported yet; use sort (spec §6)"},
+		{"group_by with a template", `{"goal": {"fields": ["title"], "view": {"template": "view/goal.html.tmpl", "group_by": "title"}}}`, "group_by is not supported yet"},
+		{"escaping template", `{"goal": {"fields": ["title"], "view": {"template": "../x.html.tmpl"}}}`, "inside the module"},
+		{"unknown view key", `{"goal": {"fields": ["title"], "view": {"layout": "list", "colour": "red"}}}`, "unknown field"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := load(t, []string{"telos"}, map[string]string{"telos": ratified(c.kinds)})
+			if c.err == "" {
+				if err != nil {
+					t.Fatalf("want loaded, got %v", err)
+				}
+				return
+			}
+			wantErr(t, err, c.err)
+		})
+	}
+}
+
+// Spec §6: the model's notes are listed by the kernel, so a working-memory
+// module has no say in how.
+func TestAWorkingMemoryModuleMayNotDeclareAView(t *testing.T) {
+	m := strings.Replace(memoryJSON, `"note": {"fields": []}`, `"note": {"fields": [], "view": {"layout": "list"}}`, 1)
+	_, err := load(t, []string{"memory"}, map[string]string{"memory": m})
+	wantErr(t, err, "a working-memory module may not declare view")
+}
+
+// Spec §6: a kind that says nothing about the view is a list titled by its
+// first declared field, showing every declared field.
+func TestAKindWithNoViewIsAListOfItsDeclaredFields(t *testing.T) {
+	k := Kind{Fields: []string{"id", "title"}, Optional: []string{"notes"}}
+	v := k.ViewOrDefault()
+	if v.Layout != "list" || v.Title != "id" || strings.Join(v.Fields, ",") != "id,title,notes" {
+		t.Errorf("default view = %+v", v)
+	}
+	declared := Kind{Fields: []string{"title"}, View: &View{Layout: "cards", Title: "title"}}
+	if got := declared.ViewOrDefault(); got.Layout != "cards" {
+		t.Errorf("declared view lost: %+v", got)
+	}
+}

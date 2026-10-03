@@ -107,9 +107,12 @@ whole system.
 you didn't, what you predict will happen, how sure you are, and when to check. On that date it
 comes back and asks whether you were right — which is a question almost nobody asks themselves.
 
-**A view** is planned too: a read-only page showing your record, what's stale, how the claims are
-doing, whether a goal has been quietly lowered since you last confirmed it, and what you've
-snoozed. It's for you, behind whatever login your setup already uses.
+**A view** is planned too: a read-only page for you, behind whatever login your setup already
+uses. Its home page shows what your sessions are told, what is waiting to be asked, and which
+goals are behind. Each part of your record has its own page listing everything in it: what's
+stale, how the claims are doing, whether a goal has been quietly lowered since you last
+confirmed it, and what you've snoozed. Whoever writes a part of the record can decide how its
+page lays things out.
 
 ## What it deliberately doesn't do
 

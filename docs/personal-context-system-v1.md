@@ -1,8 +1,8 @@
-# A personal AI context system — v1.10 specification
+# A personal AI context system — v1.11 specification
 
 **Working name: Brabeus.** See §16.
 
-**Status: v1.10. M0, M1 and M2 are built, as are v1.9's claim dates and v1.10's instructions (§14).**
+**Status: v1.11. M0, M1 and M2 are built, as are v1.9's claim dates and v1.10's instructions; v1.11's view is M3, and is planned (§14).**
 
 This document describes a system built on the kernel this repository already contains: a
 private store with hybrid retrieval, a Claude Code plugin, and a Dockerfile that builds the
@@ -10,7 +10,7 @@ kernel. How that image is deployed and updated is each deployment's own concern.
 opinions about content. Everything it stores belongs to a module, and every module runs under one
 of a small set of profiles the kernel defines (§1.1).
 
-C4 diagrams of the system at v1.10 — context, containers, kernel components, and the interview
+C4 diagrams of the system at v1.11 — context, containers, kernel components, and the interview
 as a sequence — are in [`personal-context-system-c4.md`](personal-context-system-c4.md). A
 plain-language description for someone who might use it rather than build it is
 [`personal-context-system-plain.md`](personal-context-system-plain.md).
@@ -54,7 +54,7 @@ of the axes, and every module runs under one:**
 | | `working-memory` | `ratified-record` |
 |---|---|---|
 | author | the model, freely, mid-session | the person, through `review` (§9) |
-| read | pull: searched on demand, never in the block | push: rendered into the 2 KB block, agenda first, and for a kind marked `instructions`, delivered in full beside it to every session and subagent (§10); searched only when asked |
+| read | pull: searched on demand, never in the block; listed on its own page of the view as the model's notes (§10) | push: rendered into the 2 KB block, agenda first, and for a kind marked `instructions`, delivered in full beside it to every session and subagent (§10); listed in full on its module's page of the view; searched only when asked |
 | freshness | a record is timeless, dated, or a pointer — linted by `/health`, never interviewed | `reviewed` against `freshness_days` |
 | audience default | `self` | `self` |
 | `review` | none, except the crossing `preference`, which a review moves under `identity` (§7) | required — `write` may create, only `review` confirms |
@@ -263,7 +263,7 @@ which milestone delivers each. None of it knows what a `goal` or a `trap` is.
 | store | one markdown file per record, frontmatter composed by the server, committed and pushed to one private git repository; writes validated against the record's module schema |
 | retrieval | hybrid lexical + dense search, scope-filtered on read; `working-memory` records are searched by default, `ratified-record` ones only when asked, and the notebook (§5) when named |
 | identity | who is calling, from the network layer or a token |
-| **profiles** | the closed set in §1.1; each module's manifest names one and the kernel enforces its bundle — who may write, whether records are rendered or searched, whether `review` is required, the audience default |
+| **profiles** | the closed set in §1.1; each module's manifest names one and the kernel enforces its bundle — who may write, whether records are rendered into the block or only searched, whether `review` is required, the audience default |
 | **modules** | loads module manifests; exposes each module's kinds, interview prompts and summary template, and serves the module set to the plugin through a read-only `modules` tool, which lists to a caller only the modules it may read (§11); refuses a manifest that does not validate |
 | **context** | renders a size-capped session block from the enabled `ratified-record` modules' templates, and beside it the instructions: the text of every confirmed record of a kind its module marks `instructions` (§6, §10) |
 | **claims** | runs the evidence adapters itself, on the deployment's interval, and stores what each measured — pass, fail or no evidence, each with its own timestamp, and a count where the claim counts — through the kernel's claim-result operation; what a result means today (`open`, `behind`, `fail` and the rest) is derived from that and the date whenever it is read (§8.1), and a read-only `claims` tool returns each claim with that state, what was last measured and when the checks last ran |
@@ -272,7 +272,7 @@ which milestone delivers each. None of it knows what a `goal` or a `trap` is.
 | **reflect** | a read-only tool that computes the gap by value — each value, the goals that serve it with their claim states and days since confirmed, and the goals that serve none — for the interview to phrase (§9) |
 | **budgets** | validates each enabled module's byte budget against the cap on load; refuses overflow rather than truncating; measures each module's instructions against their own budget and puts the excess on the agenda (§10) |
 | **audience** | enforces per-module readability per consumer, so a read-only consumer cannot read a module the person has kept to their own sessions (§11) |
-| **view** | a read-only HTML rendering of context, freshness, claim state, revision lines and snooze counts |
+| **view** | a read-only HTML rendering of the record: a home page carrying the block, the instructions, what is due and what is behind, and one page per module listing its active records in the layout its manifest declares, each with its freshness, snoozes, claim states and revision line (§10) |
 | **credential refusal** | a write matching a small set of credential shapes is rejected before it reaches git (§11) |
 
 ### 4.2 The plugin
@@ -426,7 +426,8 @@ consumers says so; a core module may not.
 | the module declares | the profile fixes |
 |---|---|
 | kinds, their fields, ids and freshness thresholds | who may write, and whether `review` is required |
-| interview prompts, lenses and summary template | whether records are rendered or searched |
+| interview prompts, lenses and summary template | whether records are rendered into the block or only searched |
+| how each kind is laid out in the view, by a declared layout or a view template | the view's routes, its partials, its stylesheet and its security headers |
 | adapters, budget, priority, layout keys, which kinds are instructions and their budget | the audience default, and for core modules the audience itself |
 | which profile it runs under | what the profile means |
 
@@ -466,6 +467,41 @@ never been confirmed ("Is this right as written?" when a kind declares none). Fo
 `intro` is one line the interview uses when it turns to the module. The kernel validates these
 keys and attaches no meaning to them, because how to ask belongs to the module and what is due
 belongs to the kernel (§3.9, §9).
+
+**A `ratified-record` kind may declare how the view lays it out** (§10), with a `view` key in one
+of two forms. The first names a layout from a closed set the kernel owns — `cards`, `table` or
+`list` — and, optionally, which declared fields it shows and in what order (`fields`), which
+field titles a record (`title`), and which field sorts the records (`sort`); each named field
+must be one the kind declares. The second names a template the module ships,
+`{"template": "view/<kind>.html.tmpl"}`, for a kind whose records a generic layout cannot
+show, such as a goal with its claims beside it. A `view` that declares both is refused, because
+the author would believe one of them in force and it would not be. A kind with no `view` key is
+laid out as a `list`, titled by its first declared field and showing every declared field, so a
+module that says nothing about the view still has a page. A `working-memory` module may not
+declare `view`: its records are the model's notes, listed by the kernel by `description`, or by
+`name` when the description is empty, with each note's scope, whatever the module's `layout`.
+
+A view template follows the summary template's rule, for the same reason. It receives only the
+active records of its kind, already filtered by scope and audience; each record carries its
+fields, its body rendered to HTML by the kernel, and what the kernel computed for it — freshness,
+whether it is unconfirmed, its snoozes, its claims and its revision line (§10). Some of what the
+kernel computes is offered as a method on the record, such as its anchor or its days left, rather
+than as a field; a method formats only the record's own values and reads nothing else, so it is
+not a new function, and adding one is a kernel change like adding a function. Beyond those, a
+template gets the same three functions and nothing more, and it may call the kernel's named
+partials, such as `claims`, `freshness` and `revision`, so that a module arranges the parts its
+own way and the parts look the same in every module. The kernel draws each kind's section and its
+heading, and the template renders the records inside it, so every module's page has the same
+outline and a failed template loses only its records. Each record has one anchor, `r-<kind>-<name>`,
+which the template uses as the record's id and which every link to the record ends in; the prefix
+keeps a record's id apart from the page's own. It is rendered with an engine that escapes by
+context, so a field's value is text, never markup. A template that defines a partial the kernel
+names is refused, because it would replace the kernel's partial without saying so. A template
+that does not parse stops the kernel from starting, as an invalid manifest or summary template
+does, because a module with a broken part is not one the kernel understands, and a deployment
+learns of it when it restarts rather than running on with a hole in it. A template that fails
+while rendering is replaced on its page by one line saying so, and the kernel logs it; the
+failure is shown where it happens, and nothing else is affected.
 
 A module never carries credentials. If a module's adapter needs a token, the token is the
 deployment's configuration and the adapter reads it from the environment.
@@ -529,7 +565,7 @@ confirmed before v1.10 carries the interviewer's label in its body, and is deliv
 a `corrected` review moves the label to `source` (§9); v1.10's release makes those reviews.
 
 In a deployment without `identity`, a `memory/preference` is an ordinary working-memory record: it
-is searched, never asked about and never rendered, and `review` refuses it, because its governing
+is searched, never asked about and never in the block, and `review` refuses it, because its governing
 module is `memory`. A `reviewed` stamp it already carries stays in the file and takes effect
 again if `identity` is enabled, so the preference is delivered as the confirmed one it was,
 without being asked again.
@@ -673,7 +709,7 @@ before counts were stored has no count, and its claim reads as a yes-or-no claim
 `effort` until the next run, or for a manual claim the next answer, measures it.
 
 Only `fail` is a contradiction, and `behind` is the warning before one; `open` is neither.
-`no-evidence` is a fault in the deployment, reported by `/health` and shown in the view, and it
+`no-evidence` is a fault in the deployment, reported by `/health` and shown among the view's faults (§10), and it
 never opens an interview as if the person had fallen short. A `pass` older than two intervals is
 shown as stale, not as passing, so one missed run does not change every goal's state but a
 scheduler that has stopped shows within two days.
@@ -927,20 +963,67 @@ the plugin delivers whole records in order up to the limit, counting the opening
 closing line, and ends with a line naming the records left out, which is also a fault `/health`
 reports. Nothing cuts them silently.
 
-The view is the same render as HTML at `/view/`, plus per-record freshness, per-claim state as it
-reads today (§8.1), with `open` and `behind` shown apart from `fail`, and age, each goal's revision
-line, snooze counts, and the fraction of claims that are `manual` —
-the leading indicator that a module wants an adapter. The view is read-only, because anything
-that changes state goes through the kernel's validated write (§11). It binds to loopback and
-carries no authentication of its own; the deployment fronts it with whatever identity layer it
-already runs.
+**The view** is the record as HTML: a home page at `/view/`, and one page per module at
+`/view/<module>/`. It also serves its one stylesheet at `/view/static/view.css` and the fonts that
+stylesheet names under `/view/fonts/`, from the kernel itself, and redirects `/view` to
+`/view/`. It leads with the block, because the block is what every session works from,
+and it lists every active record beneath it, because a record the person cannot see is one they
+cannot correct. Its navigation is the set of modules the caller may read (§11), in priority order,
+with the `working-memory` modules listed apart and labelled as the model's notes, so that nothing
+the model wrote for itself reads as the person's word. The navigation is computed from the enabled
+modules, so a module enabled tomorrow has a page tomorrow without anyone adding it.
+
+The home page carries five things:
+
+- **The block**, exactly as the `context` tool renders it for the caller's scope keys, from the
+  same render, so the view cannot disagree with what a session receives. Today a caller's keys
+  include its machine; a caller that carries no machine gets the block for the keys it does carry.
+  The view shows the block line by line as escaped text, so a record cannot put markup on the
+  page. Each module's summary links to that module's page.
+- **The instructions**, the same text the plugin delivers (§6), behind a heading that gives their
+  size against `instructions_budget_bytes`.
+- **What is due**: the whole agenda in the kernel's order, each item with its reason and its
+  question. It is what `/interview` will work through, with the agenda's deferrals applied.
+- **What is behind**: every claim whose state today is `behind` or `fail`, with the two shown
+  apart, and each linked to its goal. It applies no deferral, because putting a question off does
+  not change what was measured: a goal reviewed this week leaves what is due and stays here.
+- **Faults**: the fraction of claims that are `manual`, the leading indicator that a module wants
+  an adapter; when the checks last ran; every claim reading `no-evidence` and every `pass` read as
+  stale (§8.1); and any module whose share was refused from the block. None of these is the
+  person falling short, so none is listed under what is behind.
+
+A module's page lists its active records — every record not `retired` (§5) — grouped by kind, in
+the layout or template the kind declares (§6). It lists records from every scope, each labelled
+with its scope, because the view is the person's read of their whole record, not a session's
+context (§11). Beside each record the kernel shows what it computed: its freshness, as the time
+since `reviewed` against its kind's `freshness_days`, or that it is unconfirmed; its `snoozes`, and
+when it was last put off; each claim's state as it reads today (§8.1), with `open` and `behind`
+shown apart from `fail`, and the age of what was last measured; and, for a record with an `id`,
+its revision line. A module's page does not repeat its summary, because the home page carries it.
+
+**Every colour, font, size and spacing the view uses is a custom property, declared once at the
+root of the kernel's stylesheet.** A template styles only through the kernel's classes and has no
+style of its own, which the view's security headers enforce (§11). Light and dark, chosen by the
+browser's preference, are the kernel's own default theme. The rule exists so that a deployment's
+theme, when it is designed (§15), is a set of values for the same properties and changes no
+module.
+
+The view is read-only, because anything that changes state goes through the kernel's validated
+write (§11). It binds to loopback and carries no authentication of its own; it sits behind the
+same identity and authentication as `/context`, and the deployment fronts it with whatever
+identity layer it already runs.
 
 ## 11. Security and privacy
 
 - **One writer.** The kernel is the only process that commits to the record, so two writers can
   never produce conflicting changes.
 - **Scope on read.** A record scoped to one machine is not returned on another unless asked for
-  explicitly. The server enforces this, not a convention the model is asked to follow (§3.3).
+  explicitly. The server enforces this, not a convention the model is asked to follow (§3.3). The
+  view is such a request, made by the route rather than a parameter: a module's page, and the
+  claims the home page lists as behind and as faults, show the person's own callers records from
+  every scope, each labelled, because the page is the person reading their record rather than a
+  session receiving its context (§10). A read-only consumer's view stays scope-filtered, as its
+  searches are.
 - **Secrets refused at the boundary.** The record's git host must scan every push for secrets
   and reject on a hit. The kernel additionally refuses a write that matches a small set of
   credential shapes before it reaches git. Both are boundaries; neither is a warning.
@@ -974,8 +1057,18 @@ already runs.
   No path exists by which record content becomes a command.
 - **The notebook is refused to consumers.** It has no modules, so no per-module audience can
   stand in for it; a read-only consumer cannot read or search it at all (§5).
-- **The view is not a control plane.** It has no POST routes. Anything that changes state goes
-  through the assistant, through the kernel's validated write.
+- **The view is not a control plane.** Its routes accept `GET` only, and any other method is
+  refused, so nothing on a page can change state. Anything that changes state goes through the
+  assistant, through the kernel's validated write.
+- **Nothing runs in the view.** Every page carries a content security policy that allows no
+  script, no inline style and nothing from another origin, so a module's view template can only
+  arrange what it is given: it cannot load anything from another origin, cannot read another
+  module's part of the page, and cannot style around the kernel's stylesheet. The policy does not
+  govern where a plain link leads, so a template could put a link to another site on the page,
+  and following it would carry only what the template already holds, which is its own kind's
+  records. That is the residual risk of a module, and it is acceptable for the same reason a
+  module's summary template is: a module is code the person chose to install. A module that wants behaviour the kernel's
+  layouts do not offer asks for it in the kernel, where it is reviewed like a new function (§6).
 
 ## 12. Sharing the system without sharing the person
 
@@ -1038,6 +1131,15 @@ The system is accepted when one real deployment passes these, described in the s
 - **The block never truncates silently.** With module budgets set to overflow the cap, the
   kernel refuses to start; with one module's output over its budget, that module's share says
   so and `/health` reports it.
+- **The view shows what a session receives, and the whole record behind it.** The block on the
+  home page is byte for byte what `/context` returns for the same caller before it is rendered;
+  each module's page lists every active record, with records from other scopes labelled; a
+  `telos` goal shows its claims, with `behind` apart from `fail`, and its revision line, through
+  the module's own view template.
+- **Nothing in the view can change or run anything.** A `POST` to any view route is refused;
+  every view response carries the content security policy (§11); a module whose view template
+  does not parse is refused on load; and a module a consumer may not read is absent from that
+  consumer's view, its navigation included.
 - **An untrusted reader cannot write, and cannot read what is `self`.** A second consumer with
   read-only access searches the record; its write attempts are refused by the kernel, and
   `health` and `finance` records are absent from its results.
@@ -1053,7 +1155,7 @@ The system is accepted when one real deployment passes these, described in the s
 | M0 | the public repository seeded; §12's contents present; §13's last clause enforced on every push by CI | CI runs §13's last clause on every push, and the seeded repository passes it | delivered 2026-09-27 |
 | M1 | the two profiles; module contract with `profile`, `budget_bytes` and `audience`; the `memory` module and the one-time migration; `telos` and `identity`; `context` tool with the agenda line; `review`; `SessionStart` injection; the guard made conditional | the existing store migrates and still answers; the 2 KB block renders from real records on all machines; a stale record surfaces as the first line; `reviewed` moves only on `review` | delivered 2026-09-27 |
 | M2 | three-state claims and the `tracker`, `forge`, `date`, `manual` adapters; results written through the kernel; the conversational `/interview` (§9) with lenses, drafts, threads and the register; the `modules` tool; `review` carrying the answer; the notebook's dense leg as a deployment switch (§5); reflection by value, through the `reflect` tool; the v1.7 agenda, review, claim and caller changes (§16 AI–AQ and AT–AW) | the first line names a measured contradiction; a revoked credential produces `no-evidence`, not an accusation; a first interview turns the person's own answers into confirmed values and goals, and leaves a thread for anything no module holds | delivered 2026-09-29 |
-| M3 | the view | read-only, fronted by the deployment's identity layer; shows revision lines, snooze counts and the manual fraction | planned |
+| M3 | the view (§10): the home page, a page per module, the `view` key and view templates (§6), a view template for `telos` goals, and the kernel's stylesheet on custom properties | §13's two view cases pass; read-only and behind the same identity as `/context`; shows what is due, what is behind, revision lines, snooze counts and the manual fraction | planned |
 | M4 | `health` and `finance`, `audience: self` | both populated by interview, `manual` claims asked and recorded; absent from a read-only consumer's results | planned |
 | M6 | sharing hygiene | §12 and §13's last item pass — continuously, from M0 onward; a second person installs from the README | ongoing since M0 |
 
@@ -1099,6 +1201,11 @@ by the person's confirmed preferences.
 - **Habituation.** A person reliably failing one claim is reliably greeted with it. v1.9 defers a
   `behind` claim on a goal reviewed or put off in the last week (§9); whether `fail` needs the
   same is unknown until a deployment runs, and the snooze count is the measurement.
+- **A deployment's theme for the view.** Not designed. The view's stylesheet declares every
+  visual value as a custom property (§10), so a theme would be a stylesheet of values for those
+  properties, served by the kernel from the deployment's configuration and allowed by the view's
+  existing security policy. What is open is how a deployment names it and whether a theme may
+  change more than values.
 - **`/done`'s check blocks** run under "the working repository's tooling" (§8.2), which the
   product does not ship. For a second person they are documentation until a minimal runner does.
 - **The bet under the design**, stated as one: that having the gap reflected back changes what
@@ -1271,6 +1378,22 @@ line of the block, and the subagents doing the work started without them.
 | BO | the instructions are a path the audience rule covers, so a consumer receives only those of modules declared `any`, and `identity/preference` reaches only the person's own sessions; the saved copy is readable and writable only by the person, and written only by the plugin | §11 |
 | BP | §13 gains an acceptance case: a preference confirmed on one machine reaches the next session on another and a subagent it starts, checked by a case in the plugin's eval suite in which the subagent quotes it, and an over-budget set is still delivered in full | §13 |
 | BQ | an instruction's delivered text is its body, or, when the body is empty, its kind's first declared field, because `identity`'s `preference` and `register` declare a `statement`, and a preference written there is still what the person confirmed; the interviewer's label is kept out of that text, wherever it comes from | §4.1, §6, §9, §10 |
+
+### Changes in v1.11
+
+Decided 2026-10-03, because M3's view was specified as a list of what it shows, not as what it is
+for, and a module could not say how its own records should be seen.
+
+| | change | sections |
+|---|---|---|
+| BR | the view is a home page and one page per module, not one long page: the home page carries the block, the instructions, what is due, what is behind and the faults, and each module's page lists its active records; navigation is the modules the caller may read, computed, with `working-memory` modules listed apart as the model's notes | §1.1, §4.1, §7, §10 |
+| BS | what is due is the agenda with its deferrals; what is behind is every `behind` or `fail` claim with none, because putting a question off does not change what was measured; `no-evidence`, stale passes and the manual fraction are faults, never shortfalls | §8.1, §10 |
+| BT | a `ratified-record` kind declares how the view lays it out, by a layout from a closed set the kernel owns or by a view template it ships, never both; a kind that declares neither is a `list`; a `working-memory` module may declare neither, and its notes are listed by description, or by name when the description is empty | §6 |
+| BU | a view template gets the summary template's three functions, the kernel's partials and kernel-computed annotations, some as methods that format only the record's own values, and is rendered with an engine that escapes by context; the kernel draws each kind's section and heading, and each record has one anchor, `r-<kind>-<name>`; a template that redefines a kernel partial is refused, one that does not parse stops the kernel from starting, as an invalid manifest does, and one that fails while rendering is replaced on its page by one line and logged | §6 |
+| BV | a module's page shows the person's own callers every scope, labelled, and that route is the explicit request scope on read requires; the home page's block uses the caller's scope keys, so a caller that carries no machine still has one | §10, §11 |
+| BW | the view's routes accept `GET` only, and every page carries a content security policy that allows no script, no inline style and nothing from another origin, so a module's template can only arrange what it is given; it serves its own stylesheet and fonts; a link a template writes is the residual risk of installing a module | §10, §11, §13 |
+| BX | every visual value in the view is a custom property declared once, and templates style only through the kernel's classes, so that a deployment's theme, not yet designed, changes no module | §10, §15 |
+| BY | §13 gains two cases for the view, and M3 is restated in their terms | §13, §14 |
 
 ## Sources
 

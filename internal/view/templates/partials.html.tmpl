@@ -1,0 +1,52 @@
+{{- /* Partials shared by the kernel layouts and by module view templates.
+Each receives a Record unless it says otherwise. */ -}}
+
+{{define "state"}}{{/* a claim state: pass, open, behind, fail, no-evidence or unchecked */}}<span class="state state--{{.}}"><svg class="icon" aria-hidden="true"><use href="#i-{{if eq . "unchecked"}}open{{else}}{{.}}{{end}}"></use></svg>{{.}}</span>{{end}}
+
+{{define "goal-ref"}}{{/* a Claim's goal, linked when it has a page */}}{{if .GoalHref}}<a href="{{.GoalHref}}">{{or .ID .Goal}}</a>{{else}}{{or .ID .Goal}}{{end}}{{end}}
+
+{{define "progress"}}{{/* a Claim's bar, when it has a count and a target */}}{{with .Progress}}
+<div class="progress">
+  <div class="progress__track"><progress class="bar bar--{{$.State}}" value="{{.Value}}" max="{{.Max}}">{{.ValueText}} of {{.MaxText}}</progress>{{if .Tick}}<progress class="bar bar--tick" value="{{.Expected}}" max="{{.Max}}" aria-hidden="true"></progress>{{end}}</div>
+  <p class="progress__figures"><span class="progress__count">{{.ValueText}} / {{.MaxText}}</span>{{if .Tick}}<span class="progress__expected">expected {{.ExpectedText}} by now</span>{{end}}</p>
+</div>{{end}}{{end}}
+
+{{define "claim"}}{{/* one Claim */}}<li class="claim claim--{{.State}}">
+  {{template "state" .State}}
+  <div class="claim__body">
+    <p class="claim__text">“{{.Text}}”</p>
+    {{- template "progress" .}}
+    <p class="claim__meta">{{with .Adapter}}{{.}} · {{end}}{{with .SinceDate}}{{$.State}} since <time datetime="{{.}}">{{.}}</time>{{else}}not yet measured{{end}}</p>
+    {{- with .Detail}}
+    <p class="claim__note">{{.}}</p>
+    {{- end}}
+  </div>
+</li>{{end}}
+
+{{define "claims"}}{{if .Claims}}<ol class="claims">
+{{- range .Claims}}
+{{template "claim" .}}
+{{- end}}
+</ol>{{end}}{{end}}
+
+{{define "freshness"}}{{with .Freshness}}
+{{- if .Unconfirmed}}<span class="freshness freshness--draft"><svg class="icon" aria-hidden="true"><use href="#i-draft"></use></svg>Unconfirmed draft</span>
+{{- else}}<span class="freshness{{with .Class}} freshness--{{.}}{{end}}">{{if .Overdue}}<svg class="icon" aria-hidden="true"><use href="#i-stale"></use></svg>{{end}}confirmed <time datetime="{{date .Reviewed}}" title="{{date .Reviewed}}">{{if eq .Age 0}}today{{else if eq .Age 1}}1 day ago{{else}}{{.Age}} days ago{{end}}</time>{{if .Every}} · re-ask after {{if eq .Every 1}}1 day{{else}}{{.Every}} days{{end}}{{if .Overdue}}, now due{{end}}{{end}}</span>
+{{- end}}{{end}}{{end}}
+
+{{define "snoozes"}}{{if .Snoozes}}<span class="snoozes"><svg class="icon" aria-hidden="true"><use href="#i-snooze"></use></svg>“later” ×{{.Snoozes}} · {{if .Snoozed.IsZero}}date of last not recorded{{else}}last <time datetime="{{date .Snoozed}}">{{date .Snoozed}}</time>{{end}}</span>{{end}}{{end}}
+
+{{define "revision"}}{{with .Revision}}<p class="revision"><svg class="icon" aria-hidden="true"><use href="#i-revision"></use></svg><span>{{.}}</span></p>{{end}}{{end}}
+
+{{define "scope"}}{{if eq .ScopeKind "machine" "project"}}<span class="scope scope--{{.ScopeKind}}"><svg class="icon" aria-hidden="true"><use href="#i-{{.ScopeKind}}"></use></svg>{{.Scope}}</span>{{else}}<span class="scope scope--global">{{or .Scope "global"}}</span>{{end}}{{end}}
+
+{{define "record-meta"}}<footer class="record__meta">
+{{- if .Freshness.Unconfirmed}}{{template "freshness" .}}{{template "scope" .}}{{else}}{{template "scope" .}}{{template "freshness" .}}{{end}}{{template "snoozes" .}}
+</footer>{{end}}
+
+{{define "record-notes"}}{{with .Body}}<details class="disclosure">
+  <summary class="disclosure__summary"><svg class="icon disclosure__chevron" aria-hidden="true"><use href="#i-chevron"></use></svg><span class="disclosure__hint">Notes</span></summary>
+  <div class="disclosure__body">{{.}}</div>
+</details>{{end}}{{end}}
+
+{{define "render-failure"}}{{/* a KindPage whose layout or template failed */}}<p class="render-failure" role="status"><svg class="icon" aria-hidden="true"><use href="#i-info"></use></svg><span><span class="render-failure__what">The {{.Module}} {{.Kind}} records could not be shown:</span> the module's view template failed. The kernel log has the detail.</span></p>{{end}}
