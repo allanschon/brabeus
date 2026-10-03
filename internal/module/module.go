@@ -69,6 +69,69 @@ type Kind struct {
 	DueField string   `json:"due_field,omitempty"`
 	// Instructions marks a ratified-record kind whose confirmed records are delivered in full to every session and subagent (spec §6, §10).
 	Instructions bool `json:"instructions,omitempty"`
+	// View is how the view lays this kind out (spec §6): a kernel layout or
+	// a template the module ships. Nil means the default list.
+	View *View `json:"view,omitempty"`
+}
+
+// View is a ratified-record kind's declaration of its page layout (spec §6).
+// Template and the layout keys are exclusive, because an author who wrote both
+// would believe one in force and it would not be.
+type View struct {
+	Layout   string   `json:"layout,omitempty"`
+	Title    string   `json:"title,omitempty"`
+	Fields   []string `json:"fields,omitempty"`
+	GroupBy  string   `json:"group_by,omitempty"`
+	Sort     string   `json:"sort,omitempty"`
+	Template string   `json:"template,omitempty"`
+}
+
+// Layouts is the closed set of kernel layouts a kind may name (spec §6).
+var Layouts = []string{"cards", "table", "list"}
+
+// ViewOrDefault is the kind's declared view, or the default list: titled by
+// its first declared field and showing every declared field, so a module that
+// says nothing about the view still has a page.
+func (k Kind) ViewOrDefault() View {
+	if k.View != nil {
+		return *k.View
+	}
+	fields := append(append([]string{}, k.Fields...), k.Optional...)
+	v := View{Layout: "list", Fields: fields}
+	if len(fields) > 0 {
+		v.Title = fields[0]
+	}
+	return v
+}
+
+func (v View) validate(k Kind) error {
+	if v.Template != "" {
+		if v.Layout != "" || v.Title != "" || len(v.Fields) > 0 || v.GroupBy != "" || v.Sort != "" {
+			return fmt.Errorf("declares both a template and a layout; use one (spec §6)")
+		}
+		clean := filepath.ToSlash(filepath.Clean(v.Template))
+		if filepath.IsAbs(v.Template) || strings.HasPrefix(clean, "../") || clean == ".." || !strings.HasSuffix(clean, ".html.tmpl") {
+			return fmt.Errorf("template %q: name a file inside the module ending .html.tmpl", v.Template)
+		}
+		return nil
+	}
+	known := false
+	for _, l := range Layouts {
+		known = known || v.Layout == l
+	}
+	if !known {
+		return fmt.Errorf("layout %q: use %s, or name a template (spec §6)", v.Layout, strings.Join(Layouts, ", "))
+	}
+	declared := map[string]bool{}
+	for _, f := range append(append([]string{}, k.Fields...), k.Optional...) {
+		declared[f] = true
+	}
+	for _, f := range append(append([]string{}, v.Fields...), v.Title, v.GroupBy, v.Sort) {
+		if f != "" && !declared[f] {
+			return fmt.Errorf("%q is not a field of this kind", f)
+		}
+	}
+	return nil
 }
 
 type Manifest struct {
@@ -227,6 +290,9 @@ func (m *Manifest) validate() error {
 			if k.Instructions {
 				return fmt.Errorf("kind %s: instructions belongs to a ratified-record kind; what a working-memory module holds is searched, not delivered (spec §6)", name)
 			}
+			if k.View != nil {
+				return fmt.Errorf("kind %s: view: a working-memory module may not declare view; the kernel lists the model's notes itself (spec §6)", name)
+			}
 		}
 		if m.Layout == "" {
 			m.Layout = "kind"
@@ -269,6 +335,11 @@ func (m *Manifest) validate() error {
 				}
 				if !declared {
 					return fmt.Errorf("kind %s: due_field %q is not a field of this kind (spec §6)", name, k.DueField)
+				}
+			}
+			if k.View != nil {
+				if err := k.View.validate(k); err != nil {
+					return fmt.Errorf("kind %s: view: %w", name, err)
 				}
 			}
 		}
