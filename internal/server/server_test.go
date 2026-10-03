@@ -1221,3 +1221,25 @@ func TestContextToolReportsInstructionSizes(t *testing.T) {
 		t.Errorf("instructions = %+v, want %+v", out.Instructions, want)
 	}
 }
+
+func TestRenderContextPartsAgreesWithRenderContext(t *testing.T) {
+	st := newServerStore(t)
+	d := instructionsDeps(t, st, testSet(t))
+	writeConfirmed(t, st, "identity/value/family.md", "identity", "value", "global", "Family first.")
+	text, _, _, err := RenderContext(d, "desk", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts, _, items, err := RenderContextParts(d, "desk", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var joined strings.Builder
+	for _, p := range parts {
+		joined.WriteString(p.Text)
+	}
+	if joined.String() != text {
+		t.Errorf("parts %q != block %q", joined.String(), text)
+	}
+	_ = items // the full agenda; the view's What is due reads it
+}
