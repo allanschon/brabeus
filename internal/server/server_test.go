@@ -734,7 +734,7 @@ func TestTheClaimsToolJoinsClaimsToResultsAndMarksAStalePass(t *testing.T) {
 		LastRun: func() (time.Time, bool) { return last, true }, ClaimInterval: 24 * time.Hour}
 	own := audienceFor(set, false)
 
-	out, err := claimsFor(d, "desk", own, "")
+	out, err := claimsFor(d, "desk", own, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -753,26 +753,26 @@ func TestTheClaimsToolJoinsClaimsToResultsAndMarksAStalePass(t *testing.T) {
 	}
 
 	last = now.Add(-time.Hour)
-	if out, _ := claimsFor(d, "desk", own, "telos/goal/g3.md"); len(out.Claims) != 3 || out.Claims[0].Stale {
+	if out, _ := claimsFor(d, "desk", own, "telos/goal/g3.md", false); len(out.Claims) != 3 || out.Claims[0].Stale {
 		t.Errorf("a pass within two intervals of the last run is not stale: %+v", out)
 	}
-	if _, err := claimsFor(d, "desk", own, "telos/goal/away.md"); err == nil {
+	if _, err := claimsFor(d, "desk", own, "telos/goal/away.md", false); err == nil {
 		t.Error("a goal scoped to another machine must not be listed")
 	}
-	if out, _ := claimsFor(d, "desk", audienceFor(set, true), ""); len(out.Claims) != 0 {
+	if out, _ := claimsFor(d, "desk", audienceFor(set, true), "", false); len(out.Claims) != 0 {
 		t.Errorf("telos is audience self; a consumer sees none of its claims: %+v", out)
 	}
 
 	d.LastRun = nil
-	if out, _ := claimsFor(d, "desk", own, ""); out.LastRun != "unknown" || !out.Claims[0].Stale || out.Claims[1].Stale {
+	if out, _ := claimsFor(d, "desk", own, "", false); out.LastRun != "unknown" || !out.Claims[0].Stale || out.Claims[1].Stale {
 		t.Errorf("with no runner wired, nothing vouches for an adapter's pass: %+v", out)
 	}
 	d.LastRun = func() (time.Time, bool) { return time.Time{}, false }
-	if out, _ := claimsFor(d, "desk", own, ""); out.LastRun != "never" || !out.Claims[0].Stale {
+	if out, _ := claimsFor(d, "desk", own, "", false); out.LastRun != "never" || !out.Claims[0].Stale {
 		t.Errorf("never run: %+v", out)
 	}
 	d.LastRun, d.ClaimInterval = func() (time.Time, bool) { return now.Add(-time.Hour), true }, 0
-	if out, _ := claimsFor(d, "desk", own, ""); out.LastRun != "off" || out.Interval != "off" || out.Claims[0].Stale {
+	if out, _ := claimsFor(d, "desk", own, "", false); out.LastRun != "off" || out.Interval != "off" || out.Claims[0].Stale {
 		t.Errorf("an interval of 0 is off, and a recent run still vouches on the default daily interval: %+v", out)
 	}
 }
@@ -821,7 +821,7 @@ func TestClaimResultRecordsAManualAnswerWithoutAReview(t *testing.T) {
 	if subject := gitRun(t, st.Dir, "log", "-1", "--format=%s"); !strings.HasPrefix(subject, "claims telos/goal g3: 0 changed, 1 answered") {
 		t.Errorf("subject = %q", subject)
 	}
-	listed, _ := claimsFor(d, "desk", own, "telos/goal/g3.md")
+	listed, _ := claimsFor(d, "desk", own, "telos/goal/g3.md", false)
 	if len(listed.Claims) != 3 || listed.Claims[1].State != "fail" || listed.Claims[1].Detail != "January, confirmed in writing" {
 		t.Errorf("claims = %+v", listed)
 	}
@@ -949,7 +949,7 @@ func TestTheClaimsToolShowsTodaysStateAndWhatWasMeasured(t *testing.T) {
 	now := time.Date(2026, 10, 1, 4, 0, 0, 0, time.UTC)
 	d := Deps{Memory: st, Set: set, Now: func() time.Time { return now },
 		LastRun: func() (time.Time, bool) { return now.Add(-72 * time.Hour), true }, ClaimInterval: 24 * time.Hour}
-	out, err := claimsFor(d, "desk", audienceFor(set, false), "")
+	out, err := claimsFor(d, "desk", audienceFor(set, false), "", false)
 	if err != nil || len(out.Claims) != 3 {
 		t.Fatalf("out=%+v err=%v", out, err)
 	}
@@ -1242,4 +1242,26 @@ func TestRenderContextPartsAgreesWithRenderContext(t *testing.T) {
 		t.Errorf("parts %q != block %q", joined.String(), text)
 	}
 	_ = items // the full agenda; the view's What is due reads it
+}
+
+// Spec §10, §11: the person's module page lists records from every scope, so
+// a goal scoped to another machine must arrive with its claims.
+func TestClaimsForCanAnswerAcrossEveryScope(t *testing.T) {
+	st := newServerStore(t)
+	d := instructionsDeps(t, st, testSet(t))
+	writeServerGoal(t, st, "telos/goal/away.md", "G9", "machine/other")
+	mine, err := claimsFor(d, "desk", store.Visibility{}, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mine.Claims) != 0 {
+		t.Errorf("scoped read must hide another machine's goal: %+v", mine.Claims)
+	}
+	all, err := claimsFor(d, "desk", store.Visibility{}, "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all.Claims) == 0 || all.Claims[0].Goal != "telos/goal/away.md" {
+		t.Errorf("includeAll must reach it: %+v", all.Claims)
+	}
 }

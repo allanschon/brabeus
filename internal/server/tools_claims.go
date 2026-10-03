@@ -112,8 +112,10 @@ func runStatus(d Deps, at time.Time) (lastRun, interval string, fresh bool) {
 // claimsFor lists the claims on every live goal the caller may see, each
 // joined to its result. It answers about the person's whole record, so scope
 // is checked without a project: a machine-scoped goal is hidden from
-// every other machine, and nothing else is.
-func claimsFor(d Deps, caller string, audience store.Visibility, goal string) (claimsOut, error) {
+// every other machine, and nothing else is. includeAll answers for the
+// person's view of their whole record (spec §11), where a module page shows
+// every scope; every tool passes false.
+func claimsFor(d Deps, caller string, audience store.Visibility, goal string, includeAll bool) (claimsOut, error) {
 	if goal != "" {
 		rel, err := store.MemoryPath(goal)
 		if err != nil {
@@ -136,7 +138,7 @@ func claimsFor(d Deps, caller string, audience store.Visibility, goal string) (c
 		if goal != "" && r.Path != goal {
 			continue
 		}
-		if !r.Retired.IsZero() || audience.Hides(r.Module) || !scope.Visible(r.Scope, caller, false) || !governedByRatified(d, r) {
+		if !r.Retired.IsZero() || audience.Hides(r.Module) || !scope.Visible(r.Scope, caller, includeAll) || !governedByRatified(d, r) {
 			continue
 		}
 		block := r.Fields[store.ClaimsField]
@@ -331,7 +333,7 @@ func registerClaimTools(s *mcp.Server, d Deps, caller string, consumer bool, aud
 			"no-evidence or unchecked, and what was last measured. When the scheduled checks last ran is given too, and a " +
 			"pass older than two intervals is marked stale. open is never a shortfall; no-evidence is a fault in the deployment.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in claimsIn) (*mcp.CallToolResult, claimsOut, error) {
-		out, err := claimsFor(d, caller, audience, in.Goal)
+		out, err := claimsFor(d, caller, audience, in.Goal, false)
 		if err != nil {
 			return nil, claimsOut{}, err
 		}
