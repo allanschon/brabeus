@@ -67,7 +67,7 @@ the person's confirmed word.
 The kernel serves a read-only view of the record at `/view/`: a home page carrying the context
 block, and one page per module listing that module's records. A ratified-record module says how
 each kind looks with an optional `view` key on the kind. A `working-memory` module may not declare
-one, because its records are notes, listed by name and description and never laid out.
+one, because its records are notes, listed by description (or by name when the description is empty) and never laid out.
 
 `view` takes one of two forms, and declaring both is refused.
 
