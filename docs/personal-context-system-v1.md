@@ -478,22 +478,30 @@ show, such as a goal with its claims beside it. A `view` that declares both is r
 the author would believe one of them in force and it would not be. A kind with no `view` key is
 laid out as a `list`, titled by its first declared field and showing every declared field, so a
 module that says nothing about the view still has a page. A `working-memory` module may not
-declare `view`: its records are the model's notes, listed by the kernel by `name` and
-`description`, which every record carries, whatever the module's `layout`.
+declare `view`: its records are the model's notes, listed by the kernel by `description`, or by
+`name` when the description is empty, with each note's scope, whatever the module's `layout`.
 
 A view template follows the summary template's rule, for the same reason. It receives only the
 active records of its kind, already filtered by scope and audience; each record carries its
 fields, its body rendered to HTML by the kernel, and what the kernel computed for it — freshness,
-whether it is unconfirmed, its snoozes, its claims and its revision line (§10). It gets the same
-three functions and nothing more, and it may call the kernel's named partials, such as `claims`,
-`freshness` and `revision`, so that a module arranges the parts its own way and the parts look the
-same in every module. It is rendered with an engine that escapes by context, so a field's value is
-text, never markup. A template that defines a partial the kernel names is refused, because it
-would replace the kernel's partial without saying so. A template that does not parse refuses its
-module on load, as an invalid manifest does, because a module with a broken part is not one the
-kernel understands. A template that fails while rendering is replaced on its page by one line
-saying so, and the kernel logs it; the failure is shown where it happens, and nothing else is
-affected.
+whether it is unconfirmed, its snoozes, its claims and its revision line (§10). Some of what the
+kernel computes is offered as a method on the record, such as its anchor or its days left, rather
+than as a field; a method formats only the record's own values and reads nothing else, so it is
+not a new function, and adding one is a kernel change like adding a function. Beyond those, a
+template gets the same three functions and nothing more, and it may call the kernel's named
+partials, such as `claims`, `freshness` and `revision`, so that a module arranges the parts its
+own way and the parts look the same in every module. The kernel draws each kind's section and its
+heading, and the template renders the records inside it, so every module's page has the same
+outline and a failed template loses only its records. Each record has one anchor, `r-<kind>-<name>`,
+which the template uses as the record's id and which every link to the record ends in; the prefix
+keeps a record's id apart from the page's own. It is rendered with an engine that escapes by
+context, so a field's value is text, never markup. A template that defines a partial the kernel
+names is refused, because it would replace the kernel's partial without saying so. A template
+that does not parse stops the kernel from starting, as an invalid manifest or summary template
+does, because a module with a broken part is not one the kernel understands, and a deployment
+learns of it when it restarts rather than running on with a hole in it. A template that fails
+while rendering is replaced on its page by one line saying so, and the kernel logs it; the
+failure is shown where it happens, and nothing else is affected.
 
 A module never carries credentials. If a module's adapter needs a token, the token is the
 deployment's configuration and the adapter reads it from the environment.
@@ -956,7 +964,9 @@ closing line, and ends with a line naming the records left out, which is also a 
 reports. Nothing cuts them silently.
 
 **The view** is the record as HTML: a home page at `/view/`, and one page per module at
-`/view/<module>/`. It leads with the block, because the block is what every session works from,
+`/view/<module>/`. It also serves its one stylesheet at `/view/static/view.css` and the fonts that
+stylesheet names under `/view/fonts/`, from the kernel itself, and redirects `/view` to
+`/view/`. It leads with the block, because the block is what every session works from,
 and it lists every active record beneath it, because a record the person cannot see is one they
 cannot correct. Its navigation is the set of modules the caller may read (§11), in priority order,
 with the `working-memory` modules listed apart and labelled as the model's notes, so that nothing
@@ -1052,8 +1062,12 @@ identity layer it already runs.
   assistant, through the kernel's validated write.
 - **Nothing runs in the view.** Every page carries a content security policy that allows no
   script, no inline style and nothing from another origin, so a module's view template can only
-  arrange what it is given: it cannot fetch, cannot read another module's part of the page, and
-  cannot style around the kernel's stylesheet. A module that wants behaviour the kernel's
+  arrange what it is given: it cannot load anything from another origin, cannot read another
+  module's part of the page, and cannot style around the kernel's stylesheet. The policy does not
+  govern where a plain link leads, so a template could put a link to another site on the page,
+  and following it would carry only what the template already holds, which is its own kind's
+  records. That is the residual risk of a module, and it is acceptable for the same reason a
+  module's summary template is: a module is code the person chose to install. A module that wants behaviour the kernel's
   layouts do not offer asks for it in the kernel, where it is reviewed like a new function (§6).
 
 ## 12. Sharing the system without sharing the person
@@ -1374,10 +1388,10 @@ for, and a module could not say how its own records should be seen.
 |---|---|---|
 | BR | the view is a home page and one page per module, not one long page: the home page carries the block, the instructions, what is due, what is behind and the faults, and each module's page lists its active records; navigation is the modules the caller may read, computed, with `working-memory` modules listed apart as the model's notes | §1.1, §4.1, §7, §10 |
 | BS | what is due is the agenda with its deferrals; what is behind is every `behind` or `fail` claim with none, because putting a question off does not change what was measured; `no-evidence`, stale passes and the manual fraction are faults, never shortfalls | §8.1, §10 |
-| BT | a `ratified-record` kind declares how the view lays it out, by a layout from a closed set the kernel owns or by a view template it ships, never both; a kind that declares neither is a `list`; a `working-memory` module may declare neither | §6 |
-| BU | a view template gets the summary template's three functions, the kernel's partials and kernel-computed annotations, and is rendered with an engine that escapes by context; one that redefines a kernel partial, or does not parse, refuses its module on load; one that fails while rendering is replaced on its page by one line and logged | §6 |
+| BT | a `ratified-record` kind declares how the view lays it out, by a layout from a closed set the kernel owns or by a view template it ships, never both; a kind that declares neither is a `list`; a `working-memory` module may declare neither, and its notes are listed by description, or by name when the description is empty | §6 |
+| BU | a view template gets the summary template's three functions, the kernel's partials and kernel-computed annotations, some as methods that format only the record's own values, and is rendered with an engine that escapes by context; the kernel draws each kind's section and heading, and each record has one anchor, `r-<kind>-<name>`; a template that redefines a kernel partial is refused, one that does not parse stops the kernel from starting, as an invalid manifest does, and one that fails while rendering is replaced on its page by one line and logged | §6 |
 | BV | a module's page shows the person's own callers every scope, labelled, and that route is the explicit request scope on read requires; the home page's block uses the caller's scope keys, so a caller that carries no machine still has one | §10, §11 |
-| BW | the view's routes accept `GET` only, and every page carries a content security policy that allows no script, no inline style and nothing from another origin, so a module's template can only arrange what it is given | §11, §13 |
+| BW | the view's routes accept `GET` only, and every page carries a content security policy that allows no script, no inline style and nothing from another origin, so a module's template can only arrange what it is given; it serves its own stylesheet and fonts; a link a template writes is the residual risk of installing a module | §10, §11, §13 |
 | BX | every visual value in the view is a custom property declared once, and templates style only through the kernel's classes, so that a deployment's theme, not yet designed, changes no module | §10, §15 |
 | BY | §13 gains two cases for the view, and M3 is restated in their terms | §13, §14 |
 
