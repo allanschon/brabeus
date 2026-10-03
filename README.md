@@ -50,6 +50,11 @@ docker run -d --name brabeus --restart always \
 `BRABEUS_REPO` is the one required value: the private repository the kernel writes your record
 to. `.env.example` lists every other variable and its default.
 
+The kernel also serves a read-only view of the record at `/view/`, behind the same identity and
+authentication as `/context`. Opening `http://<the kernel's front>/view/` in a browser on a machine the
+kernel can identify shows the home page, with one page per module behind it, and no other set-up is
+needed. The view cannot write.
+
 ## Tools
 
 The tools call a record a memory, a name that predates modules.
