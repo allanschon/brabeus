@@ -7,10 +7,12 @@ package view
 import (
 	"html/template"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/allanschon/brabeus/internal/module"
+	"github.com/allanschon/brabeus/internal/scope"
 	"github.com/allanschon/brabeus/internal/store"
 )
 
@@ -22,6 +24,59 @@ type Claim struct {
 	Manual, Stale                     bool
 	Count, Target, Expected, DaysLeft *int
 	Deadline, Since, Detail           string
+
+	// Computed for the markup, which a template cannot work out with the
+	// three functions it has: the bar's integers, and Since as a date.
+	Progress  *Progress // nil unless the claim has both a count and a target
+	SinceDate string    // YYYY-MM-DD, or empty when Since does not parse
+}
+
+// Progress is a claim's count against its target, as integers for a
+// <progress> bar and as grouped figures for its label; Tick marks an
+// expected-by-now figure.
+type Progress struct {
+	Value, Max, Expected             int
+	Tick                             bool
+	ValueText, MaxText, ExpectedText string
+}
+
+// annotate fills each claim's computed fields. It is idempotent, so a claim
+// that passes through it twice is unchanged.
+func annotate(cs []Claim) []Claim {
+	out := make([]Claim, len(cs))
+	for i, c := range cs {
+		c.Progress = nil
+		if c.Count != nil && c.Target != nil && *c.Target > 0 {
+			p := &Progress{Value: *c.Count, Max: *c.Target, ValueText: commas(*c.Count), MaxText: commas(*c.Target)}
+			if c.Expected != nil {
+				p.Tick, p.Expected, p.ExpectedText = true, *c.Expected, commas(*c.Expected)
+			}
+			c.Progress = p
+		}
+		c.SinceDate = ""
+		if t, err := time.Parse(time.RFC3339, c.Since); err == nil {
+			c.SinceDate = t.UTC().Format("2006-01-02")
+		}
+		out[i] = c
+	}
+	return out
+}
+
+// commas groups an integer's digits in thousands: 12345 is "12,345".
+func commas(n int) string {
+	s := strconv.Itoa(n)
+	sign := ""
+	if n < 0 {
+		sign, s = "-", s[1:]
+	}
+	var b strings.Builder
+	for i, d := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			b.WriteByte(',')
+		}
+		b.WriteRune(d)
+	}
+	return sign + b.String()
 }
 
 // Ref is a named record a field points at; Href is empty when no record by
@@ -34,6 +89,10 @@ type Freshness struct {
 	Reviewed             time.Time
 	Age, Every           int // days; Every is 0 for a kind that is never asked about by age
 	Unconfirmed, Overdue bool
+	// Class is the markup's name for the state: "draft" when unconfirmed,
+	// "unknown" when the kind is never asked about by age, "due" when
+	// overdue, and empty when confirmed within its interval.
+	Class string
 }
 
 // Record is a record as a page and a module's view template see it: its own
@@ -48,11 +107,21 @@ type Record struct {
 	Claims                                           []Claim
 	Revision                                         string
 	Serves                                           []Ref
+
+	// ScopeKind is the scope's first half, "global", "machine" or
+	// "project", which the scope label is styled by.
+	ScopeKind string
+	// DaysLeft is the whole days from now until the record's "by" date,
+	// nil when it has none or the date has passed; DaysPast is the days
+	// since a passed one. A template cannot subtract dates.
+	DaysLeft *int
+	DaysPast int
 }
 
 // KindPage is one kind's section of a module page.
 type KindPage struct {
 	Module, Kind string
+	Title        string // the kind as a heading: "goal" is "Goal"
 	View         module.View
 	Records      []Record
 	Now          time.Time
@@ -70,6 +139,18 @@ func PageModule(set *module.Set, r store.Stored) string {
 }
 
 const servesField = "serves"
+
+// byField is a goal's date (spec §9); the view counts the days to it.
+const byField = "by"
+
+// scopeKind is "machine" or "project" for those scopes and "global" for
+// everything else, which is how scope.Visible reads them too.
+func scopeKind(sc string) string {
+	if k, _, ok := strings.Cut(scope.NormaliseHost(sc), "/"); ok && (k == "machine" || k == "project") {
+		return k
+	}
+	return "global"
+}
 
 // BuildRecords turns stored records into view records. md renders a body;
 // the server passes the goldmark renderer, tests pass an escaper.
@@ -89,11 +170,27 @@ func BuildRecords(set *module.Set, recs []store.Stored, claims []Claim, md func(
 		_, kind, _ := set.RuleFor(r.Module, r.Kind)
 		v := Record{Path: r.Path, Module: r.Module, Kind: r.Kind, Name: r.Name, Description: r.Description,
 			ID: r.ID, Scope: r.Scope, Fields: r.Fields, Body: md(r.Body), Snoozes: r.Snoozes, Snoozed: r.Snoozed,
-			Claims: byGoal[r.Path], Revision: r.Revision}
+			Claims: annotate(byGoal[r.Path]), Revision: r.Revision, ScopeKind: scopeKind(r.Scope)}
 		v.Freshness = Freshness{Reviewed: r.Reviewed, Every: kind.FreshnessDays, Unconfirmed: r.Reviewed.IsZero()}
 		if !v.Freshness.Unconfirmed {
 			v.Freshness.Age = int(now.Sub(r.Reviewed).Hours() / 24)
 			v.Freshness.Overdue = kind.FreshnessDays > 0 && v.Freshness.Age > kind.FreshnessDays
+		}
+		switch {
+		case v.Freshness.Unconfirmed:
+			v.Freshness.Class = "draft"
+		case kind.FreshnessDays == 0:
+			v.Freshness.Class = "unknown"
+		case v.Freshness.Overdue:
+			v.Freshness.Class = "due"
+		}
+		if by, err := time.Parse("2006-01-02", r.Fields[byField]); err == nil {
+			today, _ := time.Parse("2006-01-02", now.UTC().Format("2006-01-02"))
+			if d := int(by.Sub(today).Hours() / 24); d >= 0 {
+				v.DaysLeft = &d
+			} else {
+				v.DaysPast = -d
+			}
 		}
 		for _, name := range strings.Split(r.Fields[servesField], ",") {
 			if name = strings.TrimSpace(name); name != "" {
@@ -149,7 +246,7 @@ func Kinds(set *module.Set, mod string, recs []Record, now time.Time) []KindPage
 		if v.Sort != "" {
 			sort.SliceStable(rs, func(i, j int) bool { return rs[i].Fields[v.Sort] < rs[j].Fields[v.Sort] })
 		}
-		out = append(out, KindPage{Module: mod, Kind: k, View: v, Records: rs, Now: now})
+		out = append(out, KindPage{Module: mod, Kind: k, Title: capital(k), View: v, Records: rs, Now: now})
 	}
 	return out
 }
@@ -159,4 +256,12 @@ func PageModuleOf(set *module.Set, r Record) string {
 	s := store.Stored{}
 	s.Module, s.Kind, s.Reviewed = r.Module, r.Kind, r.Freshness.Reviewed
 	return PageModule(set, s)
+}
+
+// capital upper-cases a name's first letter, for headings and labels.
+func capital(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }

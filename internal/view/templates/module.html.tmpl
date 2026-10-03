@@ -1,0 +1,35 @@
+{{define "module-body"}}<header class="page-head">
+  <p class="page-head__kicker">{{if .IsNotes}}Model's notes{{else}}Module{{end}} · priority {{.Module.Priority}}</p>
+  <h1 class="page-head__title">{{.Title}}</h1>
+  {{- with .Module.Intro}}
+  <p class="page-head__lede">{{.}}</p>
+  {{- end}}
+  {{- if .IsNotes}}
+  <p class="notes-banner"><svg class="icon" aria-hidden="true"><use href="#i-note"></use></svg><span><strong>Claude wrote these notes for itself.</strong> They are not your confirmed record and never stand in for your word.</span></p>
+  {{- if .NoteGroups}}
+  <ul class="kind-index">{{range .NoteGroups}}<li><a href="#{{.ID}}">{{.Scope}}</a> <span class="kind-index__count">{{len .Notes}}</span></li>{{end}}</ul>
+  {{- end}}
+  {{- else if .Sections}}
+  <ul class="kind-index">{{range .Sections}}<li><a href="#kind-{{.Kind}}">{{.Title}}</a> <span class="kind-index__count">{{len .Records}}</span></li>{{end}}</ul>
+  {{- end}}
+</header>
+{{- if .IsNotes}}
+{{- range $i, $g := .NoteGroups}}
+<section class="section" id="{{$g.ID}}" aria-labelledby="{{$g.ID}}-title">
+  <header class="section__head"><h2 class="section__title" id="{{$g.ID}}-title">{{$g.Scope}}</h2>{{if eq $i 0}}<p class="section__count">{{$.NoteCount}} {{if eq $.NoteCount 1}}note{{else}}notes{{end}} in all</p>{{end}}</header>
+  {{template "memory-list" $g.Notes}}
+</section>
+{{- else}}
+<p class="empty">No notes yet.</p>
+{{- end}}
+{{- else}}
+{{- range .Sections}}
+<section class="section" id="kind-{{.Kind}}" aria-labelledby="kind-{{.Kind}}-title">
+  <header class="section__head"><h2 class="section__title" id="kind-{{.Kind}}-title">{{.Title}}</h2><p class="section__count">{{len .Records}} active</p></header>
+  {{.HTML}}
+</section>
+{{- else}}
+<p class="empty">Nothing recorded here yet.</p>
+{{- end}}
+{{- end}}
+{{end}}

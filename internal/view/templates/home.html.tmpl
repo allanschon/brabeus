@@ -1,0 +1,126 @@
+{{define "home-body"}}<header class="page-head"><h1 class="visually-hidden">Home</h1>{{with .AsOf}}<p class="page-head__kicker">Your record as of {{.}}</p>{{end}}</header>
+<div class="section section--first">
+  <section class="block blueprint" aria-labelledby="block-title">
+    <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+    <header class="block__head">
+      <h2 class="block__title" id="block-title">The block</h2>
+      <p class="block__meta">sent verbatim to every session · {{.BlockBytes}} bytes</p>
+    </header>
+    {{- with .Agenda}}{{if .Line}}
+    <div class="agenda-line">
+      {{- if .Ref}}
+      <p class="agenda-line__label"><span>agenda:</span>{{if .Href}}<a href="{{.Href}}">{{.Ref}}</a>{{else}}<span>{{.Ref}}</span>{{end}}</p>
+      <p class="agenda-line__question">{{.Question}}</p>
+      {{- else}}
+      <p class="agenda-line__label">{{.Line}}</p>
+      {{- end}}
+    </div>
+    {{- end}}{{end}}
+    {{- if .Shares}}
+    <div class="block__modules">
+      {{- range .Shares}}
+      <div class="block__module">
+        <a class="block__key" href="/view/{{.Module}}/">{{.Key}}</a>
+        {{- if .Lines}}
+        <ul class="block__lines">
+          {{- range .Lines}}
+          <li>{{.}}</li>
+          {{- end}}
+        </ul>
+        {{- end}}
+      </div>
+      {{- end}}
+    </div>
+    {{- end}}
+  </section>
+</div>
+<section class="section" id="instructions" aria-label="Instructions">
+  <details class="disclosure">
+    <summary class="disclosure__summary">
+      <svg class="icon disclosure__chevron" aria-hidden="true"><use href="#i-chevron"></use></svg>
+      <h2 class="disclosure__title">Instructions</h2>
+      <span class="disclosure__hint">Your standing instructions to Claude, from {{len .Instructions}} {{if eq (len .Instructions) 1}}record{{else}}records{{end}}</span>
+      {{- range .Gauges}}
+      {{template "gauge" .}}
+      {{- end}}
+    </summary>
+    <div class="disclosure__body">
+      {{- range .Instructions}}
+      <article class="instruction">
+        <h3 class="instruction__kind">{{.Kind}}</h3>
+        {{.HTML}}
+      </article>
+      {{- else}}
+      <p class="empty">No standing instructions.</p>
+      {{- end}}
+    </div>
+  </details>
+</section>
+<section class="section" id="due" aria-labelledby="due-title">
+  <header class="section__head"><h2 class="section__title" id="due-title">What's due</h2><p class="section__note">Questions waiting to be asked, in order</p>{{if .Due}}<p class="section__count">{{len .Due}} {{if eq (len .Due) 1}}item{{else}}items{{end}}</p>{{end}}</header>
+  {{- if .Due}}
+  <ol class="due">
+    {{- range .Due}}
+    <li class="due__item">
+      <span class="reason reason--{{.Reason}}"><svg class="icon" aria-hidden="true"><use href="#i-{{.Reason}}"></use></svg>{{.Reason}}</span>
+      <div class="due__body">
+        {{if .Href}}<a class="due__record" href="{{.Href}}">{{.Label}}</a>{{else}}<span class="due__record">{{.Label}}</span>{{end}}
+        <p class="due__question">{{.Question}}</p>
+      </div>
+    </li>
+    {{- end}}
+  </ol>
+  {{- else}}
+  <p class="empty">Nothing due.</p>
+  {{- end}}
+</section>
+<section class="section" id="behind" aria-labelledby="behind-title">
+  <header class="section__head"><h2 class="section__title" id="behind-title">What's behind</h2><p class="section__note">Claims measured behind or failed</p>{{if .Behind}}<p class="section__count">{{len .Behind}} {{if eq (len .Behind) 1}}claim{{else}}claims{{end}}</p>{{end}}</header>
+  {{- if .Behind}}
+  <ul class="behind-list">
+    {{- range .Behind}}
+    <li class="behind-entry behind-entry--{{.State}}">
+      <div class="behind-entry__head">{{template "state" .State}}{{if .GoalHref}}<a class="behind-entry__goal" href="{{.GoalHref}}">{{or .ID .Goal}}{{with .Title}} · {{.}}{{end}}</a>{{else}}<span class="behind-entry__goal">{{or .ID .Goal}}{{with .Title}} · {{.}}{{end}}</span>{{end}}</div>
+      <p>“{{.Text}}”</p>
+      {{- template "progress" .}}
+      <p class="behind-entry__meta">
+        {{- if eq .State "fail"}}{{with .Deadline}}Deadline <time datetime="{{.}}">{{.}}</time>. {{end}}This contradicts the record.
+        {{- else}}{{with .DaysLeft}}{{.}} days left · {{end}}{{if .Manual}}checked by hand{{else}}{{.Adapter}}{{end}}{{with .SinceDate}} · since <time datetime="{{.}}">{{.}}</time>{{end}}{{end -}}
+      </p>
+    </li>
+    {{- end}}
+  </ul>
+  {{- else}}
+  <p class="empty">Nothing behind.</p>
+  {{- end}}
+</section>
+<section class="section" id="faults" aria-labelledby="faults-title">
+  <header class="section__head"><h2 class="section__title" id="faults-title">Faults</h2><p class="section__note">Deployment health, not your progress</p></header>
+  {{- with .Faults}}
+  <div class="faults">
+    <dl class="faults__readings">
+      <div class="reading"><dt class="reading__name">Checked by hand</dt>{{if .Total}}<dd class="reading__value">{{.Manual}} of {{.Total}} claims · {{.ManualPercent}}%</dd>{{else}}<dd class="reading__value reading__value--quiet">no claims</dd>{{end}}</div>
+      <div class="reading"><dt class="reading__name">Automatic checks</dt><dd class="reading__value">last ran {{or .LastRun "never"}}{{with .Interval}} · every {{.}}{{end}}</dd></div>
+      <div class="reading"><dt class="reading__name">No-evidence claims</dt>{{if .NoEvidence}}<dd class="reading__value">{{len .NoEvidence}}, listed below</dd>{{else}}<dd class="reading__value reading__value--quiet">none</dd>{{end}}</div>
+      <div class="reading"><dt class="reading__name">Stale passes</dt>{{if .Stale}}<dd class="reading__value">{{len .Stale}}, listed below</dd>{{else}}<dd class="reading__value reading__value--quiet">none</dd>{{end}}</div>
+      <div class="reading"><dt class="reading__name">Block budget</dt>{{if .Block}}<dd class="reading__value">{{len .Block}}, listed below</dd>{{else}}<dd class="reading__value reading__value--quiet">every module within budget</dd>{{end}}</div>
+    </dl>
+    {{- if or .NoEvidence .Stale .Block}}
+    <ul class="fault-list">
+      {{- range .NoEvidence}}
+      <li class="fault">{{template "state" "no-evidence"}}<p>{{template "goal-ref" .}} “{{.Text}}”{{with .Detail}}: {{.}}{{end}}</p></li>
+      {{- end}}
+      {{- range .Stale}}
+      <li class="fault"><span class="reason reason--stale"><svg class="icon" aria-hidden="true"><use href="#i-stale"></use></svg>stale</span><p>{{template "goal-ref" .}} “{{.Text}}”: an automatic pass older than two check intervals{{with .SinceDate}}, passing since <time datetime="{{.}}">{{.}}</time>{{end}}</p></li>
+      {{- end}}
+      {{- range .Block}}
+      <li class="fault"><span class="reason reason--budget"><svg class="icon" aria-hidden="true"><use href="#i-budget"></use></svg>budget</span><p>{{.Module}}: {{if .Error}}template error{{else}}{{.Bytes}} of {{.Budget}} bytes{{end}}</p></li>
+      {{- end}}
+    </ul>
+    {{- end}}
+  </div>
+  {{- end}}
+</section>
+{{end}}
+
+{{define "gauge"}}<span class="gauge">{{if .Max}}<progress class="bar{{if .Over}} bar--behind{{end}} gauge__bar" value="{{.Value}}" max="{{.Max}}">{{.Percent}}%</progress>{{end}}<span class="gauge__label">{{.BytesText}} / {{.BudgetText}} bytes</span>{{if .Over}}<span class="gauge__over"><svg class="icon" aria-hidden="true"><use href="#i-budget"></use></svg>over budget by {{.OverText}} bytes</span>{{end}}</span>{{end}}
