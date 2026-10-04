@@ -25,6 +25,7 @@
                           "What's a rule of thumb you keep coming back to?"],
                "draft": "Is this still what you believe?"},
     "value": {"fields": ["statement"], "freshness_days": 365,
+              "view": {"layout": "cards", "title": "statement"},
               "interview": "Still one of the things you weigh decisions against?",
               "first": "What do you weigh decisions against? Name one.",
               "lenses": ["When two good options conflict, what tips it for you?",

@@ -123,16 +123,33 @@ func New(set *module.Set) (*Renderer, error) {
 	return r, nil
 }
 
-// Render composes the block. items is the agenda computed from recs; recs are
-// already the caller's view. The result is at most Cap bytes by construction:
+// Part is one share of the block: the agenda line (Module empty) or one
+// module's summary, each ending in a newline. The view renders them apart so
+// it can link each share to its module; joined, they are the block.
+type Part struct {
+	Module string `json:"module,omitempty"`
+	Text   string `json:"text"`
+}
+
+// Render composes the block: RenderParts, joined.
+func (r *Renderer) Render(items []agenda.Item, recs []store.Stored, now time.Time, v store.Visibility) (string, []Fault) {
+	parts, faults := r.RenderParts(items, recs, now, v)
+	var out strings.Builder
+	for _, p := range parts {
+		out.WriteString(p.Text)
+	}
+	return out.String(), faults
+}
+
+// RenderParts composes the block in parts. items is the agenda computed from
+// recs; recs are already the caller's view. The result is at most Cap bytes by construction:
 // the agenda line is bounded by Reservation and the budgets were checked
 // against Cap−Reservation when the set loaded.
-func (r *Renderer) Render(items []agenda.Item, recs []store.Stored, now time.Time, v store.Visibility) (string, []Fault) {
-	var out strings.Builder
+func (r *Renderer) RenderParts(items []agenda.Item, recs []store.Stored, now time.Time, v store.Visibility) ([]Part, []Fault) {
+	var parts []Part
 	var faults []Fault
 	line, f := AgendaLine(items)
-	out.WriteString(line)
-	out.WriteString("\n")
+	parts = append(parts, Part{Text: line + "\n"})
 	if f != nil {
 		faults = append(faults, *f)
 	}
@@ -156,20 +173,24 @@ func (r *Renderer) Render(items []agenda.Item, recs []store.Stored, now time.Tim
 		var buf bytes.Buffer
 		if err := t.Execute(&buf, data); err != nil {
 			faults = append(faults, Fault{Module: m.Name, Budget: m.BudgetBytes, Error: err.Error()})
-			fmt.Fprintf(&out, "%s: template error (%v)\n", m.Name, err)
+			parts = append(parts, Part{Module: m.Name, Text: fmt.Sprintf("%s: template error (%v)\n", m.Name, err)})
 			continue
 		}
 		if buf.Len() > m.BudgetBytes {
 			faults = append(faults, Fault{Module: m.Name, Bytes: buf.Len(), Budget: m.BudgetBytes})
-			fmt.Fprintf(&out, "%s: over budget (%d of %d bytes)\n", m.Name, buf.Len(), m.BudgetBytes)
+			parts = append(parts, Part{Module: m.Name, Text: fmt.Sprintf("%s: over budget (%d of %d bytes)\n", m.Name, buf.Len(), m.BudgetBytes)})
 			continue
 		}
-		out.Write(buf.Bytes())
-		if buf.Len() > 0 && buf.Bytes()[buf.Len()-1] != '\n' {
-			out.WriteString("\n")
+		text := buf.String()
+		if text == "" {
+			continue // a module with nothing to say adds no part, as it added no bytes
 		}
+		if !strings.HasSuffix(text, "\n") {
+			text += "\n"
+		}
+		parts = append(parts, Part{Module: m.Name, Text: text})
 	}
-	return out.String(), faults
+	return parts, faults
 }
 
 // AgendaLine renders the top item within Reservation bytes. Overflow drops

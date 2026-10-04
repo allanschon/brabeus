@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -28,9 +29,27 @@ import (
 // keep scope.Visible, because they answer about the whole record, not one
 // project's view (spec §10).
 func RenderContext(d Deps, caller, project string, consumer bool) (string, []block.Fault, *agenda.Item, error) {
-	recs, audience, err := visibleRecords(d, caller, project, consumer)
+	parts, faults, items, err := RenderContextParts(d, caller, project, consumer)
 	if err != nil {
 		return "", nil, nil, err
+	}
+	var text strings.Builder
+	for _, p := range parts {
+		text.WriteString(p.Text)
+	}
+	if top, ok := agenda.Top(items); ok {
+		return text.String(), faults, &top, nil
+	}
+	return text.String(), faults, nil, nil
+}
+
+// RenderContextParts is RenderContext before the join: the block in parts,
+// and the full agenda the top item was taken from, so the view can show what
+// is due as well as the block.
+func RenderContextParts(d Deps, caller, project string, consumer bool) ([]block.Part, []block.Fault, []agenda.Item, error) {
+	recs, audience, err := visibleRecords(d, caller, project, consumer)
+	if err != nil {
+		return nil, nil, nil, err
 	}
 	now := d.Now()
 	// A consumer never reviews, so it is asked nothing: onboarding gaps come
@@ -46,11 +65,8 @@ func RenderContext(d Deps, caller, project string, consumer bool) (string, []blo
 		}
 		items = agenda.Compute(d.Set, recs, results, now)
 	}
-	text, faults := d.Block.Render(items, recs, now, audience)
-	if top, ok := agenda.Top(items); ok {
-		return text, faults, &top, nil
-	}
-	return text, faults, nil, nil
+	parts, faults := d.Block.RenderParts(items, recs, now, audience)
+	return parts, faults, items, nil
 }
 
 // visibleRecords is the caller's view of the record: the unretired records

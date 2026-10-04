@@ -323,3 +323,33 @@ func TestAgendaLineNamesAModuleOnlyItem(t *testing.T) {
 		t.Errorf("line = %q", line)
 	}
 }
+
+// Spec §10: the view shows the block exactly as a session receives it, so
+// the parts must join to Render's output byte for byte.
+func TestRenderPartsJoinToTheBlock(t *testing.T) {
+	set := shippedSet(t, "identity", "telos")
+	r, err := New(set)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recs := []store.Stored{
+		rec("identity/value/family.md", "identity", "value", map[string]string{"statement": "Family first."}, "2026-09-01T00:00:00Z", "2026-09-02T00:00:00Z"),
+		rec("telos/mission/m.md", "telos", "mission", map[string]string{"statement": "Refine the network."}, "2026-09-01T00:00:00Z", "2026-09-02T00:00:00Z"),
+	}
+	now := at("2026-10-03T00:00:00Z")
+	whole, _ := r.Render(nil, recs, now, store.Visibility{})
+	parts, _ := r.RenderParts(nil, recs, now, store.Visibility{})
+	var joined strings.Builder
+	for _, p := range parts {
+		joined.WriteString(p.Text)
+	}
+	if joined.String() != whole {
+		t.Fatalf("parts joined:\n%q\nblock:\n%q", joined.String(), whole)
+	}
+	if parts[0].Module != "" || !strings.HasPrefix(parts[0].Text, "agenda:") {
+		t.Errorf("first part must be the agenda line: %+v", parts[0])
+	}
+	if parts[1].Module != "identity" || parts[2].Module != "telos" {
+		t.Errorf("modules in priority order: %+v", parts)
+	}
+}

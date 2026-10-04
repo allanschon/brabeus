@@ -36,6 +36,7 @@ import (
 	"github.com/allanschon/brabeus/internal/retrieval"
 	"github.com/allanschon/brabeus/internal/server"
 	"github.com/allanschon/brabeus/internal/store"
+	"github.com/allanschon/brabeus/internal/view"
 )
 
 func env(key, def string) string {
@@ -244,10 +245,22 @@ func main() {
 		log.Fatalf("auth: %v", err)
 	}
 
+	vr, err := view.New(set)
+	if err != nil {
+		log.Fatalf("view: %v", err)
+	}
+	viewGuarded, err := server.GuardedView(deps, vr, id, consumers, authMode, authToken)
+	if err != nil {
+		log.Fatalf("auth: %v", err)
+	}
+
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", guarded)
 	mux.Handle("/context", ctxGuarded)
 	mux.Handle("/instructions", insGuarded)
+	// The view sits behind the same identity and auth as /context (spec §10),
+	// inside its security headers, and answers every method but GET with 405.
+	server.MountView(mux, viewGuarded)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, healthz(server.Version, id.Mode(), set, claims.Status(runner), claims.StatusErrors(runner)))
 	})
