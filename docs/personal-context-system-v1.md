@@ -2,7 +2,7 @@
 
 **Working name: Brabeus.** See §16.
 
-**Status: v1.11. M0, M1 and M2 are built, as are v1.9's claim dates and v1.10's instructions; v1.11's view is M3, and is planned (§14).**
+**Status: v1.11. M0, M1, M2 and M3 are built, as are v1.9's claim dates and v1.10's instructions (§14).**
 
 This document describes a system built on the kernel this repository already contains: a
 private store with hybrid retrieval, a Claude Code plugin, and a Dockerfile that builds the
@@ -1155,7 +1155,7 @@ The system is accepted when one real deployment passes these, described in the s
 | M0 | the public repository seeded; §12's contents present; §13's last clause enforced on every push by CI | CI runs §13's last clause on every push, and the seeded repository passes it | delivered 2026-09-27 |
 | M1 | the two profiles; module contract with `profile`, `budget_bytes` and `audience`; the `memory` module and the one-time migration; `telos` and `identity`; `context` tool with the agenda line; `review`; `SessionStart` injection; the guard made conditional | the existing store migrates and still answers; the 2 KB block renders from real records on all machines; a stale record surfaces as the first line; `reviewed` moves only on `review` | delivered 2026-09-27 |
 | M2 | three-state claims and the `tracker`, `forge`, `date`, `manual` adapters; results written through the kernel; the conversational `/interview` (§9) with lenses, drafts, threads and the register; the `modules` tool; `review` carrying the answer; the notebook's dense leg as a deployment switch (§5); reflection by value, through the `reflect` tool; the v1.7 agenda, review, claim and caller changes (§16 AI–AQ and AT–AW) | the first line names a measured contradiction; a revoked credential produces `no-evidence`, not an accusation; a first interview turns the person's own answers into confirmed values and goals, and leaves a thread for anything no module holds | delivered 2026-09-29 |
-| M3 | the view (§10): the home page, a page per module, the `view` key and view templates (§6), a view template for `telos` goals, and the kernel's stylesheet on custom properties | §13's two view cases pass; read-only and behind the same identity as `/context`; shows what is due, what is behind, revision lines, snooze counts and the manual fraction | planned |
+| M3 | the view (§10): the home page, a page per module, the `view` key and view templates (§6), a view template for `telos` goals, and the kernel's stylesheet on custom properties | §13's two view cases pass; read-only and behind the same identity as `/context`; shows what is due, what is behind, revision lines, snooze counts and the manual fraction | delivered 2026-10-04 |
 | M4 | `health` and `finance`, `audience: self` | both populated by interview, `manual` claims asked and recorded; absent from a read-only consumer's results | planned |
 | M6 | sharing hygiene | §12 and §13's last item pass — continuously, from M0 onward; a second person installs from the README | ongoing since M0 |
 
