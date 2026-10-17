@@ -9,15 +9,16 @@ the Greek games.
 
 ## Status
 
-The specification is at v1.10 (`docs/personal-context-system-v1.md`). Milestones M0, M1 and M2 are
-built. Modules load and validate, and every write names a module and a kind. The context block
-renders from the person's records with the agenda's question as its first line. Goals carry claims,
-which the kernel checks against a task tracker, a git forge or a date, or asks the person to answer.
-The person's confirmed preferences and register reach every session and every subagent it starts as
-standing instructions. The interview is a conversation: it drafts the record in the person's words,
-confirms each draft through `review`, and closes with a reflection by value. M3, a read-only view,
-and M4, the `health` and `finance` modules, are planned. Section 14 of the specification lists what
-each milestone delivers.
+The specification is at v1.11 (`docs/personal-context-system-v1.md`). Milestones M0, M1, M2 and
+M3 are built. Modules load and validate, and every write names a module and a kind. The context
+block renders from the person's records with the agenda's question as its first line. Goals carry
+claims, which the kernel checks against a task tracker, a git forge or a date, or asks the person to
+answer. The person's confirmed preferences and register reach every session and every subagent it
+starts as standing instructions. The interview is a conversation: it drafts the record in the
+person's words, confirms each draft through `review`, and closes with a reflection by value. A
+read-only view in the browser shows what is due, what is behind and how each claim stands. M4, the
+`health` and `finance` modules, is planned. Section 14 of the specification lists what each
+milestone delivers.
 
 ## What is here
 
