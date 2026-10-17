@@ -4,8 +4,8 @@
 # WHY. The repository is public and its reasoning has to be too. A comment that
 #    justifies code with a label defined somewhere else, or points at a file that
 #    is not in the tree, tells the reader there is a reason without giving it. The
-#    leak check cannot catch these: it refuses words that must not appear, and
-#    these references are made of ordinary words.
+#    identifier check a committer may run cannot catch these: it refuses words that
+#    must not appear, and these references are made of ordinary words.
 #
 # Three rules:
 #   1. no reasoning cited by a planning label: "decision D6", a bare label in
