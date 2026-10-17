@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Run a person's own check on the commit message, if they keep one.
+#
+# A commit message is published with the commit, but it is never staged content, so a
+# pre-commit check cannot see it. The check lives in the person's config directory, as the
+# one .githooks/pre-commit runs does, because naming what it looks for here would publish it.
+# Without one, this hook does nothing.
+#
+# This hook is versioned, but git does not use a versioned hooks directory by default.
+#   Every clone needs, once:
+#
+#       git config core.hooksPath .githooks
+set -euo pipefail
+local_hook="${XDG_CONFIG_HOME:-$HOME/.config}/brabeus/hooks/commit-msg"
+# One that is there but cannot run refuses too, because skipping it would end the check
+# with nothing said: a link left dangling when its target moved looks like no check at all.
+if [ -e "$local_hook" ] || [ -L "$local_hook" ]; then
+  if [ ! -x "$local_hook" ]; then
+    echo "commit-msg: $local_hook is there but cannot run; fix or remove it" >&2
+    exit 1
+  fi
+  if ! "$local_hook" "$1"; then
+    echo "commit-msg: $local_hook refused the commit" >&2
+    exit 1
+  fi
+fi

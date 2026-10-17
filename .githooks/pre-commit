@@ -21,6 +21,24 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
+# A person's own check, if they keep one: anything this repository must not carry that only
+# they can name, such as names from their own life. It lives in their config directory
+# because naming it here would publish it. It runs before the plugin check below, which
+# returns early on any commit that touches no plugin.
+local_hook="${XDG_CONFIG_HOME:-$HOME/.config}/brabeus/hooks/pre-commit"
+# One that is there but cannot run refuses too, because skipping it would end the check
+# with nothing said: a link left dangling when its target moved looks like no check at all.
+if [ -e "$local_hook" ] || [ -L "$local_hook" ]; then
+  if [ ! -x "$local_hook" ]; then
+    echo "pre-commit: $local_hook is there but cannot run; fix or remove it" >&2
+    exit 1
+  fi
+  if ! "$local_hook"; then
+    echo "pre-commit: $local_hook refused the commit" >&2
+    exit 1
+  fi
+fi
+
 # Which plugins have staged content? Derived from the path, so a second plugin needs no edit.
 # .claude-plugin/marketplace.json at the repo ROOT is not a plugin — it describes them —
 #    so editing it bumps nothing.
