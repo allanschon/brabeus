@@ -29,6 +29,10 @@ go build -buildvcs=false -o /dev/null ./cmd/brabeus
 bash scripts/refcheck.test.sh >/dev/null
 ./scripts/refcheck.sh
 
+# The versioned git hooks must call a person's own check when they keep one, and refuse
+# the commit when it refuses, or that check runs nowhere.
+bash scripts/githooks.test.sh
+
 # ---------------------------------------------------------------------------
 # Backstop: did a plugin's content change without its version changing?
 #
