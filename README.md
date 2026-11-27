@@ -233,16 +233,32 @@ adapter this deployment has not configured also reads `no-evidence`, and the det
 
 Each deployment configures its backends with these variables:
 
-- `BRABEUS_TRACKER`: `vikunja`, or empty for no tracker.
-- `BRABEUS_TRACKER_URL`: the tracker's base URL. It is required when a tracker is named.
-- `BRABEUS_TRACKER_TOKEN`: a Vikunja API token with the Tasks -> Read All permission, which is
-  what the adapter's listing query needs.
+- `BRABEUS_TRACKER`: `vikunja`, `kaneo`, or empty for no tracker.
+- `BRABEUS_TRACKER_URL`: the tracker's base URL, the instance root without `/api`. It is required
+  when a tracker is named.
+- `BRABEUS_TRACKER_TOKEN`: for Vikunja, an API token with the Tasks -> Read All permission, which
+  is what the adapter's listing query needs. For Kaneo, an API key whose account is a member of
+  every workspace holding a task a claim counts, because the adapter reads only the workspaces
+  the key can see.
 - `BRABEUS_FORGE`: `gitea`, `github`, or empty for no forge.
 - `BRABEUS_FORGE_URL`: the forge's base URL. It is required for Gitea. For GitHub it defaults to
   `https://api.github.com`.
 - `BRABEUS_FORGE_TOKEN`: a read-only token for the repositories that claims name.
 - `BRABEUS_FORGE_OWNER`: the owner a bare `repo:` name resolves against. If it is empty, such a
   claim reads `no-evidence`.
+
+Kaneo has no done flag, so the adapter reads one from the board. A task is done when it sits in a
+column marked final, such as Done or Won't do, or in the archive. It finished at its newest move
+into a final column. A task imported from Vikunja has no such move, because the importer's events
+carry the import's time, so the date in its import footer stands in, and an open imported task is
+dated by the footer's created date for the same reason. The footer is the first line after the
+description's last `---` rule, starting `*Imported from [Vikunja`, and carries `created YYYY-MM-DD`,
+`done YYYY-MM-DD` or both; the same words anywhere else in the description are not read. A done task with neither date reads
+`no-evidence`, because skipping it could turn an undercount into a `fail`.
+
+A backend that answers HTTP 429 is asked again, up to three tries in all, after the wait its
+`Retry-After` names (at most 30 seconds). One still refusing after that is an error, which reads
+`no-evidence`.
 
 An unknown backend name, or a named backend without its URL, stops the kernel at startup.
 

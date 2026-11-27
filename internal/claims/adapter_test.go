@@ -124,6 +124,74 @@ func TestNewBuildsOnlyWhatIsConfiguredAndRefusesAnUnknownBackend(t *testing.T) {
 	}
 }
 
+func TestNewBuildsKaneoAndNamesBothTrackersWhenRefusingAnother(t *testing.T) {
+	got, err := New(Config{Tracker: "kaneo", TrackerURL: "https://tracker.example", TrackerToken: "t"}, nil)
+	if k, ok := got["tracker"].(*Kaneo); err != nil || !ok || k.URL != "https://tracker.example" || k.Token != "t" {
+		t.Errorf("kaneo: %#v %v", got["tracker"], err)
+	}
+	if _, err := New(Config{Tracker: "kaneo"}, nil); err == nil || !strings.Contains(err.Error(), "BRABEUS_TRACKER=kaneo needs BRABEUS_TRACKER_URL") {
+		t.Errorf("kaneo without its URL must be refused naming the variable: %v", err)
+	}
+	if _, err := New(Config{Tracker: "jira", TrackerURL: "https://tracker.example"}, nil); err == nil || !strings.Contains(err.Error(), "vikunja") || !strings.Contains(err.Error(), "kaneo") {
+		t.Errorf("an unknown tracker must be refused naming both that exist: %v", err)
+	}
+}
+
+// rateLimited answers 429 to the first n requests and a JSON list after.
+func rateLimited(n int, retryAfter string) (*httptest.Server, *int) {
+	asked := 0
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked++
+		if asked <= n {
+			if retryAfter != "" {
+				w.Header().Set("Retry-After", retryAfter)
+			}
+			http.Error(w, "slow down", http.StatusTooManyRequests)
+			return
+		}
+		w.Write([]byte("[]"))
+	})), &asked
+}
+
+func withoutWaiting(t *testing.T) *[]time.Duration {
+	t.Helper()
+	var waits []time.Duration
+	old := rateLimitWait
+	rateLimitWait = func(ctx context.Context, d time.Duration) error { waits = append(waits, d); return nil }
+	t.Cleanup(func() { rateLimitWait = old })
+	return &waits
+}
+
+func TestGetWaitsOutARateLimitAndHonoursRetryAfter(t *testing.T) {
+	waits := withoutWaiting(t)
+	srv, asked := rateLimited(1, "3")
+	defer srv.Close()
+	var into []any
+	o, err := get(context.Background(), srv.Client(), srv.URL, nil, &into)
+	if err != nil || o != nil || *asked != 2 {
+		t.Errorf("one 429 then 200: outcome %+v, err %v, asked %d times", o, err, *asked)
+	}
+	if len(*waits) != 1 || (*waits)[0] != 3*time.Second {
+		t.Errorf("waited %v, want one wait of the 3s Retry-After asked for", *waits)
+	}
+}
+
+// A source that keeps answering 429 is a fault, not evidence, and the run
+// must not wait on it for ever.
+func TestGetGivesUpOnARateLimitThatDoesNotLift(t *testing.T) {
+	waits := withoutWaiting(t)
+	srv, asked := rateLimited(1000, "")
+	defer srv.Close()
+	var into []any
+	_, err := get(context.Background(), srv.Client(), srv.URL, nil, &into)
+	if err == nil || !strings.Contains(err.Error(), "429") {
+		t.Errorf("err %v, want an error naming HTTP 429", err)
+	}
+	if *asked != rateLimitTries || len(*waits) != rateLimitTries-1 {
+		t.Errorf("asked %d times and waited %d, want %d tries", *asked, len(*waits), rateLimitTries)
+	}
+}
+
 func TestFromEnvReadsEveryVariableAndNormalisesTheBackendNames(t *testing.T) {
 	env := map[string]string{
 		"BRABEUS_TRACKER": " Vikunja ", "BRABEUS_TRACKER_URL": "https://tracker.example/", "BRABEUS_TRACKER_TOKEN": "tt",
