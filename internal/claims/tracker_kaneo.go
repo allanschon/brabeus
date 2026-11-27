@@ -236,15 +236,15 @@ func collect(b kaneoBoard, final map[string]bool, add func(kaneoTask, bool)) {
 }
 
 // dated is when a done task finished or an open one was created. A done task
-// finished at its newest move into a final column or into the archive, which
-// Kaneo records as a status change to "archived"; a task imported from
+// finished at its newest move into a final column. A task imported from
 // Vikunja has no such move, because the importer's events are stamped at the
-// import, so its footer's done date stands in. An open task's createdAt is
-// the import time when it was imported, so the footer's created date comes
-// first. A done task with neither is no-evidence naming it: skipping it would
-// undercount into a fail, which is how parseStamp treats a stamp it cannot
-// read.
+// import, so its footer's done date stands in. Archiving, which Kaneo records
+// as a status change to "archived", dates a task only when neither exists:
+// archiving tidies a finished task away rather than finishing it again. An
+// open task's createdAt is the import time when it was imported, so the
+// footer's created date comes first there too.
 func (k *Kaneo) dated(ctx context.Context, headers map[string]string, task boardTask, final map[string]bool) (time.Time, *Outcome, error) {
+	var archived time.Time
 	if task.done {
 		var events []kaneoEvent
 		if o, err := get(ctx, k.Client, fmt.Sprintf("%s/api/activity/%s", k.URL, url.PathEscape(task.ID)), headers, &events); err != nil || o != nil {
@@ -252,15 +252,19 @@ func (k *Kaneo) dated(ctx context.Context, headers map[string]string, task board
 		}
 		var newest time.Time
 		for _, e := range events {
-			if e.Type != "status_changed" || !(final[e.EventData.NewStatus] || e.EventData.NewStatus == "archived") {
+			isFinal, isArchive := final[e.EventData.NewStatus], e.EventData.NewStatus == "archived"
+			if e.Type != "status_changed" || !(isFinal || isArchive) {
 				continue
 			}
 			when, o := parseStamp("createdAt", e.CreatedAt)
 			if o != nil {
 				return time.Time{}, o, nil
 			}
-			if when.After(newest) {
+			if isFinal && when.After(newest) {
 				newest = when
+			}
+			if isArchive && when.After(archived) {
+				archived = when
 			}
 		}
 		if !newest.IsZero() {
@@ -273,10 +277,13 @@ func (k *Kaneo) dated(ctx context.Context, headers map[string]string, task board
 	}
 	created, done := importFooter(desc)
 	if task.done {
-		if done.IsZero() {
-			return time.Time{}, &Outcome{State: store.NoEvidence, Detail: fmt.Sprintf("task %s is done with no completion date: no move into a final column and no done date in an import footer", task.ID)}, nil
+		if !done.IsZero() {
+			return done, nil, nil
 		}
-		return done, nil, nil
+		if !archived.IsZero() {
+			return archived, nil, nil
+		}
+		return time.Time{}, &Outcome{State: store.NoEvidence, Detail: fmt.Sprintf("task %s is done with no completion date: no move into a final column or the archive, and no done date in an import footer", task.ID)}, nil
 	}
 	if !created.IsZero() {
 		return created, nil, nil

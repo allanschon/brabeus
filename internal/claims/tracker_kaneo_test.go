@@ -561,12 +561,35 @@ func TestKaneoStoppedAtItsPageCapOnRelatedPagesCannotFail(t *testing.T) {
 	}
 }
 
-// Archiving is a status change to "archived", so an archived task finished
-// when it was archived, ahead of an import footer's done date.
+// Archiving is a status change to "archived". A task archived without ever
+// being moved into a final column finished when it was archived.
 func TestKaneoDatesAnArchivedTaskByItsArchivingEvent(t *testing.T) {
 	events := map[string][]kEvent{"a": {{Type: "status_changed", At: "2026-11-10T12:00:00.000Z", NewStatus: "archived"}}}
-	page := kPage{Archived: []kTask{{ID: "a", Labels: []string{"article"}, Description: "x" + footer("2026-08-01", "2026-10-01")}}}
+	page := kPage{Archived: []kTask{{ID: "a", Labels: []string{"article"}, Description: "x"}}}
 	if out := kCheck(t, oneProject(events, page), nil, since("article", "2026-11-01", "1", "true")); out.State != store.Pass || out.Detail != "1 found" {
 		t.Errorf("%+v, want 1 found: it was archived on 2026-11-10", out)
+	}
+}
+
+// Archiving tidies a finished task away; it does not finish it again. A task
+// moved to Done and archived later finished at the move.
+func TestKaneoDatesADoneThenArchivedTaskByItsMoveToDone(t *testing.T) {
+	events := map[string][]kEvent{"a": {
+		{Type: "status_changed", At: "2026-11-20T12:00:00.000Z", NewStatus: "archived"},
+		{Type: "status_changed", At: "2026-10-20T12:00:00.000Z", NewStatus: "done"},
+	}}
+	page := kPage{Columns: map[string][]kTask{"done": nil}, Archived: []kTask{{ID: "a", Labels: []string{"article"}}}}
+	if out := kCheck(t, oneProject(events, page), nil, since("article", "2026-11-01", "1", "true")); out.State != store.Fail || out.Detail != "0 found" {
+		t.Errorf("%+v, want 0 found: it finished on 2026-10-20 and was only archived later", out)
+	}
+}
+
+// An imported task archived after the import finished at its footer's done
+// date, not at the archiving.
+func TestKaneoDatesAnArchivedImportedTaskByItsFooter(t *testing.T) {
+	events := map[string][]kEvent{"a": {{Type: "status_changed", At: "2026-11-20T12:00:00.000Z", NewStatus: "archived"}}}
+	page := kPage{Archived: []kTask{{ID: "a", Labels: []string{"article"}, Description: "x" + footer("2026-08-01", "2026-10-01")}}}
+	if out := kCheck(t, oneProject(events, page), nil, since("article", "2026-11-01", "1", "true")); out.State != store.Fail || out.Detail != "0 found" {
+		t.Errorf("%+v, want 0 found: it was done on 2026-10-01 and only archived later", out)
 	}
 }
