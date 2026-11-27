@@ -226,16 +226,67 @@ func New(cfg Config, client *http.Client) (map[string]Adapter, error) {
 // the error as detail. No token is ever put in the URL, because an error's
 // text becomes a stored detail.
 func get(ctx context.Context, client *http.Client, endpoint string, headers map[string]string, into any) (*Outcome, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, err
+	return fetch(ctx, client, endpoint, headers, '[', "not a JSON list", into)
+}
+
+// getObject is get for an answer that is one JSON object. A null body would
+// decode into an empty struct as silently as into an empty slice, so it is
+// refused the same way.
+func getObject(ctx context.Context, client *http.Client, endpoint string, headers map[string]string, into any) (*Outcome, error) {
+	return fetch(ctx, client, endpoint, headers, '{', "not a JSON object", into)
+}
+
+// rateLimitTries bounds how many times one GET is asked while the source
+// answers 429, so a source that never lifts its limit ends the claim as an
+// error instead of holding the run.
+const rateLimitTries = 3
+
+// rateLimitWait sleeps between tries, or stops early when the run is
+// cancelled. Tests replace it so they do not wait.
+var rateLimitWait = func(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
 	}
-	for k, v := range headers {
-		req.Header.Set(k, v)
+}
+
+// retryDelay is the wait before the next try: the source's Retry-After in
+// seconds when it gives one, capped at 30 seconds so one claim cannot stall
+// the run, or else 2 seconds per try already made.
+func retryDelay(header string, try int) time.Duration {
+	if n, err := strconv.Atoi(strings.TrimSpace(header)); err == nil && n >= 0 {
+		return min(time.Duration(n)*time.Second, 30*time.Second)
 	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
+	return time.Duration(try) * 2 * time.Second
+}
+
+func fetch(ctx context.Context, client *http.Client, endpoint string, headers map[string]string, opening byte, shape string, into any) (*Outcome, error) {
+	var resp *http.Response
+	var req *http.Request
+	for try := 1; ; try++ {
+		var err error
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		resp, err = client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode != http.StatusTooManyRequests || try == rateLimitTries {
+			break
+		}
+		resp.Body.Close()
+		if err := rateLimitWait(ctx, retryDelay(resp.Header.Get("Retry-After"), try)); err != nil {
+			return nil, err
+		}
 	}
 	defer resp.Body.Close()
 	switch resp.StatusCode {
@@ -254,8 +305,8 @@ func get(ctx context.Context, client *http.Client, endpoint string, headers map[
 	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
 		return unreadable(err.Error())
 	}
-	if trimmed := bytes.TrimSpace(raw); len(trimmed) == 0 || trimmed[0] != '[' {
-		return unreadable("not a JSON list")
+	if trimmed := bytes.TrimSpace(raw); len(trimmed) == 0 || trimmed[0] != opening {
+		return unreadable(shape)
 	}
 	if err := json.Unmarshal(raw, into); err != nil {
 		return unreadable(err.Error())

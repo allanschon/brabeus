@@ -244,6 +244,10 @@ Each deployment configures its backends with these variables:
 - `BRABEUS_FORGE_OWNER`: the owner a bare `repo:` name resolves against. If it is empty, such a
   claim reads `no-evidence`.
 
+A backend that answers HTTP 429 is asked again, up to three tries in all, after the wait its
+`Retry-After` names (at most 30 seconds). One still refusing after that is an error, which reads
+`no-evidence`.
+
 An unknown backend name, or a named backend without its URL, stops the kernel at startup.
 
 The kernel runs every non-manual claim when it starts and then every `BRABEUS_CLAIM_INTERVAL`
