@@ -157,7 +157,7 @@ func validateDates(args map[string]string) error {
 	return nil
 }
 
-// Config names the backends a deployment runs. Tracker is "vikunja" or "";
+// Config names the backends a deployment runs. Tracker is "vikunja", "kaneo" or "";
 // Forge is "gitea", "github" or "". ForgeOwner is what a bare repository name
 // in a forge claim resolves against.
 type Config struct {
@@ -195,8 +195,13 @@ func New(cfg Config, client *http.Client) (map[string]Adapter, error) {
 			return nil, fmt.Errorf("BRABEUS_TRACKER=vikunja needs BRABEUS_TRACKER_URL (spec §8.1)")
 		}
 		out["tracker"] = &Vikunja{URL: cfg.TrackerURL, Token: cfg.TrackerToken, Client: client}
+	case "kaneo":
+		if cfg.TrackerURL == "" {
+			return nil, fmt.Errorf("BRABEUS_TRACKER=kaneo needs BRABEUS_TRACKER_URL (spec §8.1)")
+		}
+		out["tracker"] = &Kaneo{URL: cfg.TrackerURL, Token: cfg.TrackerToken, Client: client}
 	default:
-		return nil, fmt.Errorf("BRABEUS_TRACKER=%q: this kernel implements vikunja (spec §8.1)", cfg.Tracker)
+		return nil, fmt.Errorf("BRABEUS_TRACKER=%q: this kernel implements vikunja and kaneo (spec §8.1)", cfg.Tracker)
 	}
 	switch cfg.Forge {
 	case "":

@@ -124,6 +124,19 @@ func TestNewBuildsOnlyWhatIsConfiguredAndRefusesAnUnknownBackend(t *testing.T) {
 	}
 }
 
+func TestNewBuildsKaneoAndNamesBothTrackersWhenRefusingAnother(t *testing.T) {
+	got, err := New(Config{Tracker: "kaneo", TrackerURL: "https://tracker.example", TrackerToken: "t"}, nil)
+	if k, ok := got["tracker"].(*Kaneo); err != nil || !ok || k.URL != "https://tracker.example" || k.Token != "t" {
+		t.Errorf("kaneo: %#v %v", got["tracker"], err)
+	}
+	if _, err := New(Config{Tracker: "kaneo"}, nil); err == nil || !strings.Contains(err.Error(), "BRABEUS_TRACKER=kaneo needs BRABEUS_TRACKER_URL") {
+		t.Errorf("kaneo without its URL must be refused naming the variable: %v", err)
+	}
+	if _, err := New(Config{Tracker: "jira", TrackerURL: "https://tracker.example"}, nil); err == nil || !strings.Contains(err.Error(), "vikunja") || !strings.Contains(err.Error(), "kaneo") {
+		t.Errorf("an unknown tracker must be refused naming both that exist: %v", err)
+	}
+}
+
 // rateLimited answers 429 to the first n requests and a JSON list after.
 func rateLimited(n int, retryAfter string) (*httptest.Server, *int) {
 	asked := 0
