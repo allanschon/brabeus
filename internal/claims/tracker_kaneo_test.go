@@ -31,9 +31,13 @@ type kPage struct {
 	Planned  []kTask
 }
 
+// kProject is one project. Related is how many related pages each board page
+// splits its tasks' labels across, as Kaneo does; 0 leaves relatedTotalPages
+// out of the answer, so every label is on the one page.
 type kProject struct {
 	ID       string
 	Archived bool
+	Related  int
 	Pages    []kPage
 }
 
@@ -87,13 +91,20 @@ func (f *kaneoFake) activityCalls() map[string]int {
 	return out
 }
 
-func kTaskJSON(t kTask, status, projectID string, full bool) map[string]any {
+// kTaskJSON is a task as Kaneo answers it. With of above 1, the labels are
+// only related page related's share of of pages: the task's i-th label is on
+// related page i%of + 1, so a task with fewer labels than pages has none on
+// the last ones.
+func kTaskJSON(t kTask, status, projectID string, full bool, related, of int) map[string]any {
 	created := t.Created
 	if created == "" {
 		created = "2026-06-01T00:00:00.000Z"
 	}
 	labels := []map[string]any{}
-	for _, l := range t.Labels {
+	for i, l := range t.Labels {
+		if of > 1 && i%of+1 != related {
+			continue
+		}
 		labels = append(labels, map[string]any{"id": "l-" + l, "name": l, "color": "#94a3b8"})
 	}
 	out := map[string]any{"id": t.ID, "title": "task " + t.ID, "createdAt": created, "labels": labels, "status": status, "projectId": projectID}
@@ -149,6 +160,12 @@ func (f *kaneoFake) server(t *testing.T) *httptest.Server {
 			}
 			page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 			limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+			// Kaneo answers a request without relatedPage with the first
+			// related page's share.
+			related, _ := strconv.Atoi(r.URL.Query().Get("relatedPage"))
+			if related < 1 {
+				related = 1
+			}
 			var pg kPage
 			if page >= 1 && page <= len(p.Pages) {
 				pg = p.Pages[page-1]
@@ -157,20 +174,24 @@ func (f *kaneoFake) server(t *testing.T) *httptest.Server {
 			for _, c := range kColumns {
 				tasks := []map[string]any{}
 				for _, task := range pg.Columns[c.slug] {
-					tasks = append(tasks, kTaskJSON(task, c.slug, p.ID, false))
+					tasks = append(tasks, kTaskJSON(task, c.slug, p.ID, false, related, p.Related))
 				}
 				columns = append(columns, map[string]any{"id": c.slug, "slug": c.slug, "name": c.name, "isFinal": c.final, "tasks": tasks})
 			}
 			archived, planned := []map[string]any{}, []map[string]any{}
 			for _, task := range pg.Archived {
-				archived = append(archived, kTaskJSON(task, "done", p.ID, false))
+				archived = append(archived, kTaskJSON(task, "archived", p.ID, false, related, p.Related))
 			}
 			for _, task := range pg.Planned {
-				planned = append(planned, kTaskJSON(task, "planned", p.ID, false))
+				planned = append(planned, kTaskJSON(task, "planned", p.ID, false, related, p.Related))
+			}
+			pagination := map[string]any{"total": 0, "page": page, "pageSize": limit, "totalPages": len(p.Pages)}
+			if p.Related > 0 {
+				pagination["relatedTotalPages"] = p.Related
 			}
 			write(map[string]any{
 				"data":       map[string]any{"columns": columns, "archivedTasks": archived, "plannedTasks": planned},
-				"pagination": map[string]any{"total": 0, "page": page, "pageSize": limit, "totalPages": len(p.Pages)},
+				"pagination": pagination,
 			})
 		case strings.HasPrefix(path, "/api/task/"):
 			id := strings.TrimPrefix(path, "/api/task/")
@@ -180,14 +201,14 @@ func (f *kaneoFake) server(t *testing.T) *httptest.Server {
 						for slug, tasks := range pg.Columns {
 							for _, task := range tasks {
 								if task.ID == id {
-									write(kTaskJSON(task, slug, p.ID, true))
+									write(kTaskJSON(task, slug, p.ID, true, 1, 0))
 									return
 								}
 							}
 						}
 						for _, task := range append(append([]kTask{}, pg.Archived...), pg.Planned...) {
 							if task.ID == id {
-								write(kTaskJSON(task, "done", p.ID, true))
+								write(kTaskJSON(task, "archived", p.ID, true, 1, 0))
 								return
 							}
 						}
@@ -480,5 +501,95 @@ func TestKaneoReadsTheFooterOfADeferredDescription(t *testing.T) {
 		Description: "x" + footer("2026-09-01", ""), Deferred: true}}}}
 	if out := kCheck(t, oneProject(nil, page), nil, since("article", "2026-11-01", "1", "false")); out.State != store.Fail || out.Detail != "0 found" {
 		t.Errorf("%+v, want 0 found: the footer says created 2026-09-01", out)
+	}
+}
+
+// A board splits each task's labels across related pages, so a label on any
+// one of them is the task's.
+func TestKaneoMatchesALabelOnAnyRelatedPage(t *testing.T) {
+	cases := []struct {
+		name    string
+		related int
+		labels  []string
+	}{
+		{"second of two", 2, []string{"dom:security", "article"}},
+		{"third of three", 3, []string{"kind:defect", "cons:3", "article"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := &kaneoFake{token: "key", activity: map[string][]kEvent{"a": doneAt("2026-11-10T12:00:00.000Z")},
+				workspaces: []kWorkspace{{ID: "w1", Projects: []kProject{{ID: "p1", Related: c.related,
+					Pages: []kPage{{Columns: map[string][]kTask{"done": {{ID: "a", Labels: c.labels}}}}}}}}}}
+			if out := kCheck(t, f, nil, since("article", "2026-11-01", "1", "true")); out.State != store.Pass || out.Detail != "1 found" {
+				t.Errorf("%+v, want 1 found: article is on the last related page", out)
+			}
+		})
+	}
+}
+
+// Every related page repeats the page's tasks, so a task met on several pages
+// and several related pages is still one task, and its activity is read once.
+func TestKaneoCountsATaskOnceAcrossPagesAndRelatedPages(t *testing.T) {
+	labels := []string{"chore", "article"}
+	a := kTask{ID: "a", Labels: labels}
+	b := kTask{ID: "b", Labels: labels}
+	c := kTask{ID: "c", Labels: labels}
+	ev := doneAt("2026-11-10T12:00:00.000Z")
+	f := &kaneoFake{token: "key", activity: map[string][]kEvent{"a": ev, "b": ev, "c": ev},
+		workspaces: []kWorkspace{{ID: "w1", Projects: []kProject{{ID: "p1", Related: 2, Pages: []kPage{
+			{Columns: map[string][]kTask{"done": {a}}},
+			{Columns: map[string][]kTask{"done": {a, b}}},
+			{Columns: map[string][]kTask{"done": {c}}},
+		}}}}}}
+	if out := kCheck(t, f, &Kaneo{perPage: 2}, since("article", "2026-11-01", "1", "true")); out.Detail != "3 found" {
+		t.Errorf("%+v, want 3 found", out)
+	}
+	if got := f.activityCalls(); len(got) != 3 || got["a"] != 1 || got["b"] != 1 || got["c"] != 1 {
+		t.Errorf("activity read for %v, want a, b and c once each", got)
+	}
+}
+
+// A label on a related page past the cap was never seen, so the count is a
+// lower bound and cannot fail.
+func TestKaneoStoppedAtItsPageCapOnRelatedPagesCannotFail(t *testing.T) {
+	f := &kaneoFake{token: "key", activity: map[string][]kEvent{"a": doneAt("2026-11-10T12:00:00.000Z")},
+		workspaces: []kWorkspace{{ID: "w1", Projects: []kProject{{ID: "p1", Related: 3,
+			Pages: []kPage{{Columns: map[string][]kTask{"done": {{ID: "a", Labels: []string{"x", "y", "article"}}}}}}}}}}}
+	out := kCheck(t, f, &Kaneo{maxPages: 2}, since("article", "2026-11-01", "1", "true"))
+	if out.State != store.NoEvidence || !strings.Contains(out.Detail, "stopped before the end") {
+		t.Errorf("%+v, want no-evidence: the third related page was not read", out)
+	}
+}
+
+// Archiving is a status change to "archived". A task archived without ever
+// being moved into a final column finished when it was archived.
+func TestKaneoDatesAnArchivedTaskByItsArchivingEvent(t *testing.T) {
+	events := map[string][]kEvent{"a": {{Type: "status_changed", At: "2026-11-10T12:00:00.000Z", NewStatus: "archived"}}}
+	page := kPage{Archived: []kTask{{ID: "a", Labels: []string{"article"}, Description: "x"}}}
+	if out := kCheck(t, oneProject(events, page), nil, since("article", "2026-11-01", "1", "true")); out.State != store.Pass || out.Detail != "1 found" {
+		t.Errorf("%+v, want 1 found: it was archived on 2026-11-10", out)
+	}
+}
+
+// Archiving tidies a finished task away; it does not finish it again. A task
+// moved to Done and archived later finished at the move.
+func TestKaneoDatesADoneThenArchivedTaskByItsMoveToDone(t *testing.T) {
+	events := map[string][]kEvent{"a": {
+		{Type: "status_changed", At: "2026-11-20T12:00:00.000Z", NewStatus: "archived"},
+		{Type: "status_changed", At: "2026-10-20T12:00:00.000Z", NewStatus: "done"},
+	}}
+	page := kPage{Columns: map[string][]kTask{"done": nil}, Archived: []kTask{{ID: "a", Labels: []string{"article"}}}}
+	if out := kCheck(t, oneProject(events, page), nil, since("article", "2026-11-01", "1", "true")); out.State != store.Fail || out.Detail != "0 found" {
+		t.Errorf("%+v, want 0 found: it finished on 2026-10-20 and was only archived later", out)
+	}
+}
+
+// An imported task archived after the import finished at its footer's done
+// date, not at the archiving.
+func TestKaneoDatesAnArchivedImportedTaskByItsFooter(t *testing.T) {
+	events := map[string][]kEvent{"a": {{Type: "status_changed", At: "2026-11-20T12:00:00.000Z", NewStatus: "archived"}}}
+	page := kPage{Archived: []kTask{{ID: "a", Labels: []string{"article"}, Description: "x" + footer("2026-08-01", "2026-10-01")}}}
+	if out := kCheck(t, oneProject(events, page), nil, since("article", "2026-11-01", "1", "true")); out.State != store.Fail || out.Detail != "0 found" {
+		t.Errorf("%+v, want 0 found: it was done on 2026-10-01 and only archived later", out)
 	}
 }
