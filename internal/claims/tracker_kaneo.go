@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -16,7 +17,8 @@ import (
 // Kaneo counts tasks by label and date. Kaneo 2.50.0 has no route that lists
 // tasks across projects, so the adapter walks every workspace the key can
 // see, every project in each, archived ones included because their tasks were
-// still done, and every page of each project's board.
+// still done, and every page of each project's board with every related page
+// of each.
 type Kaneo struct {
 	URL, Token string
 	Client     *http.Client
@@ -48,7 +50,8 @@ type kaneoBoard struct {
 		PlannedTasks  []kaneoTask `json:"plannedTasks"`
 	} `json:"data"`
 	Pagination struct {
-		TotalPages int `json:"totalPages"`
+		TotalPages        int `json:"totalPages"`
+		RelatedTotalPages int `json:"relatedTotalPages"`
 	} `json:"pagination"`
 }
 
@@ -149,7 +152,10 @@ func deref(o *Outcome) Outcome {
 // each, the slugs of its final columns, and whether paging stopped at the cap
 // before the last page. Every page repeats every column with that page's share
 // of the tasks, so a task can appear on more than one, and a column's
-// finality is read from whichever page names it.
+// finality is read from whichever page names it. Each page is itself split
+// into related pages that repeat the page's tasks with only a share of each
+// task's labels, so every related page is read and a task's labels are the
+// union of its shares; reading only the first would miss a label on the rest.
 func (k *Kaneo) board(ctx context.Context, headers map[string]string, projectID string, limit int) ([]boardTask, map[string]bool, bool, *Outcome, error) {
 	perPage := k.perPage
 	if perPage == 0 {
@@ -159,44 +165,46 @@ func (k *Kaneo) board(ctx context.Context, headers map[string]string, projectID 
 	seen := map[string]int{}
 	final := map[string]bool{}
 	add := func(t kaneoTask, done bool) {
-		if i, ok := seen[t.ID]; ok {
-			tasks[i].done = tasks[i].done || done
-			return
+		i, ok := seen[t.ID]
+		if !ok {
+			i = len(tasks)
+			seen[t.ID] = i
+			first := t
+			first.Labels = nil
+			tasks = append(tasks, boardTask{kaneoTask: first})
 		}
-		seen[t.ID] = len(tasks)
-		tasks = append(tasks, boardTask{t, done})
+		tasks[i].done = tasks[i].done || done
+		for _, l := range t.Labels {
+			if !slices.Contains(tasks[i].Labels, l) {
+				tasks[i].Labels = append(tasks[i].Labels, l)
+			}
+		}
 	}
 	for page := 1; ; page++ {
-		var b kaneoBoard
-		endpoint := fmt.Sprintf("%s/api/task/tasks/%s?limit=%d&page=%d", k.URL, url.PathEscape(projectID), perPage, page)
-		if o, err := getObject(ctx, k.Client, endpoint, headers, &b); err != nil || o != nil {
-			return nil, nil, false, o, err
-		}
-		// A board without data would read as an empty project and
-		// undercount into a fail, so it is no-evidence like any other
-		// answer the adapter cannot read.
-		if b.Data == nil {
-			return nil, nil, false, &Outcome{State: store.NoEvidence, Detail: fmt.Sprintf("unreadable board for project %s: no data", projectID)}, nil
-		}
-		for _, c := range b.Data.Columns {
-			slug := c.Slug
-			if slug == "" {
-				slug = c.ID
+		var pageTotal int
+		// A board that names no related pages has them all on the first.
+		for related, relatedTotal := 1, 1; related <= relatedTotal; related++ {
+			if related > limit {
+				return tasks, final, true, nil, nil
 			}
-			if c.IsFinal {
-				final[slug] = true
+			var b kaneoBoard
+			endpoint := fmt.Sprintf("%s/api/task/tasks/%s?limit=%d&page=%d&relatedPage=%d", k.URL, url.PathEscape(projectID), perPage, page, related)
+			if o, err := getObject(ctx, k.Client, endpoint, headers, &b); err != nil || o != nil {
+				return nil, nil, false, o, err
 			}
-			for _, t := range c.Tasks {
-				add(t, c.IsFinal)
+			// A board without data would read as an empty project and
+			// undercount into a fail, so it is no-evidence like any other
+			// answer the adapter cannot read.
+			if b.Data == nil {
+				return nil, nil, false, &Outcome{State: store.NoEvidence, Detail: fmt.Sprintf("unreadable board for project %s: no data", projectID)}, nil
 			}
+			if related == 1 {
+				pageTotal = b.Pagination.TotalPages
+				relatedTotal = max(b.Pagination.RelatedTotalPages, 1)
+			}
+			collect(b, final, add)
 		}
-		for _, t := range b.Data.ArchivedTasks {
-			add(t, true)
-		}
-		for _, t := range b.Data.PlannedTasks {
-			add(t, false)
-		}
-		if page >= b.Pagination.TotalPages {
+		if page >= pageTotal {
 			return tasks, final, false, nil, nil
 		}
 		if page >= limit {
@@ -205,8 +213,31 @@ func (k *Kaneo) board(ctx context.Context, headers map[string]string, projectID 
 	}
 }
 
+// collect adds one answer's tasks, marking the slugs of final columns.
+func collect(b kaneoBoard, final map[string]bool, add func(kaneoTask, bool)) {
+	for _, c := range b.Data.Columns {
+		slug := c.Slug
+		if slug == "" {
+			slug = c.ID
+		}
+		if c.IsFinal {
+			final[slug] = true
+		}
+		for _, t := range c.Tasks {
+			add(t, c.IsFinal)
+		}
+	}
+	for _, t := range b.Data.ArchivedTasks {
+		add(t, true)
+	}
+	for _, t := range b.Data.PlannedTasks {
+		add(t, false)
+	}
+}
+
 // dated is when a done task finished or an open one was created. A done task
-// finished at its newest move into a final column; a task imported from
+// finished at its newest move into a final column or into the archive, which
+// Kaneo records as a status change to "archived"; a task imported from
 // Vikunja has no such move, because the importer's events are stamped at the
 // import, so its footer's done date stands in. An open task's createdAt is
 // the import time when it was imported, so the footer's created date comes
@@ -221,7 +252,7 @@ func (k *Kaneo) dated(ctx context.Context, headers map[string]string, task board
 		}
 		var newest time.Time
 		for _, e := range events {
-			if e.Type != "status_changed" || !final[e.EventData.NewStatus] {
+			if e.Type != "status_changed" || !(final[e.EventData.NewStatus] || e.EventData.NewStatus == "archived") {
 				continue
 			}
 			when, o := parseStamp("createdAt", e.CreatedAt)

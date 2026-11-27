@@ -247,9 +247,14 @@ Each deployment configures its backends with these variables:
 - `BRABEUS_FORGE_OWNER`: the owner a bare `repo:` name resolves against. If it is empty, such a
   claim reads `no-evidence`.
 
+Kaneo's board splits each task's labels across related pages, each repeating the page's tasks
+with only a share of their labels, so the adapter reads every related page of every page and
+matches a label against the union.
+
 Kaneo has no done flag, so the adapter reads one from the board. A task is done when it sits in a
 column marked final, such as Done or Won't do, or in the archive. It finished at its newest move
-into a final column. A task imported from Vikunja has no such move, because the importer's events
+into a final column or into the archive, which Kaneo's activity feed records as a status change to
+`archived`. A task imported from Vikunja has no such move, because the importer's events
 carry the import's time, so the date in its import footer stands in, and an open imported task is
 dated by the footer's created date for the same reason. The footer is the first line after the
 description's last `---` rule, starting `*Imported from [Vikunja`, and carries `created YYYY-MM-DD`,
